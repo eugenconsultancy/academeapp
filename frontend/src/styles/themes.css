@@ -1,0 +1,225 @@
+/* ══════════════════════════════════════════════════
+   ACADEME — THEME SYSTEM
+   Full CSS custom-property token set for light + dark
+══════════════════════════════════════════════════ */
+
+/* ── Light (default) ── */
+:root {
+  color-scheme: light;
+
+  /* Primary — Indigo */
+  --primary-50:  #eef2ff;
+  --primary-100: #e0e7ff;
+  --primary-200: #c7d2fe;
+  --primary-300: #a5b4fc;
+  --primary-400: #818cf8;
+  --primary-500: #6366f1;
+  --primary-600: #4f46e5;
+  --primary-700: #4338ca;
+  --primary-800: #3730a3;
+
+  /* Accent palette */
+  --violet: #8b5cf6;
+  --pink:   #ec4899;
+  --emerald:#10b981;
+  --amber:  #f59e0b;
+  --cyan:   #06b6d4;
+  --rose:   #f43f5e;
+  --blue:   #3b82f6;
+  --teal:   #14b8a6;
+  --orange: #f97316;
+
+  /* Semantic */
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger:  #ef4444;
+  --info:    #06b6d4;
+
+  /* ── Surfaces ── */
+  --surface-bg:     #f0f2f8;
+  --surface-raised: #ffffff;
+  --surface-card:   rgba(255, 255, 255, 0.84);
+  --surface-input:  rgba(255, 255, 255, 0.9);
+  --surface-hover:  rgba(99, 102, 241, 0.07);
+
+  /* ── Text ── */
+  --text-primary:   #0f172a;
+  --text-secondary: #334155;
+  --text-tertiary:  #64748b;
+  --text-muted:     #94a3b8;
+  --text-inverse:   #ffffff;
+
+  /* ── Borders ── */
+  --border-light:  rgba(226, 232, 240, 0.85);
+  --border-medium: rgba(203, 213, 225, 0.85);
+  --border-focus:  rgba(99, 102, 241, 0.6);
+
+  /* ── Glass ── */
+  --glass-bg:        rgba(255, 255, 255, 0.65);
+  --glass-bg-strong: rgba(255, 255, 255, 0.88);
+  --glass-border:    rgba(255, 255, 255, 0.5);
+  --glass-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 6px 24px rgba(15, 23, 42, 0.07);
+
+  /* ── Card ── */
+  --card-bg:     rgba(255, 255, 255, 0.82);
+  --card-border: rgba(255, 255, 255, 0.55);
+  --card-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.04),
+    0 8px 28px rgba(0, 0, 0, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --card-shadow-hover:
+    0 2px 8px rgba(0, 0, 0, 0.06),
+    0 16px 40px rgba(0, 0, 0, 0.1);
+
+  /* ── Navbar / Sidebar ── */
+  --nav-bg:     rgba(255, 255, 255, 0.88);
+  --nav-border: rgba(226, 232, 240, 0.6);
+  --nav-shadow: 0 1px 0 rgba(0, 0, 0, 0.05), 0 4px 20px rgba(0, 0, 0, 0.05);
+
+  --sidebar-bg: rgba(255, 255, 255, 0.88);
+  --sidebar-border: rgba(0, 0, 0, 0.06);
+
+  /* ── Buttons ── */
+  --btn-primary-bg:     linear-gradient(135deg, #6366f1 0%, #8b5cf6 60%, #4f46e5 100%);
+  --btn-primary-shadow: 0 6px 20px rgba(99, 102, 241, 0.3);
+  --btn-primary-hover-shadow: 0 10px 28px rgba(99, 102, 241, 0.42);
+
+  /* ── Gradients ── */
+  --grad-primary:   linear-gradient(135deg, #6366f1 0%, #8b5cf6 55%, #4f46e5 100%);
+  --grad-secondary: linear-gradient(135deg, #06b6d4 0%, #6366f1 100%);
+  --grad-warm:      linear-gradient(135deg, #f59e0b 0%, #ec4899 100%);
+  --grad-cool:      linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);
+  --grad-success:   linear-gradient(135deg, #10b981 0%, #059669 100%);
+  --grad-danger:    linear-gradient(135deg, #f43f5e 0%, #dc2626 100%);
+  --grad-violet:    linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  --grad-pink:      linear-gradient(135deg, #ec4899 0%, #db2777 100%);
+  --grad-amber:     linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  --grad-emerald:   linear-gradient(135deg, #10b981 0%, #059669 100%);
+  --grad-cyan:      linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+  --grad-blue:      linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+
+  /* ── Radii ── */
+  --r-xs:  6px;
+  --r-sm:  10px;
+  --r-md:  14px;
+  --r-lg:  18px;
+  --r-xl:  22px;
+  --r-2xl: 28px;
+  --r-full: 9999px;
+
+  /* ── Motion ── */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --duration-fast:   150ms;
+  --duration-normal: 250ms;
+  --duration-slow:   400ms;
+
+  --t-fast:   var(--duration-fast)   var(--ease-in-out);
+  --t-normal: var(--duration-normal) var(--ease-in-out);
+  --t-slow:   var(--duration-slow)   var(--ease-in-out);
+}
+
+/* ── Dark ── */
+.dark,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* ── Surfaces ── */
+  --surface-bg:     #060a12;
+  --surface-raised: #0c1018;
+  --surface-card:   rgba(12, 16, 24, 0.82);
+  --surface-input:  rgba(15, 20, 30, 0.9);
+  --surface-hover:  rgba(99, 102, 241, 0.1);
+
+  /* ── Text ── */
+  --text-primary:   #f8fafc;
+  --text-secondary: #e2e8f0;
+  --text-tertiary:  #94a3b8;
+  --text-muted:     #475569;
+
+  /* ── Borders ── */
+  --border-light:  rgba(51, 65, 85, 0.65);
+  --border-medium: rgba(71, 85, 105, 0.65);
+  --border-focus:  rgba(99, 102, 241, 0.55);
+
+  /* ── Glass ── */
+  --glass-bg:        rgba(12, 16, 24, 0.68);
+  --glass-bg-strong: rgba(12, 16, 24, 0.92);
+  --glass-border:    rgba(148, 163, 184, 0.07);
+  --glass-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.35),
+    0 6px 24px rgba(0, 0, 0, 0.45);
+
+  /* ── Card ── */
+  --card-bg:     rgba(12, 16, 24, 0.82);
+  --card-border: rgba(148, 163, 184, 0.07);
+  --card-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.3),
+    0 8px 28px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --card-shadow-hover:
+    0 2px 8px rgba(0, 0, 0, 0.4),
+    0 16px 40px rgba(0, 0, 0, 0.55);
+
+  /* ── Navbar / Sidebar ── */
+  --nav-bg:     rgba(8, 11, 18, 0.92);
+  --nav-border: rgba(255, 255, 255, 0.04);
+  --nav-shadow: 0 1px 0 rgba(255, 255, 255, 0.03), 0 4px 20px rgba(0, 0, 0, 0.3);
+
+  --sidebar-bg: rgba(8, 11, 18, 0.94);
+  --sidebar-border: rgba(255, 255, 255, 0.05);
+
+  /* ── Button adjustments ── */
+  --btn-primary-shadow: 0 6px 20px rgba(99, 102, 241, 0.22);
+  --btn-primary-hover-shadow: 0 10px 28px rgba(99, 102, 241, 0.32);
+}
+
+/* ══════════════════════════════════════════════════
+   THEMED COMPONENT MIXINS
+══════════════════════════════════════════════════ */
+
+/* Stat cards for different module colors */
+.theme-indigo {
+  --module-color:     #6366f1;
+  --module-color-dim: rgba(99,102,241,0.12);
+  --module-grad:      linear-gradient(135deg, #6366f1, #8b5cf6);
+}
+.theme-violet {
+  --module-color:     #8b5cf6;
+  --module-color-dim: rgba(139,92,246,0.12);
+  --module-grad:      linear-gradient(135deg, #8b5cf6, #a78bfa);
+}
+.theme-pink {
+  --module-color:     #ec4899;
+  --module-color-dim: rgba(236,72,153,0.12);
+  --module-grad:      linear-gradient(135deg, #ec4899, #f472b6);
+}
+.theme-emerald {
+  --module-color:     #10b981;
+  --module-color-dim: rgba(16,185,129,0.12);
+  --module-grad:      linear-gradient(135deg, #10b981, #34d399);
+}
+.theme-amber {
+  --module-color:     #f59e0b;
+  --module-color-dim: rgba(245,158,11,0.12);
+  --module-grad:      linear-gradient(135deg, #f59e0b, #fbbf24);
+}
+.theme-cyan {
+  --module-color:     #06b6d4;
+  --module-color-dim: rgba(6,182,212,0.12);
+  --module-grad:      linear-gradient(135deg, #06b6d4, #22d3ee);
+}
+.theme-blue {
+  --module-color:     #3b82f6;
+  --module-color-dim: rgba(59,130,246,0.12);
+  --module-grad:      linear-gradient(135deg, #3b82f6, #60a5fa);
+}
+.theme-rose {
+  --module-color:     #f43f5e;
+  --module-color-dim: rgba(244,63,94,0.12);
+  --module-grad:      linear-gradient(135deg, #f43f5e, #fb7185);
+}

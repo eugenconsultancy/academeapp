@@ -1,0 +1,175 @@
+/* ══════════════════════════════════════════════════════════
+   ACADEME — TYPOGRAPHY SYSTEM
+   Two options implemented — uncomment the one you prefer.
+   Default active: Option A (Modern Tech & Energetic)
+══════════════════════════════════════════════════════════ */
+
+/* ──────────────────────────────────────
+   OPTION A (ACTIVE): Modern Tech & Energetic
+   Headings  → Plus Jakarta Sans (800/900, tight tracking)
+   Body      → Inter (400/500/600, high legibility)
+   Mono      → JetBrains Mono
+────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/*
+   ──────────────────────────────────────
+   OPTION B (COMMENTED): Friendly Premium Editorial
+   Headings  → Bricolage Grotesque (700/800, unique personality)
+   Body      → Plus Jakarta Sans (400/500/600)
+   Mono      → JetBrains Mono
+   ──────────────────────────────────────
+   To activate: uncomment below and comment out Option A above.
+
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+*/
+
+/* ══════════════════════════════════════
+   FONT CSS VARIABLES
+   Switch between A/B by updating these two vars only.
+══════════════════════════════════════ */
+:root {
+  /* Option A */
+  --font-display: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-body:    'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, monospace;
+
+  /* ── Option B (uncomment to switch) ──
+  --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+  --font-body:    'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, monospace;
+  */
+
+  /* ── Typographic Scale ── */
+  --text-xs:   0.70rem;   /* 11.2px */
+  --text-sm:   0.80rem;   /* 12.8px */
+  --text-base: 0.9375rem; /* 15px   */
+  --text-md:   1.0625rem; /* 17px   */
+  --text-lg:   1.25rem;   /* 20px   */
+  --text-xl:   1.5rem;    /* 24px   */
+  --text-2xl:  1.875rem;  /* 30px   */
+  --text-3xl:  2.25rem;   /* 36px   */
+  --text-4xl:  2.75rem;   /* 44px   */
+  --text-5xl:  3.25rem;   /* 52px   */
+
+  /* ── Line Heights (critical — prevents ascender/descender clipping) ── */
+  --lh-tight:   1.15;   /* display headings only  */
+  --lh-snug:    1.30;   /* subheadings            */
+  --lh-normal:  1.55;   /* UI labels, cards       */
+  --lh-relaxed: 1.70;   /* body copy              */
+  --lh-loose:   1.85;   /* long-form prose        */
+
+  /* ── Letter Spacing ── */
+  --ls-tighter: -0.035em;  /* large display titles */
+  --ls-tight:   -0.022em;  /* section heads        */
+  --ls-normal:   0em;
+  --ls-wide:     0.03em;
+  --ls-wider:    0.06em;
+  --ls-widest:   0.10em;   /* ALL-CAPS labels      */
+
+  /* ── Font Weights ── */
+  --fw-regular:    400;
+  --fw-medium:     500;
+  --fw-semibold:   600;
+  --fw-bold:       700;
+  --fw-extrabold:  800;
+}
+
+/* ══════════════════════════════════════
+   FONT UTILITY CLASSES
+══════════════════════════════════════ */
+
+/* Family */
+.font-display { font-family: var(--font-display); }
+.font-body    { font-family: var(--font-body); }
+.font-mono    { font-family: var(--font-mono); }
+
+/* Kept for backwards compat with old class names */
+.font-inter    { font-family: var(--font-body); }
+.font-roboto   { font-family: var(--font-body); }
+.font-poppins  { font-family: var(--font-display); }
+.font-opensans { font-family: var(--font-body); }
+
+/* ── Display heading presets ── */
+.heading-hero {
+  font-family: var(--font-display);
+  font-size: clamp(2.0rem, 5vw, var(--text-5xl));
+  font-weight: 800;
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-tighter);
+  /* Critical: never clip descenders */
+  overflow: visible;
+  padding-bottom: 0.05em;
+}
+
+.heading-xl {
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 3vw, var(--text-3xl));
+  font-weight: 800;
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-tight);
+  overflow: visible;
+}
+
+.heading-lg {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  line-height: var(--lh-snug);
+  letter-spacing: var(--ls-tight);
+}
+
+.heading-md {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  line-height: var(--lh-snug);
+  letter-spacing: -0.015em;
+}
+
+.heading-sm {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: 600;
+  line-height: var(--lh-normal);
+  letter-spacing: -0.01em;
+}
+
+.label-caps {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  line-height: var(--lh-normal);
+  letter-spacing: var(--ls-widest);
+  text-transform: uppercase;
+}
+
+.body-lg {
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  font-weight: 400;
+  line-height: var(--lh-relaxed);
+}
+
+.body-base {
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  font-weight: 400;
+  line-height: var(--lh-relaxed);
+}
+
+.body-sm {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  line-height: var(--lh-normal);
+}
+
+/* ══════════════════════════════════════
+   FONT DISPLAY PERFORMANCE
+══════════════════════════════════════ */
+@font-face { font-display: swap; }

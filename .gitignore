@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+venv/
+env/
+.venv/
+*.sqlite3
+*.db
+
+# Django
+*.log
+local_settings.py
+media/
+staticfiles/
+
+# Node
+node_modules/
+.pnp
+.pnp.js
+
+# Vite
+dist/
+.vite/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini

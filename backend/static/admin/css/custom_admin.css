@@ -1,0 +1,340 @@
+/* ============================================
+   ACADEME ADMIN – MODERN SAAS DASHBOARD
+   ============================================ */
+
+/* ----- Import modern font ----- */
+@import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap');
+
+:root {
+    --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+    --surface-light: #ffffff;
+    --surface-dark: #0f0f1a;
+    --card-dark: #1a1a2c;
+    --card-light: #ffffff;
+    --border-light: #eef2f6;
+    --border-dark: #2a2a3c;
+    --text-light: #1e293b;
+    --text-dark: #e2e8f0;
+    --primary: #8b5cf6;
+    --primary-dark: #6d28d9;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+}
+
+/* Global reset */
+body, html {
+    font-family: var(--font-sans);
+    background-color: #f8fafc;
+    scroll-behavior: smooth;
+}
+
+/* ---- LAYERED DARK MODE (default) ---- */
+body {
+    background: #0a0a12;
+    color: var(--text-dark);
+}
+.sidebar {
+    background: linear-gradient(180deg, #0f0f1a 0%, #0a0a12 100%);
+    border-right: 1px solid rgba(255,255,255,0.05);
+}
+.content-wrapper, .main-header {
+    background: #0f0f1a;
+}
+.card, .nav-tabs, .tab-content, .modal-content {
+    background: var(--card-dark);
+    border: 1px solid var(--border-dark);
+    border-radius: 1.2rem;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+}
+.card-header, .modal-header {
+    background: rgba(255,255,255,0.03);
+    border-bottom: 1px solid var(--border-dark);
+}
+
+/* Light mode */
+body.light-mode {
+    background: #f1f5f9;
+    color: var(--text-light);
+}
+body.light-mode .sidebar {
+    background: white;
+    border-right: 1px solid var(--border-light);
+}
+body.light-mode .content-wrapper,
+body.light-mode .main-header {
+    background: #f8fafc;
+}
+body.light-mode .card,
+body.light-mode .nav-tabs,
+body.light-mode .tab-content {
+    background: var(--card-light);
+    border-color: var(--border-light);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+/* ---- TYPOGRAPHY HIERARCHY ---- */
+h1, h2, h3, h4, .page-title {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+.page-title { font-size: 1.8rem; margin-bottom: 1.5rem; }
+.section-title { font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: var(--primary); }
+.card-title { font-size: 1.1rem; font-weight: 600; }
+.text-muted { color: #94a3b8 !important; font-size: 0.8rem; }
+
+/* ---- STATS CARDS (full‑width row) ---- */
+.dashboard .card.stat-card {
+    background: linear-gradient(135deg, rgba(139,92,246,0.1), rgba(0,0,0,0.2));
+    backdrop-filter: blur(4px);
+    border: none;
+    border-radius: 1.5rem;
+    transition: all 0.2s ease;
+    overflow: hidden;
+    position: relative;
+}
+.stat-card .card-body {
+    padding: 1.5rem;
+    position: relative;
+    z-index: 1;
+}
+.stat-card .stat-number {
+    font-size: 2.5rem;
+    font-weight: 800;
+    margin-bottom: 0.25rem;
+}
+.stat-card .stat-title {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #cbd5e1;
+}
+.stat-card i.bg-icon {
+    position: absolute;
+    right: 1rem;
+    bottom: 1rem;
+    font-size: 4rem;
+    opacity: 0.2;
+    z-index: 0;
+}
+.stat-card:hover { transform: translateY(-3px); box-shadow: 0 12px 24px -8px rgba(0,0,0,0.3); }
+
+/* Colour variants */
+.stat-card.primary { background: linear-gradient(135deg, #4f46e5, #7c3aed); }
+.stat-card.success { background: linear-gradient(135deg, #059669, #10b981); }
+.stat-card.warning { background: linear-gradient(135deg, #d97706, #f59e0b); }
+.stat-card.danger { background: linear-gradient(135deg, #dc2626, #ef4444); }
+.stat-card.primary .stat-number, .stat-card.success .stat-number,
+.stat-card.warning .stat-number, .stat-card.danger .stat-number,
+.stat-card.primary .stat-title, .stat-card.success .stat-title,
+.stat-card.warning .stat-title, .stat-card.danger .stat-title {
+    color: white;
+}
+
+/* ---- FEATURE TILES (Model Quick Access) ---- */
+.model-tile-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.25rem;
+    margin-top: 1rem;
+}
+.model-tile {
+    background: var(--card-dark);
+    border-radius: 1.25rem;
+    padding: 1.25rem;
+    transition: all 0.2s;
+    border: 1px solid var(--border-dark);
+    display: flex;
+    flex-direction: column;
+}
+body.light-mode .model-tile {
+    background: white;
+    border-color: var(--border-light);
+}
+.model-tile:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px -5px rgba(0,0,0,0.2);
+    border-color: var(--primary);
+}
+.tile-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+.tile-icon {
+    width: 44px;
+    height: 44px;
+    background: rgba(139,92,246,0.1);
+    border-radius: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: var(--primary);
+}
+.tile-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 0;
+}
+.tile-desc {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    margin-bottom: 1rem;
+    line-height: 1.3;
+}
+.tile-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: auto;
+    flex-wrap: wrap;
+}
+.tile-actions .btn {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+    border-radius: 1rem;
+}
+
+/* ---- RECENT ACTIVITY (fixed‑height scrollable) ---- */
+.recent-activity-container {
+    max-height: 450px;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+}
+.activity-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border-dark);
+}
+.activity-icon {
+    width: 32px;
+    height: 32px;
+    background: rgba(139,92,246,0.1);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    color: var(--primary);
+}
+.activity-text {
+    flex: 1;
+    font-size: 0.85rem;
+}
+.activity-time {
+    font-size: 0.7rem;
+    color: #94a3b8;
+}
+
+/* ---- SIDEBAR MODERNIZATION ---- */
+.sidebar .nav-sidebar > .nav-item {
+    margin: 0.25rem 0.75rem;
+    border-radius: 0.75rem;
+}
+.sidebar .nav-sidebar .nav-link {
+    padding: 0.6rem 1rem;
+    border-radius: 0.75rem;
+    transition: all 0.2s;
+}
+.sidebar .nav-sidebar .nav-link:hover {
+    background: rgba(139,92,246,0.15);
+    transform: translateX(4px);
+}
+.sidebar .nav-sidebar .nav-link.active {
+    background: linear-gradient(90deg, var(--primary), var(--primary-dark));
+    color: white !important;
+    box-shadow: 0 4px 12px rgba(139,92,246,0.3);
+}
+.sidebar .nav-header {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    margin-top: 1rem;
+}
+
+/* ---- TABLES (modern, lighter) ---- */
+.table {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+.table th, .table td {
+    padding: 1rem 1rem !important;
+    border-bottom: 1px solid var(--border-dark);
+}
+.table th {
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    background: rgba(0,0,0,0.2);
+}
+.table tbody tr:hover {
+    background: rgba(139,92,246,0.05);
+}
+
+/* ---- FORMS (larger spacing) ---- */
+.form-control, .select2-container .select2-selection {
+    padding: 0.65rem 1rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--border-dark);
+    background: var(--card-dark);
+    color: var(--text-dark);
+}
+.form-control:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(139,92,246,0.2);
+}
+label {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    font-size: 0.85rem;
+}
+
+/* ---- BUTTONS (consistent) ---- */
+.btn {
+    border-radius: 2rem;
+    padding: 0.5rem 1.25rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    border: none;
+}
+.btn-primary {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+}
+.btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 12px -4px rgba(139,92,246,0.4);
+}
+.btn-secondary {
+    background: rgba(255,255,255,0.08);
+}
+.btn-secondary:hover {
+    background: rgba(255,255,255,0.15);
+}
+
+/* ---- RESPONSIVE BEHAVIOUR ---- */
+@media (max-width: 992px) {
+    .dashboard .col-sm-6 { width: 50%; }
+    .model-tile-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 768px) {
+    .dashboard .col-sm-6 { width: 100%; }
+    .tile-actions .btn { flex: 1; text-align: center; }
+    .recent-activity-container { max-height: 300px; }
+}
+
+/* ---- CONTAINMENT & SPACING ---- */
+.content {
+    padding: 2rem;
+}
+.card {
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+}
+.card-body {
+    padding: 1.5rem;
+}
