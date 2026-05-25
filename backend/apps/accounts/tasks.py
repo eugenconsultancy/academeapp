@@ -64,7 +64,7 @@ def expire_roles():
     ============================================
     
     Daily Celery Beat task (runs at 02:00 UTC).
-    
+    A
     Process:
     1. Queries all active StudentRole records where end_date < now
     2. For each expired role:
@@ -347,3 +347,29 @@ def archive_old_audit_logs():
     # old_logs.delete()
     
     return f"Identified {count} audit logs for archival (older than {one_year_ago.date()})"
+
+
+@shared_task
+def audit_biometric_data():
+    """
+    Weekly task to ensure biometric data integrity.
+    Checks statistics on how many users have enabled Cloud Face Login.
+    """
+    total_users = User.objects.count()
+    # Updated: Now checking the boolean flag instead of the legacy JSON field
+    biometric_enabled = User.objects.filter(biometric_enabled=True).count()
+    
+    logger.info(
+        f"Biometric Audit: {biometric_enabled}/{total_users} users "
+        f"({(biometric_enabled/total_users)*100 if total_users > 0 else 0:.2f}%) "
+        "have cloud-based biometric authentication enabled."
+    )
+
+@shared_task
+def clear_expired_biometric_tokens():
+    """
+    If you implement a 'biometric_verify_token' in cache, 
+    this cleans it up to prevent memory bloating.
+    """
+    # This task remains as a safe practice for cache management
+    pass

@@ -11,7 +11,7 @@ from .payment import MpesaClient
 class EscrowService:
     @staticmethod
     def initiate_payment(claim):
-        """Initiate M-Pesa STK Push for claim payment"""
+        """Initiate M-Pesa STK Push for claim payment through IntaSend"""
         if not claim.item.is_fee_required:
             return None, "Payment not required for this item"
         
@@ -32,12 +32,12 @@ class EscrowService:
             transaction_desc="Found Item Recovery Fee"
         )
         
-        # Log transaction
+        # Log transaction into database logs using structured response mapping
         MpesaTransactionLog.objects.create(
             request_type='STK_PUSH',
             request_data={'phone': phone, 'amount': 100},
             response_data=response,
-            status_code=200 if 'ResponseCode' in response else 400
+            status_code=200 if response.get('ResponseCode') == '0' else 400
         )
         
         # Create payment transaction record
@@ -82,14 +82,16 @@ class EscrowService:
             locator_response = mpesa.b2c_disbursement(
                 phone_number=locator_phone,
                 amount=locator_share,
-                occasion=f"Item Recovery - {claim.item.title}"
+                occasion=f"Item Recovery - {claim.item.title[:15]}"
             )
+            
+            is_successful = locator_response.get('status') == 'SUCCESS'
             
             MpesaTransactionLog.objects.create(
                 request_type='B2C_DISBURSEMENT_LOCATOR',
                 request_data={'phone': locator_phone, 'amount': locator_share},
                 response_data=locator_response,
-                status_code=200
+                status_code=200 if is_successful else 400
             )
             
             PaymentTransaction.objects.create(
@@ -97,7 +99,7 @@ class EscrowService:
                 transaction_type='B2C_DISBURSEMENT',
                 amount=locator_share,
                 phone_number=locator_phone,
-                status='SUCCESS',
+                status='SUCCESS' if is_successful else 'FAILED',
                 response_data=locator_response
             )
         

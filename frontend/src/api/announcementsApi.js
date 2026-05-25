@@ -24,8 +24,7 @@ export const announcementsApi = {
     delete: (id) => apiClient.delete(`/announcements/${id}/`),
 
     /** Report inappropriate announcement */
-    report: (id, reason, description) =>
-        apiClient.post(`/announcements/${id}/report/`, { reason, description }),
+    report: (id, data) => apiClient.post(`/announcements/${id}/report/`, data),
 
     // ==========================================
     // ANNOUNCEMENT REQUESTS

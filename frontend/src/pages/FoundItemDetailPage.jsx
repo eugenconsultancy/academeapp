@@ -8,7 +8,7 @@ import {
     FiArrowLeft, FiMapPin, FiCalendar, FiShield, FiDollarSign,
     FiSend, FiCheckCircle, FiClock, FiUser, FiHome, FiPackage,
     FiChevronRight, FiShare2, FiCopy, FiFlag, FiRefreshCw,
-    FiAlertTriangle, FiDownload, FiInfo,
+    FiAlertTriangle, FiDownload, FiInfo, FiX,
 } from 'react-icons/fi';
 
 const CATEGORY_LABELS = { id: 'Student ID', bank_card: 'Bank Card', keys: 'Keys', gadget: 'Gadget', document: 'Document', other: 'Other' };
@@ -42,15 +42,26 @@ export default function FoundItemDetailPage() {
         setVerifying(true);
         try {
             const result = await foundItemsApi.verifyOwnership(id);
-            if (result.verified) { setOwnershipVerified(true); toast.success('Ownership verified!'); }
-            else { toast.error(result.error || 'Verification failed'); }
-        } catch (err) { toast.error(err.response?.data?.error || 'Verification failed'); }
+            if (result.verified) {
+                setOwnershipVerified(true);
+                toast.success('Ownership verified!');
+            } else {
+                toast.error(result.error || 'Verification failed');
+            }
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Verification failed');
+        }
         finally { setVerifying(false); }
     };
 
     const handleClaim = async () => {
-        try { const result = await foundItemsApi.claimItem(id); toast.success(result.message || 'Claim submitted'); navigate(`/found-items/${id}/claim`); }
-        catch (err) { toast.error(err.response?.data?.error || 'Failed to claim'); }
+        try {
+            const result = await foundItemsApi.claimItem(id);
+            toast.success(result.message || 'Claim submitted');
+            navigate(`/found-items/${id}/claim`);
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Failed to claim');
+        }
     };
 
     const handleSendTip = async () => {
@@ -63,7 +74,7 @@ export default function FoundItemDetailPage() {
 
     const handleReport = async () => {
         try {
-            await foundItemsApi.reportItem(id, reportReason, '');
+            await foundItemsApi.reportItem(id, reportReason);
             toast.success('Report submitted'); setShowReportModal(false);
         } catch (err) { toast.error('Failed to report'); }
     };
@@ -76,14 +87,14 @@ export default function FoundItemDetailPage() {
     const categoryLabel = CATEGORY_LABELS[item?.category] || item?.category;
     const categoryIcon = CATEGORY_ICONS[item?.category] || '📦';
 
-    // Loading
+    // Loading Screen
     if (loading) {
         return (
             <div className="min-h-screen py-8 px-4"><div className="max-w-3xl mx-auto"><SkeletonLoader type="detail" /></div></div>
         );
     }
 
-    // Error
+    // Error Screen
     if (error) {
         return (
             <div className="min-h-screen py-8 px-4">
@@ -101,7 +112,7 @@ export default function FoundItemDetailPage() {
         );
     }
 
-    // Not found
+    // Empty State Screen
     if (!item) {
         return (
             <div className="min-h-screen py-8 px-4">
@@ -184,7 +195,7 @@ export default function FoundItemDetailPage() {
       `}</style>
 
             <div className="fid-root">
-                {/* Breadcrumb */}
+                {/* Breadcrumb Navigation */}
                 <nav className="fid-breadcrumb">
                     <Link to="/"><FiHome size={13} /> Home</Link>
                     <FiChevronRight size={12} />
@@ -201,7 +212,7 @@ export default function FoundItemDetailPage() {
                     )}
 
                     <div className="fid-body">
-                        {/* Badges */}
+                        {/* Status Badges */}
                         <div className="fid-badges">
                             <span className="fid-badge fid-badge-blue">{categoryIcon} {categoryLabel}</span>
                             {item.is_claimed && <span className="fid-badge fid-badge-green"><FiCheckCircle size={11} /> Claimed</span>}
@@ -210,7 +221,7 @@ export default function FoundItemDetailPage() {
 
                         <h1 className="fid-title">{item.title}</h1>
 
-                        {/* Details Grid */}
+                        {/* Informational Profile Metadata Grid */}
                         <div className="fid-grid">
                             <div className="fid-detail"><FiMapPin size={16} className="fid-detail-icon" /><div><p className="fid-detail-label">Location Found</p><p className="fid-detail-value">{item.location_found}</p></div></div>
                             <div className="fid-detail"><FiCalendar size={16} className="fid-detail-icon" /><div><p className="fid-detail-label">Date Found</p><p className="fid-detail-value">{new Date(item.found_date).toLocaleDateString()}</p></div></div>
@@ -220,7 +231,7 @@ export default function FoundItemDetailPage() {
 
                         {item.description && <div className="fid-desc">{item.description}</div>}
 
-                        {/* Actions */}
+                        {/* Interactive Execution Actions */}
                         {!isOwner && !item.is_claimed && (
                             <div className="fid-actions">
                                 {!ownershipVerified ? (
@@ -241,7 +252,7 @@ export default function FoundItemDetailPage() {
                             </div>
                         )}
 
-                        {/* Tip section */}
+                        {/* Micro-interaction Tip Submission Section */}
                         {!isOwner && (
                             <div className="fid-tip-row">
                                 <input type="text" value={tipMessage} onChange={e => setTipMessage(e.target.value)} placeholder="Know the owner? Send a tip..." className="fid-input" style={{ flex: 1 }} />
@@ -254,7 +265,7 @@ export default function FoundItemDetailPage() {
                 </div>
             </div>
 
-            {/* Report Modal */}
+            {/* Governance Report Modal Box */}
             {showReportModal && (
                 <div className="fid-modal-overlay">
                     <div className="fid-modal-backdrop" onClick={() => setShowReportModal(false)} />

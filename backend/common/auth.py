@@ -1,6 +1,5 @@
 import random
-import hashlib
-from datetime import datetime, timedelta
+import time
 from django.core.cache import cache
 from django.conf import settings
 from ninja_jwt.authentication import JWTAuth
@@ -9,36 +8,46 @@ from ninja_jwt.exceptions import InvalidToken
 class PhoneOTPAuth:
     @staticmethod
     def generate_otp(phone_number):
-        """Generate and store OTP for a phone number"""
-        # Check rate limit
-        cache_key = f'otp_attempts_{phone_number}'
-        attempts = cache.get(cache_key, 0)
+        # 1. Global Rate Limit (Requests per window)
+        rate_key = f'otp_rate_{phone_number}'
+        if cache.get(rate_key, 0) >= settings.OTP_RATE_LIMIT:
+            return None, "Rate limit exceeded. Please try again later."
         
-        if attempts >= settings.OTP_RATE_LIMIT:
-            return None, "Rate limit exceeded. Try again later."
-        
-        # Generate 6-digit OTP
+        # 2. Generate 6-digit OTP
         otp = str(random.randint(100000, 999999))
         
-        # Store OTP with expiry (10 minutes)
-        otp_key = f'otp_{phone_number}'
-        cache.set(otp_key, otp, timeout=600)
+        # 3. Store OTP (10 min expiry)
+        cache.set(f'otp_{phone_number}', otp, timeout=600)
         
-        # Increment attempts counter
-        cache.set(cache_key, attempts + 1, timeout=settings.OTP_RATE_WINDOW)
+        # 4. Increment rate limiter
+        cache.set(rate_key, cache.get(rate_key, 0) + 1, timeout=settings.OTP_RATE_WINDOW)
         
         return otp, None
     
     @staticmethod
     def verify_otp(phone_number, otp):
-        """Verify OTP for a phone number"""
+        # 1. Check for Brute-force Lockout
+        lockout_key = f'otp_lockout_{phone_number}'
+        if cache.get(lockout_key):
+            return False, "Too many failed attempts. Account temporarily locked."
+            
+        # 2. Verify OTP
         otp_key = f'otp_{phone_number}'
         stored_otp = cache.get(otp_key)
         
         if stored_otp and stored_otp == otp:
-            cache.delete(otp_key)  # One-time use
-            return True
-        return False
+            cache.delete(otp_key)
+            return True, None
+            
+        # 3. Handle Failure: Increment attempt count for lockout
+        fail_key = f'otp_fail_{phone_number}'
+        attempts = cache.get(fail_key, 0) + 1
+        if attempts >= 3:
+            cache.set(lockout_key, True, timeout=1800) # 30 min lockout
+        else:
+            cache.set(fail_key, attempts, timeout=600)
+            
+        return False, "Invalid OTP."
 
 class CustomJWTAuth(JWTAuth):
     def authenticate(self, request, token):
@@ -46,9 +55,16 @@ class CustomJWTAuth(JWTAuth):
             validated_token = self.get_validated_token(token)
             user = self.get_user(validated_token)
             
-            # Check if account is active
+            # Security: Account status check
             if not user.is_active:
                 raise InvalidToken('Account is deactivated')
+            
+            # Security: Invalidate tokens issued before last password change
+            # Assumes user model has last_password_change (datetime)
+            if hasattr(user, 'last_password_change') and user.last_password_change:
+                iat = validated_token.get('iat')
+                if iat and user.last_password_change.timestamp() > iat:
+                    raise InvalidToken('Token expired due to password change')
             
             return user
         except Exception:

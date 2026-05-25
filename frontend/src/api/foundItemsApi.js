@@ -15,11 +15,11 @@ export const foundItemsApi = {
   createItem: (data) => apiClient.post('/found-items/items/', data),
 
   /** Report an inappropriate found item */
-  reportItem: (itemId, reason, description) =>
-    apiClient.post(`/found-items/items/${itemId}/report/`, { reason, description }),
+  reportItem: (itemId, reason) =>
+    apiClient.post(`/found-items/items/${itemId}/report/`, { reason }),
 
   // ==========================================
-  // CLAIMS
+  // CLAIMS & ESCROW CORES
   // ==========================================
 
   /** HARD GATE: Verify ownership via admission number match */
@@ -28,20 +28,23 @@ export const foundItemsApi = {
   /** Claim a found item */
   claimItem: (itemId) => apiClient.post(`/found-items/items/${itemId}/claim/`),
 
-  /** Submit evidence for a claim */
-  submitEvidence: (claimId) => apiClient.post(`/found-items/claims/${claimId}/submit-evidence/`),
+  /** Submit evidence for a claim – now sends FormData */
+  submitEvidence: (claimId, formData) =>
+    apiClient.post(`/found-items/claims/${claimId}/submit-evidence/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
 
   /** Answer security question for a claim */
   answerSecurity: (claimId, answer) =>
     apiClient.post(`/found-items/claims/${claimId}/answer-security/`, { answer }),
 
-  /** Initiate M-Pesa payment */
+  /** Initiate Live IntaSend M-Pesa STK Push checkout sequence */
   initiatePayment: (claimId) => apiClient.post(`/found-items/claims/${claimId}/initiate-payment/`),
 
-  /** Confirm payment received */
+  /** Verify local payment transaction record state status */
   confirmPayment: (claimId) => apiClient.post(`/found-items/claims/${claimId}/confirm-payment/`),
 
-  /** Confirm receipt of item */
+  /** Confirm receipt of item (Closes escrow and triggers B2C payout to locator) */
   confirmReceipt: (claimId) => apiClient.post(`/found-items/claims/${claimId}/confirm-receipt/`),
 
   /** List user's claims */
@@ -49,6 +52,12 @@ export const foundItemsApi = {
 
   /** Get claim details */
   getClaim: (claimId) => apiClient.get(`/found-items/claims/${claimId}/`),
+
+  /** Cancel a claim */
+  cancelClaim: (claimId) => apiClient.post(`/found-items/claims/${claimId}/cancel/`),
+
+  /** Check payment status (polling) */
+  checkPaymentStatus: (claimId) => apiClient.get(`/found-items/claims/${claimId}/payment-status/`),
 
   // ==========================================
   // TIPS
@@ -61,18 +70,11 @@ export const foundItemsApi = {
   // RECEIPT
   // ==========================================
 
-  /** Generate receipt for a claim */
+  /** Generate or fetch tracking receipt metadata details for an individual claim */
   generateReceipt: (itemId) => apiClient.get(`/found-items/items/${itemId}/receipt/`),
 
   // ==========================================
-  // M-PESA (NEW)
-  // ==========================================
-
-  /** M-Pesa callback webhook (server-side only) */
-  mpesaCallback: (data) => apiClient.post('/found-items/mpesa/callback/', data),
-
-  // ==========================================
-  // ADMIN
+  // ADMIN CONTROL PANEL
   // ==========================================
 
   /** Admin: View all items */
@@ -86,4 +88,14 @@ export const foundItemsApi = {
 
   /** Admin: Reject a claim */
   rejectClaim: (claimId) => apiClient.post(`/found-items/admin/claims/${claimId}/reject/`),
+
+  // ==========================================
+  // MY LISTINGS
+  // ==========================================
+
+  /** Get items posted by the current user */
+  getMyItems: () => apiClient.get('/found-items/my-items/'),
+
+  /** Delete a found item (owner or admin) */
+  deleteItem: (id) => apiClient.delete(`/found-items/items/${id}/`),
 };

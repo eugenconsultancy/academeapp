@@ -19,6 +19,12 @@ export const blogApi = {
     return response.data;
   },
 
+  // My posts (NEW)
+  getMyPosts: async () => {
+    const response = await apiClient.get('/blog/my-posts/');
+    return response.data;
+  },
+
   // Admin
   createPost: async (data) => {
     const response = await apiClient.post('/blog/posts/', data);
@@ -29,7 +35,7 @@ export const blogApi = {
     return response.data;
   },
   deletePost: async (id) => {
-    const response = await apiClient.delete(`/blog/posts/${id}/`);
+    const response = await apiClient.delete(`/blog/posts/${id}/delete/`);
     return response.data;
   },
 
@@ -53,7 +59,7 @@ export const blogApi = {
     return response.data;
   },
 
-  // Comments (these were outside the object – now correctly inside)
+  // Comments
   listComments: async (postId) => {
     const response = await apiClient.get(`/blog/posts/${postId}/comments/`);
     return response.data;

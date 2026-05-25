@@ -30,6 +30,22 @@ class CampusVenue(BaseModel):
         ],
         default='lecture_hall'
     )
+
+    # Override inherited fields to avoid reverse accessor clash with classes.CampusVenue
+    created_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='geoservice_campusvenue_created'
+    )
+    updated_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='geoservice_campusvenue_updated'
+    )
     
     class Meta:
         unique_together = ['name', 'institution']

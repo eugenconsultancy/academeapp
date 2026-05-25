@@ -2,8 +2,6 @@ from django.db import models
 from common.models import BaseModel
 from common.constants import AnnouncementTarget
 
-
-# THE basic model for anncments
 class Announcement(BaseModel):
     title = models.CharField(max_length=255)
     content = models.TextField()
@@ -25,16 +23,18 @@ class Announcement(BaseModel):
     is_urgent = models.BooleanField(default=False)
     expires_at = models.DateTimeField()
     is_active = models.BooleanField(default=True)
-    
+
     class Meta:
         ordering = ['-is_urgent', '-created_at']
         indexes = [
             models.Index(fields=['expires_at']),
             models.Index(fields=['posted_by', 'is_active']),
+            models.Index(fields=['is_active', 'expires_at']),   # for quick feed filtering
         ]
-    
+
     def __str__(self):
         return self.title
+
 
 class AnnouncementRequest(BaseModel):
     requester = models.ForeignKey(
@@ -72,13 +72,14 @@ class AnnouncementRequest(BaseModel):
         related_name='handled_requests'
     )
     response_note = models.TextField(blank=True)
-    
+
     class Meta:
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['status']),
             models.Index(fields=['requester']),
         ]
+
 
 class Report(BaseModel):
     reported_by = models.ForeignKey(
@@ -108,6 +109,9 @@ class Report(BaseModel):
         related_name='resolved_reports'
     )
     resolution_note = models.TextField(blank=True)
-    
+
     class Meta:
         unique_together = ['reported_by', 'announcement']
+        indexes = [
+            models.Index(fields=['is_resolved', 'created_at']),  # admin dash optimization
+        ]

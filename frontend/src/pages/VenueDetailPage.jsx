@@ -1,14 +1,41 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useGeolocation } from '../hooks/useGeolocation';
 import GeoService from '../api/geoService';
+import { classesApi } from '../api/classesApi';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
 import toast from 'react-hot-toast';
 import {
     FiMapPin, FiNavigation, FiHome, FiChevronRight, FiArrowLeft,
     FiRefreshCw, FiExternalLink, FiShare2, FiCopy, FiCheck,
     FiClock, FiTarget, FiAlertCircle, FiInfo, FiBook,
+    FiStar, FiUsers, FiWifi, FiMonitor, FiVolume2, FiThermometer
 } from 'react-icons/fi';
+
+// ─── Client‑side distance helpers; calculate based on longitude and latitude ─
+function haversineDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371e3;
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lon2 - lon1) * Math.PI / 180;
+    const a =
+        Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+        Math.cos(φ1) * Math.cos(φ2) *
+        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
+function formatDistance(meters) {
+    if (meters == null) return null;
+    if (meters < 1000) return `${Math.round(meters)}m`;
+    return `${(meters / 1000).toFixed(1)}km`;
+}
+
+function estimateWalkTime(meters) {
+    return Math.round(meters / 1.4 / 60); // average walking speed 1.4 m/s
+}
 
 const VENUE_TYPE_LABELS = {
     lecture_hall: 'Lecture Hall',
@@ -24,7 +51,7 @@ const VENUE_TYPE_LABELS = {
 export default function VenueDetailPage() {
     const { venueId } = useParams();
     const navigate = useNavigate();
-    const { location, getLocation } = useGeolocation();
+    const { location, getLocation, loading: geoLoading } = useGeolocation();
     const [venue, setVenue] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -32,39 +59,43 @@ export default function VenueDetailPage() {
     const [directionsLoading, setDirectionsLoading] = useState(false);
     const [copied, setCopied] = useState(false);
     const [distance, setDistance] = useState(null);
+    const [nearbyVenues, setNearbyVenues] = useState([]);
+    const [nearbyLoading, setNearbyLoading] = useState(false);
+    const [venueSchedule, setVenueSchedule] = useState([]);
+    const [scheduleLoading, setScheduleLoading] = useState(false);
+    const [favorites, setFavorites] = useState(() => {
+        try {
+            return JSON.parse(localStorage.getItem('venue_favorites') || '[]');
+        } catch {
+            return [];
+        }
+    });
+    const [showFullSchedule, setShowFullSchedule] = useState(false);
+    const [showShareMenu, setShowShareMenu] = useState(false);
 
     useEffect(() => {
         getLocation();
         fetchVenue();
+        // Clear old data when venue changes
+        setDirections(null);
+        setDistance(null);
+        setNearbyVenues([]);
+        setVenueSchedule([]);
     }, [venueId]);
 
-    // Calculate distance when both venue and location are available
+    // Persist favorites
     useEffect(() => {
-        if (location && venue?.latitude && venue?.longitude) {
-            const dist = GeoService.calculateDistance ?
-                null : // Will be set by getDirections
-                null;
-            // Use the geo service to calculate
-            GeoService.getDirections(location.latitude, location.longitude, venue.latitude, venue.longitude)
-                .then(data => {
-                    if (data?.distance_meters) {
-                        setDistance({
-                            meters: data.distance_meters,
-                            display: data.distance_display,
-                            walkingTime: data.walking_time_minutes,
-                        });
-                    }
-                })
-                .catch(() => { });
-        }
-    }, [location, venue]);
+        localStorage.setItem('venue_favorites', JSON.stringify(favorites));
+    }, [favorites]);
 
+    // ─── Fetch venue details ──────────────────────────────────
     const fetchVenue = async () => {
         setLoading(true);
         setError(null);
         try {
             const data = await GeoService.getVenue(venueId);
-            setVenue(data?.data || data);
+            const v = data?.data || data;
+            setVenue(v);
         } catch (err) {
             setError(err?.response?.data?.error || err.message || 'Failed to load venue');
         } finally {
@@ -72,9 +103,66 @@ export default function VenueDetailPage() {
         }
     };
 
+    // ─── Client‑side distance calculation ─────────────────────
+    useEffect(() => {
+        if (!location || !venue?.latitude || !venue?.longitude) {
+            setDistance(null);
+            return;
+        }
+        const meters = haversineDistance(
+            location.latitude, location.longitude,
+            venue.latitude, venue.longitude
+        );
+        setDistance({
+            meters,
+            display: formatDistance(meters),
+            walkingTime: estimateWalkTime(meters),
+        });
+    }, [location, venue]);
+
+    // ─── Fetch venue schedule (today's classes) ───────────────
+    useEffect(() => {
+        if (!venue) return;
+        const fetchSchedule = async () => {
+            setScheduleLoading(true);
+            try {
+                // Assume API endpoint: GET /api/venues/:id/schedule
+                const res = await classesApi.getVenueSchedule(venueId);
+                setVenueSchedule(res.data || []);
+            } catch {
+                // gracefully ignore if endpoint not available
+                setVenueSchedule([]);
+            } finally {
+                setScheduleLoading(false);
+            }
+        };
+        fetchSchedule();
+    }, [venue, venueId]);
+
+    // ─── Fetch nearby venues ──────────────────────────────────
+    useEffect(() => {
+        if (!venue?.latitude || !venue?.longitude) return;
+        const fetchNearby = async () => {
+            setNearbyLoading(true);
+            try {
+                const data = await GeoService.getNearbyVenues(
+                    venue.latitude, venue.longitude,
+                    { limit: 5 }
+                );
+                setNearbyVenues(Array.isArray(data) ? data : data?.data || []);
+            } catch {
+                setNearbyVenues([]);
+            } finally {
+                setNearbyLoading(false);
+            }
+        };
+        fetchNearby();
+    }, [venue]);
+
+    // ─── Directions ───────────────────────────────────────────
     const handleGetDirections = async () => {
         if (!location) {
-            toast.error('Enable location to get directions');
+            toast.error('Please enable location to get directions');
             getLocation();
             return;
         }
@@ -90,12 +178,17 @@ export default function VenueDetailPage() {
             );
             const result = data?.data || data;
             setDirections(result);
-            setDistance({
-                meters: result.distance_meters,
-                display: result.distance_display,
-                walkingTime: result.walking_time_minutes,
-            });
-            if (result.maps_url) window.open(result.maps_url, '_blank');
+            // Update distance from API (more accurate walking route)
+            if (result.distance_meters) {
+                setDistance({
+                    meters: result.distance_meters,
+                    display: result.distance_display,
+                    walkingTime: result.walking_time_minutes,
+                });
+            }
+            if (result.maps_url) {
+                window.open(result.maps_url, '_blank');
+            }
         } catch (err) {
             toast.error('Failed to get directions');
         } finally {
@@ -117,8 +210,10 @@ export default function VenueDetailPage() {
         }
     };
 
+    // ─── Sharing & Copy ───────────────────────────────────────
     const handleCopyLink = () => {
-        navigator.clipboard.writeText(window.location.href).then(() => {
+        const url = window.location.href;
+        navigator.clipboard.writeText(url).then(() => {
             setCopied(true);
             toast.success('Link copied!');
             setTimeout(() => setCopied(false), 2000);
@@ -133,16 +228,39 @@ export default function VenueDetailPage() {
         }
     };
 
-    // Loading
+    const shareViaWhatsApp = () => {
+        const text = `Check out ${venue.name} on campus: ${window.location.href}`;
+        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+    };
+
+    const shareViaEmail = () => {
+        const subject = encodeURIComponent(`Campus Venue: ${venue.name}`);
+        const body = encodeURIComponent(`Venue: ${venue.name}\nType: ${VENUE_TYPE_LABELS[venue.venue_type] || 'N/A'}\nLink: ${window.location.href}`);
+        window.location.href = `mailto:?subject=${subject}&body=${body}`;
+    };
+
+    // ─── Favorites ────────────────────────────────────────────
+    const isFavorite = favorites.includes(venueId);
+    const toggleFavorite = () => {
+        setFavorites(prev =>
+            prev.includes(venueId)
+                ? prev.filter(id => id !== venueId)
+                : [...prev, venueId]
+        );
+    };
+
+    // ─── Loading state ────────────────────────────────────────
     if (loading) {
         return (
             <div className="min-h-screen py-8 px-4">
-                <div className="max-w-2xl mx-auto"><SkeletonLoader type="detail" /></div>
+                <div className="max-w-3xl mx-auto">
+                    <SkeletonLoader type="card" count={1} />
+                </div>
             </div>
         );
     }
 
-    // Error
+    // ─── Error state ──────────────────────────────────────────
     if (error) {
         return (
             <div className="min-h-screen py-8 px-4">
@@ -165,7 +283,7 @@ export default function VenueDetailPage() {
         );
     }
 
-    // Not Found
+    // ─── Not Found ────────────────────────────────────────────
     if (!venue) {
         return (
             <div className="min-h-screen py-8 px-4">
@@ -183,22 +301,46 @@ export default function VenueDetailPage() {
         );
     }
 
+    // ─── Amenities helpers ─────────────────────────────────────
+    const hasAmenities = venue.has_ac || venue.has_projector || venue.has_wifi || venue.is_accessible || venue.capacity;
+    const amenityIcons = [
+        { condition: venue.has_ac, icon: <FiThermometer size={14} />, label: 'Air Conditioned' },
+        { condition: venue.has_projector, icon: <FiMonitor size={14} />, label: 'Projector' },
+        { condition: venue.has_wifi, icon: <FiWifi size={14} />, label: 'WiFi' },
+        { condition: venue.is_accessible, icon: <FiUsers size={14} />, label: 'Wheelchair Accessible' },
+        { condition: venue.capacity, icon: <FiUsers size={14} />, label: `Capacity: ${venue.capacity}` },
+    ].filter(item => item.condition);
+
     return (
         <>
             <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&display=swap');
-        .vd-root { font-family: 'Outfit', sans-serif; max-width: 680px; margin: 0 auto; padding: 28px 20px 80px; animation: vdIn .4s cubic-bezier(0.16,1,0.3,1) both; }
-        @keyframes vdIn { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+        .vd-root {
+            font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 28px 20px 80px;
+            animation: vdIn .4s cubic-bezier(0.16,1,0.3,1) both;
+        }
+        @keyframes vdIn { from {opacity:0;transform:translateY(16px)} to {opacity:1;transform:translateY(0)} }
 
         .vd-breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; font-weight: 600; color: #94a3b8; margin-bottom: 24px; flex-wrap: wrap; }
         .vd-breadcrumb a { color: #6366f1; text-decoration: none; display: flex; align-items: center; gap: 4px; }
 
-        .vd-card { background: rgba(255,255,255,0.92); border: 1px solid rgba(0,0,0,0.06); border-radius: 22px; padding: 28px; backdrop-filter: blur(20px); box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 12px 40px rgba(0,0,0,0.08); }
+        .vd-card {
+            background: rgba(255,255,255,0.92);
+            border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 22px;
+            padding: 28px;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 12px 40px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
+        }
         .dark .vd-card { background: rgba(12,16,24,0.92); border-color: rgba(255,255,255,0.06); }
 
         .vd-title { font-size: clamp(1.3rem, 3vw, 1.7rem); font-weight: 900; color: #0f172a; margin-bottom: 4px; letter-spacing: -0.03em; }
         .dark .vd-title { color: #f8fafc; }
         .vd-type-badge { display: inline-flex; align-items: center; padding: 4px 12px; border-radius: 99px; font-size: 0.7rem; font-weight: 700; background: rgba(99,102,241,0.1); color: #6366f1; margin-bottom: 20px; text-transform: capitalize; }
+        .vd-subtitle { color: #94a3b8; font-size: 0.85rem; margin-bottom: 20px; }
 
         .vd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
         @media (max-width: 480px) { .vd-grid { grid-template-columns: 1fr; } }
@@ -215,9 +357,10 @@ export default function VenueDetailPage() {
 
         .vd-distance { display: flex; align-items: center; gap: 10px; padding: 14px; background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.12); border-radius: 12px; margin-bottom: 20px; font-size: 0.9rem; font-weight: 700; color: #059669; }
         .dark .vd-distance { background: rgba(16,185,129,0.1); }
+        .vd-distance-alt { background: rgba(99,102,241,0.06); border-color: rgba(99,102,241,0.12); color: #6366f1; }
 
         .vd-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-        .vd-btn { display: inline-flex; align-items: center; gap: 6px; padding: 12px 20px; border-radius: 12px; border: none; font-family: 'Outfit', sans-serif; font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+        .vd-btn { display: inline-flex; align-items: center; gap: 6px; padding: 12px 20px; border-radius: 12px; border: none; font-family: 'Outfit', sans-serif; font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: all 0.2s; text-decoration: none; }
         .vd-btn-primary { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; box-shadow: 0 4px 16px rgba(99,102,241,0.25); flex: 1; justify-content: center; }
         .vd-btn-primary:hover { transform: translateY(-1px); }
         .vd-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
@@ -227,11 +370,36 @@ export default function VenueDetailPage() {
         .vd-btn-outline:hover { background: rgba(0,0,0,0.03); }
         .dark .vd-btn-outline { border-color: #334155; color: #94a3b8; }
         .vd-btn-icon { width: 40px; height: 40px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 12px; }
-      `}</style>
+        .vd-btn-fav { color: #f59e0b; border-color: #f59e0b; }
+
+        .vd-section { margin-top: 24px; }
+        .vd-section-title { font-size: 0.9rem; font-weight: 800; color: #0f172a; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .dark .vd-section-title { color: #f8fafc; }
+
+        .vd-schedule-list { display: flex; flex-direction: column; gap: 8px; }
+        .vd-schedule-item { padding: 10px; background: rgba(0,0,0,0.02); border-radius: 10px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; font-size: 0.82rem; }
+        .dark .vd-schedule-item { background: rgba(255,255,255,0.03); }
+
+        .vd-nearby-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+        .vd-nearby-item { padding: 10px; background: rgba(0,0,0,0.02); border-radius: 10px; text-decoration: none; color: inherit; transition: all 0.15s; }
+        .vd-nearby-item:hover { background: rgba(99,102,241,0.06); transform: translateY(-1px); }
+        .dark .vd-nearby-item { background: rgba(255,255,255,0.03); }
+
+        .vd-amenities { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+        .vd-amenity { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: rgba(0,0,0,0.03); border-radius: 8px; font-size: 0.72rem; font-weight: 600; color: #64748b; }
+        .dark .vd-amenity { background: rgba(255,255,255,0.04); }
+
+        .vd-share-menu { position: absolute; bottom: 100%; right: 0; background: white; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); overflow: hidden; z-index: 10; }
+        .dark .vd-share-menu { background: #1e293b; border-color: #334155; }
+        .vd-share-item { display: block; width: 100%; padding: 10px 14px; background: none; border: none; font-size: 0.82rem; cursor: pointer; text-align: left; color: #0f172a; }
+        .vd-share-item:hover { background: rgba(0,0,0,0.03); }
+        .dark .vd-share-item { color: #f8fafc; }
+        .dark .vd-share-item:hover { background: rgba(255,255,255,0.04); }
+        `}</style>
 
             <div className="vd-root">
                 {/* Breadcrumb */}
-                <nav className="vd-breadcrumb">
+                <nav className="vd-breadcrumb" aria-label="Breadcrumb">
                     <Link to="/"><FiHome size={13} /> Home</Link>
                     <FiChevronRight size={12} />
                     <Link to="/campus-map"><FiMapPin size={13} /> Campus Map</Link>
@@ -247,7 +415,18 @@ export default function VenueDetailPage() {
 
                     {/* Title */}
                     <h1 className="vd-title">{venue.name}</h1>
-                    <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: 20 }}>{venue.institution}</p>
+                    <p className="vd-subtitle">{venue.institution || 'N/A'}</p>
+
+                    {/* Amenities */}
+                    {hasAmenities && (
+                        <div className="vd-amenities">
+                            {amenityIcons.map((item, idx) => (
+                                <span key={idx} className="vd-amenity">
+                                    {item.icon} {item.label}
+                                </span>
+                            ))}
+                        </div>
+                    )}
 
                     {/* Details Grid */}
                     <div className="vd-grid">
@@ -289,23 +468,23 @@ export default function VenueDetailPage() {
                         </div>
                     )}
 
-                    {/* Distance from current location */}
-                    {distance && (
+                    {/* Distance from current location (client‑side) */}
+                    {distance && !directions && (
                         <div className="vd-distance">
                             <FiTarget size={18} />
                             <span>{distance.display} • 🚶 {distance.walkingTime} min walk from you</span>
                         </div>
                     )}
 
-                    {/* Directions result */}
+                    {/* Directions result (if fetched via API) */}
                     {directions && (
-                        <div className="vd-distance" style={{ background: 'rgba(99,102,241,0.06)', borderColor: 'rgba(99,102,241,0.12)', color: '#6366f1' }}>
+                        <div className="vd-distance vd-distance-alt">
                             <FiNavigation size={18} />
-                            <span>{directions.distance_display} • {directions.walking_time_minutes} min walk</span>
+                            <span>{directions.distance_display || directions.distance?.text} • {directions.walking_time_minutes} min walk</span>
                         </div>
                     )}
 
-                    {/* Actions */}
+                    {/* Primary Actions */}
                     <div className="vd-actions">
                         <button
                             onClick={handleGetDirections}
@@ -321,8 +500,24 @@ export default function VenueDetailPage() {
                         <button onClick={openInMaps} className="vd-btn vd-btn-outline vd-btn-icon" title="Open in Google Maps">
                             <FiExternalLink size={16} />
                         </button>
-                        <button onClick={handleCopyLink} className="vd-btn vd-btn-outline vd-btn-icon" title="Share venue">
-                            {copied ? <FiCheck size={16} /> : <FiShare2 size={16} />}
+                        <div style={{ position: 'relative' }}>
+                            <button onClick={() => setShowShareMenu(!showShareMenu)} className="vd-btn vd-btn-outline vd-btn-icon" title="Share venue">
+                                {copied ? <FiCheck size={16} /> : <FiShare2 size={16} />}
+                            </button>
+                            {showShareMenu && (
+                                <div className="vd-share-menu">
+                                    <button className="vd-share-item" onClick={() => { handleCopyLink(); setShowShareMenu(false); }}><FiCopy size={14} /> Copy Link</button>
+                                    <button className="vd-share-item" onClick={() => { shareViaWhatsApp(); setShowShareMenu(false); }}>💬 WhatsApp</button>
+                                    <button className="vd-share-item" onClick={() => { shareViaEmail(); setShowShareMenu(false); }}>✉️ Email</button>
+                                </div>
+                            )}
+                        </div>
+                        <button
+                            onClick={toggleFavorite}
+                            className={`vd-btn vd-btn-outline vd-btn-icon ${isFavorite ? 'vd-btn-fav' : ''}`}
+                            title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                        >
+                            <FiStar size={16} fill={isFavorite ? '#f59e0b' : 'none'} />
                         </button>
                     </div>
 
@@ -338,6 +533,70 @@ export default function VenueDetailPage() {
                         </Link>
                     </div>
                 </div>
+
+                {/* Venue Schedule Section */}
+                <div className="vd-card">
+                    <div className="vd-section">
+                        <h3 className="vd-section-title">
+                            <FiBook size={18} /> Today's Classes
+                        </h3>
+                        {scheduleLoading ? (
+                            <SkeletonLoader type="list" count={2} />
+                        ) : venueSchedule.length > 0 ? (
+                            <div className="vd-schedule-list">
+                                {(showFullSchedule ? venueSchedule : venueSchedule.slice(0, 3)).map((cls, idx) => (
+                                    <div key={idx} className="vd-schedule-item">
+                                        <span className="font-semibold" style={{ color: '#0f172a', fontWeight: 700 }}>{cls.unit_name}</span>
+                                        <span style={{ color: '#64748b', fontSize: '0.8rem' }}>
+                                            {cls.start_time} - {cls.end_time}
+                                        </span>
+                                        <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>{cls.lecturer || 'N/A'}</span>
+                                    </div>
+                                ))}
+                                {venueSchedule.length > 3 && !showFullSchedule && (
+                                    <button
+                                        onClick={() => setShowFullSchedule(true)}
+                                        className="vd-btn vd-btn-outline"
+                                        style={{ padding: '6px 12px', fontSize: '0.75rem' }}
+                                    >
+                                        View all {venueSchedule.length} classes
+                                    </button>
+                                )}
+                            </div>
+                        ) : (
+                            <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No classes scheduled for today.</p>
+                        )}
+                    </div>
+                </div>
+
+                {/* Nearby Venues Section */}
+                {nearbyVenues.length > 0 && (
+                    <div className="vd-card">
+                        <div className="vd-section">
+                            <h3 className="vd-section-title">
+                                <FiMapPin size={18} /> Nearby Venues
+                            </h3>
+                            {nearbyLoading ? (
+                                <SkeletonLoader type="list" count={3} />
+                            ) : (
+                                <div className="vd-nearby-grid">
+                                    {nearbyVenues.slice(0, 4).map((nv) => (
+                                        <Link
+                                            key={nv.id}
+                                            to={`/venues/${nv.id}`}
+                                            className="vd-nearby-item"
+                                        >
+                                            <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f172a' }}>{nv.name}</div>
+                                            <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 4 }}>
+                                                {nv.distance_display || (nv.distance_meters ? formatDistance(nv.distance_meters) : '')}
+                                            </div>
+                                        </Link>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
         </>
     );

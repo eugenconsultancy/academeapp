@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { classesApi } from '../../api/classesApi';
-import GeoService from '../../api/geoService';
+import GeoService from '../../services/geoService';
 import SkeletonLoader from '../shared/SkeletonLoader';
 import toast from 'react-hot-toast';
 import {
@@ -26,6 +26,15 @@ const DEFAULT_FORM = {
 };
 
 export default function TimetableManager({ classGroupId, classGroupName, onClose, onUnsavedChange }) {
+    // ──────────────────────────────
+    // 1. MOUNTED TRACKER (memory leak guard)
+    // ──────────────────────────────
+    const isMounted = useRef(true);
+    useEffect(() => {
+        isMounted.current = true;
+        return () => { isMounted.current = false; };
+    }, []);
+
     const [entries, setEntries] = useState([]);
     const [loading, setLoading] = useState(true);
     const [editingEntry, setEditingEntry] = useState(null);
@@ -40,6 +49,11 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
     const [bulkText, setBulkText] = useState('');
     const [deleteConfirm, setDeleteConfirm] = useState(null);
 
+    // ──────────────────────────────
+    // 2. VENUE TIMEOUT REF (prevent race condition)
+    // ──────────────────────────────
+    const venueTimeoutRef = useRef(null);
+
     useEffect(() => {
         if (classGroupId) loadTimetable();
     }, [classGroupId]);
@@ -48,24 +62,28 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
         setLoading(true);
         try {
             const res = await classesApi.getClassTimetable(classGroupId);
-            setEntries(res.data || []);
+            if (isMounted.current) {
+                setEntries(res.data || []);
+            }
         } catch (err) {
             toast.error('Failed to load timetable');
         } finally {
-            setLoading(false);
+            if (isMounted.current) setLoading(false);
         }
     };
 
-    // Venue autocomplete
+    // Venue autocomplete with debounce guard
     const handleVenueChange = async (value) => {
         setFormData({ ...formData, venue: value });
         if (value.length >= 2) {
             try {
                 const res = await GeoService.listVenues({ search: value, limit: 5 });
-                setVenueSuggestions(res.data || res || []);
-                setShowVenueDropdown(true);
+                if (isMounted.current) {
+                    setVenueSuggestions(res.data || res || []);
+                    setShowVenueDropdown(true);
+                }
             } catch {
-                setVenueSuggestions([]);
+                if (isMounted.current) setVenueSuggestions([]);
             }
         } else {
             setShowVenueDropdown(false);
@@ -73,16 +91,29 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
     };
 
     const selectVenue = (venue) => {
+        // Clear any pending blur timeout
+        if (venueTimeoutRef.current) clearTimeout(venueTimeoutRef.current);
         setFormData({ ...formData, venue: venue.name });
         setShowVenueDropdown(false);
     };
 
-    // Conflict detection
+    // ──────────────────────────────
+    // 3. FIXED CONFLICT DETECTION (type casting + time normalization)
+    // ──────────────────────────────
     const checkConflicts = useCallback((newEntry, excludeId = null) => {
         const conflicts = entries.filter(e => {
             if (excludeId && e.id === excludeId) return false;
-            if (e.day_of_week !== newEntry.day_of_week) return false;
-            return newEntry.start_time < e.end_time && newEntry.end_time > e.start_time;
+            // Enforce numeric day comparison
+            if (Number(e.day_of_week) !== Number(newEntry.day_of_week)) return false;
+
+            // Normalize times to HH:MM (slice to avoid second‑based mismatches)
+            const startA = newEntry.start_time.slice(0, 5);
+            const endA = newEntry.end_time.slice(0, 5);
+            const startB = e.start_time.slice(0, 5);
+            const endB = e.end_time.slice(0, 5);
+
+            // Overlap: A starts before B ends AND A ends after B starts
+            return startA < endB && endA > startB;
         });
         return conflicts;
     }, [entries]);
@@ -114,7 +145,7 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
         } catch (err) {
             toast.error(editingEntry ? 'Update failed' : 'Creation failed');
         } finally {
-            setSaving(false);
+            if (isMounted.current) setSaving(false);
         }
     };
 
@@ -157,15 +188,30 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
         }
     };
 
+    // ──────────────────────────────
+    // 4. FIXED BULK UPLOAD (error tracking & line validation)
+    // ──────────────────────────────
     const handleBulkUpload = async () => {
         if (!bulkText.trim()) return;
         const lines = bulkText.trim().split('\n').filter(l => l.trim());
-        let success = 0;
+        let successCount = 0;
+        let failCount = 0;
+
         for (const line of lines) {
             try {
-                const [day, start, end, unit, venue, lecturer] = line.split(',').map(s => s.trim());
+                const parts = line.split(',').map(s => s.trim());
+                if (parts.length < 4) {
+                    failCount++;
+                    continue; // Skip malformed lines
+                }
+
+                const [day, start, end, unit, venue, lecturer] = parts;
                 const dayIndex = DAYS.findIndex(d => d.toLowerCase().startsWith(day.toLowerCase()));
-                if (dayIndex === -1) continue;
+                if (dayIndex === -1) {
+                    failCount++;
+                    continue;
+                }
+
                 await classesApi.createTimetableEntry({
                     class_group_id: classGroupId,
                     day_of_week: dayIndex,
@@ -175,10 +221,14 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
                     venue: venue || '',
                     lecturer: lecturer || '',
                 });
-                success++;
-            } catch { /* skip failed lines */ }
+                successCount++;
+            } catch {
+                failCount++; // Network / validation error per line
+            }
         }
-        toast.success(`Added ${success} entries`);
+
+        if (successCount > 0) toast.success(`Added ${successCount} entries`);
+        if (failCount > 0) toast.error(`Failed to process ${failCount} lines`);
         setShowBulkUpload(false);
         setBulkText('');
         loadTimetable();
@@ -217,72 +267,93 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
 
     return (
         <>
+            {/* ──────────────────────────────
+               5. FIXED CSS – namespace changed to .tm‑*
+               ────────────────────────────── */}
             <style>{`
-        .tm-root { font-family: 'Outfit', sans-serif; }
-        .tm-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-        .tm-header h3 { font-size: 1.1rem; font-weight: 800; color: #0f172a; }
-        .dark .tm-header h3 { color: #f8fafc; }
-        .tm-btn { display: inline-flex; align-items: center; gap: 5px; padding: 7px 13px; border-radius: 10px; border: none; font-family: 'Outfit', sans-serif; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all 0.15s; }
-        .tm-btn-primary { background: #6366f1; color: #fff; }
-        .tm-btn-primary:hover { background: #4f46e5; }
-        .tm-btn-outline { background: transparent; border: 1.5px solid #e2e8f0; color: #64748b; }
-        .tm-btn-outline:hover { background: rgba(99,102,241,0.04); border-color: #6366f1; color: #6366f1; }
-        .dark .tm-btn-outline { border-color: #334155; color: #94a3b8; }
-        .tm-btn-danger { background: transparent; border: 1.5px solid #fecaca; color: #dc2626; }
-        .tm-btn-danger:hover { background: rgba(239,68,68,0.06); }
+                .tm-root { font-family: 'Outfit', sans-serif; }
+                .tm-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+                .tm-header h3 { font-size: 1.1rem; font-weight: 800; color: #0f172a; }
+                .dark .tm-header h3 { color: #f8fafc; }
+                .tm-btn { display: inline-flex; align-items: center; gap: 5px; padding: 7px 13px; border-radius: 10px; border: none; font-family: 'Outfit', sans-serif; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+                .tm-btn-primary { background: #6366f1; color: #fff; }
+                .tm-btn-primary:hover { background: #4f46e5; }
+                .tm-btn-outline { background: transparent; border: 1.5px solid #e2e8f0; color: #64748b; }
+                .tm-btn-outline:hover { background: rgba(99,102,241,0.04); border-color: #6366f1; color: #6366f1; }
+                .dark .tm-btn-outline { border-color: #334155; color: #94a3b8; }
+                .tm-btn-danger { background: transparent; border: 1.5px solid #fecaca; color: #dc2626; }
+                .tm-btn-danger:hover { background: rgba(239,68,68,0.06); }
 
-        /* Form */
-        .tm-form { background: rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.05); border-radius: 16px; padding: 20px; margin-bottom: 16px; }
-        .dark .tm-form { background: rgba(255,255,255,0.02); border-color: rgba(255,255,255,0.05); }
-        .tm-form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
-        .tm-form label { display: block; font-size: 0.7rem; font-weight: 700; color: #64748b; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
-        .tm-form input, .tm-form select { width: 100%; padding: 9px 12px; border-radius: 10px; border: 1.5px solid #e2e8f0; background: rgba(255,255,255,0.9); font-family: 'Outfit', sans-serif; font-size: 0.84rem; font-weight: 500; color: #0f172a; outline: none; }
-        .tm-form input:focus, .tm-form select:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.08); }
-        .dark .tm-form input, .dark .tm-form select { background: rgba(15,23,42,0.9); border-color: #334155; color: #f8fafc; }
-        .tm-venue-wrap { position: relative; }
-        .tm-venue-dropdown { position: absolute; top: 100%; left: 0; right: 0; z-index: 20; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); max-height: 180px; overflow-y: auto; }
-        .dark .tm-venue-dropdown { background: #1e293b; border-color: #334155; }
-        .tm-venue-item { padding: 10px 14px; cursor: pointer; font-size: 0.82rem; font-weight: 500; color: #0f172a; border-bottom: 1px solid #f1f5f9; }
-        .tm-venue-item:hover { background: rgba(99,102,241,0.06); }
-        .dark .tm-venue-item { color: #f8fafc; border-color: #334155; }
-        .dark .tm-venue-item:hover { background: rgba(99,102,241,0.1); }
+                /* Form */
+                .tm-form { background: rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.05); border-radius: 16px; padding: 20px; margin-bottom: 16px; }
+                .dark .tm-form { background: rgba(255,255,255,0.02); border-color: rgba(255,255,255,0.05); }
+                .tm-form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+                .tm-form label { display: block; font-size: 0.7rem; font-weight: 700; color: #64748b; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+                .tm-form input, .tm-form select { width: 100%; padding: 9px 12px; border-radius: 10px; border: 1.5px solid #e2e8f0; background: rgba(255,255,255,0.9); font-family: 'Outfit', sans-serif; font-size: 0.84rem; font-weight: 500; color: #0f172a; outline: none; }
+                .tm-form input:focus, .tm-form select:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.08); }
+                .dark .tm-form input, .dark .tm-form select { background: rgba(15,23,42,0.9); border-color: #334155; color: #f8fafc; }
+                .tm-venue-wrap { position: relative; }
+                .tm-venue-dropdown { position: absolute; top: 100%; left: 0; right: 0; z-index: 20; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); max-height: 180px; overflow-y: auto; }
+                .dark .tm-venue-dropdown { background: #1e293b; border-color: #334155; }
+                .tm-venue-item { padding: 10px 14px; cursor: pointer; font-size: 0.82rem; font-weight: 500; color: #0f172a; border-bottom: 1px solid #f1f5f9; }
+                .tm-venue-item:hover { background: rgba(99,102,241,0.06); }
+                .dark .tm-venue-item { color: #f8fafc; border-color: #334155; }
+                .dark .tm-venue-item:hover { background: rgba(99,102,241,0.1); }
 
-        /* Conflict warning */
-        .tm-conflict { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.15); border-radius: 10px; font-size: 0.75rem; font-weight: 600; color: #d97706; margin-top: 10px; }
-        .dark .tm-conflict { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.2); }
+                /* Conflict warning */
+                .tm-conflict { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.15); border-radius: 10px; font-size: 0.75rem; font-weight: 600; color: #d97706; margin-top: 10px; }
+                .dark .tm-conflict { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.2); }
 
-        /* Entry list */
-        .tm-entries { max-height: 500px; overflow-y: auto; }
-        .tm-entry { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border: 1px solid rgba(0,0,0,0.04); border-radius: 12px; margin-bottom: 6px; background: rgba(255,255,255,0.7); transition: all 0.15s; }
-        .tm-entry:hover { background: rgba(255,255,255,0.95); box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
-        .tm-entry.inactive { opacity: 0.5; }
-        .dark .tm-entry { background: rgba(15,23,42,0.5); border-color: rgba(255,255,255,0.04); }
-        .dark .tm-entry:hover { background: rgba(15,23,42,0.7); }
-        .tm-entry-main { flex: 1; min-width: 0; }
-        .tm-entry-title { font-size: 0.9rem; font-weight: 700; color: #0f172a; }
-        .dark .tm-entry-title { color: #f8fafc; }
-        .tm-entry-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.72rem; color: #94a3b8; margin-top: 3px; }
-        .tm-entry-meta span { display: flex; align-items: center; gap: 3px; }
-        .tm-entry-actions { display: flex; gap: 2px; flex-shrink: 0; }
-        .tm-icon-btn { width: 30px; height: 30px; border-radius: 8px; border: none; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #94a3b8; transition: all 0.15s; }
-        .tm-icon-btn:hover { background: rgba(99,102,241,0.08); color: #6366f1; }
-        .tm-icon-btn.danger:hover { background: rgba(239,68,68,0.08); color: #ef4444; }
+                /* Entry list */
+                .tm-entries { max-height: 500px; overflow-y: auto; }
+                .tm-entry { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border: 1px solid rgba(0,0,0,0.04); border-radius: 12px; margin-bottom: 6px; background: rgba(255,255,255,0.7); transition: all 0.15s; }
+                .tm-entry:hover { background: rgba(255,255,255,0.95); box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+                .tm-entry.inactive { opacity: 0.5; }
+                .dark .tm-entry { background: rgba(15,23,42,0.5); border-color: rgba(255,255,255,0.04); }
+                .dark .tm-entry:hover { background: rgba(15,23,42,0.7); }
+                .tm-entry-main { flex: 1; min-width: 0; }
+                .tm-entry-title { font-size: 0.9rem; font-weight: 700; color: #0f172a; }
+                .dark .tm-entry-title { color: #f8fafc; }
+                .tm-entry-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.72rem; color: #94a3b8; margin-top: 3px; }
+                .tm-entry-meta span { display: flex; align-items: center; gap: 3px; }
+                .tm-entry-actions { display: flex; gap: 2px; flex-shrink: 0; }
+                .tm-icon-btn { width: 30px; height: 30px; border-radius: 8px; border: none; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #94a3b8; transition: all 0.15s; }
+                .tm-icon-btn:hover { background: rgba(99,102,241,0.08); color: #6366f1; }
+                .tm-icon-btn.danger:hover { background: rgba(239,68,68,0.08); color: #ef4444; }
 
-        /* Day header */
-        .tm-day-header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: rgba(99,102,241,0.04); border-radius: 10px; margin-bottom: 6px; margin-top: 12px; cursor: pointer; font-weight: 700; font-size: 0.85rem; color: #6366f1; }
-        .tm-day-count { font-size: 0.7rem; padding: 2px 8px; border-radius: 99px; background: rgba(99,102,241,0.1); }
+                /* Day header */
+                .tm-day-header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: rgba(99,102,241,0.04); border-radius: 10px; margin-bottom: 6px; margin-top: 12px; cursor: pointer; font-weight: 700; font-size: 0.85rem; color: #6366f1; }
+                .tm-day-count { font-size: 0.7rem; padding: 2px 8px; border-radius: 99px; background: rgba(99,102,241,0.1); }
 
-        /* Bulk upload */
-        .tm-bulk-textarea { width: 100%; padding: 12px; border-radius: 12px; border: 1.5px solid #e2e8f0; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; resize: vertical; min-height: 150px; }
-        .dark .tm-bulk-textarea { background: #1e293b; border-color: #334155; color: #f8fafc; }
+                /* Bulk upload */
+                .tm-bulk-textarea { width: 100%; padding: 12px; border-radius: 12px; border: 1.5px solid #e2e8f0; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; resize: vertical; min-height: 150px; }
+                .dark .tm-bulk-textarea { background: #1e293b; border-color: #334155; color: #f8fafc; }
 
-        /* Grid view */
-        .tm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-        .tm-grid-day { border: 1px solid rgba(0,0,0,0.05); border-radius: 12px; padding: 10px; min-height: 80px; }
-        .tm-grid-day-label { font-size: 0.7rem; font-weight: 700; color: #6366f1; margin-bottom: 6px; text-align: center; }
-        .tm-grid-entry { font-size: 0.7rem; padding: 4px 8px; background: rgba(99,102,241,0.06); border-radius: 6px; margin-bottom: 3px; cursor: pointer; }
-        .tm-grid-entry:hover { background: rgba(99,102,241,0.12); }
-      `}</style>
+                /* Grid view */
+                .tm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+                .tm-grid-day { border: 1px solid rgba(0,0,0,0.05); border-radius: 12px; padding: 10px; min-height: 80px; }
+                .tm-grid-day-label { font-size: 0.7rem; font-weight: 700; color: #6366f1; margin-bottom: 6px; text-align: center; }
+                .tm-grid-entry { font-size: 0.7rem; padding: 4px 8px; background: rgba(99,102,241,0.06); border-radius: 6px; margin-bottom: 3px; cursor: pointer; }
+                .tm-grid-entry:hover { background: rgba(99,102,241,0.12); }
+
+                /* Confirm dialog (formerly .opp‑*) */
+                .tm-confirm-overlay { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; padding: 20px; }
+                .tm-confirm-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); }
+                .tm-confirm-card { position: relative; z-index: 81; width: 100%; max-width: 400px; background: rgba(255,255,255,0.96); border: 1px solid rgba(255,255,255,0.6); border-radius: 20px; backdrop-filter: blur(20px); box-shadow: 0 24px 48px rgba(0,0,0,0.18); }
+                .dark .tm-confirm-card { background: rgba(12,16,24,0.98); border-color: rgba(255,255,255,0.07); }
+                .tm-confirm-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 22px 16px; border-bottom: 1px solid rgba(0,0,0,0.06); }
+                .dark .tm-confirm-header { border-bottom-color: rgba(255,255,255,0.06); }
+                .tm-confirm-title { font-size: 1rem; font-weight: 800; letter-spacing: -0.03em; color: #0f172a; }
+                .dark .tm-confirm-title { color: #f8fafc; }
+                .tm-confirm-close { width: 30px; height: 30px; border-radius: 8px; border: none; background: rgba(0,0,0,0.05); cursor: pointer; display: flex; align-items: center; justify-content: center; color: #6b7280; transition: all 0.15s; }
+                .tm-confirm-close:hover { background: rgba(239,68,68,0.08); color: #ef4444; }
+                .tm-confirm-body { padding: 20px 22px; font-size: 0.9rem; color: #64748b; }
+                .tm-confirm-footer { display: flex; gap: 10px; padding: 0 22px 20px; }
+                .tm-btn-cancel { flex: 1; padding: 11px; border-radius: 12px; border: 1.5px solid rgba(226,232,240,0.9); background: transparent; cursor: pointer; font-family: 'Outfit', sans-serif; font-size: 0.84rem; font-weight: 700; color: #64748b; transition: all 0.15s; }
+                .tm-btn-cancel:hover { background: rgba(0,0,0,0.03); }
+                .tm-btn-submit-danger { flex: 1; padding: 11px; border-radius: 12px; border: none; background: linear-gradient(135deg, #ef4444, #f97316); color: #fff; cursor: pointer; font-family: 'Outfit', sans-serif; font-size: 0.84rem; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 7px; box-shadow: 0 6px 18px rgba(239,68,68,0.28); transition: all 0.18s; }
+                .tm-btn-submit-danger:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(239,68,68,0.35); }
+            `}</style>
 
             <div className="tm-root">
                 {/* Header */}
@@ -343,11 +414,28 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
                         </div>
                         <div className="tm-venue-wrap">
                             <label>Venue *</label>
-                            <input type="text" value={formData.venue} onChange={e => handleVenueChange(e.target.value)} onFocus={() => venueSuggestions.length > 0 && setShowVenueDropdown(true)} onBlur={() => setTimeout(() => setShowVenueDropdown(false), 200)} placeholder="e.g., Lab 201" required />
+                            <input
+                                type="text"
+                                value={formData.venue}
+                                onChange={e => handleVenueChange(e.target.value)}
+                                onFocus={() => venueSuggestions.length > 0 && setShowVenueDropdown(true)}
+                                onBlur={() => {
+                                    // Set a timeout to allow click on dropdown items; the timeout is cleared in selectVenue
+                                    venueTimeoutRef.current = setTimeout(() => {
+                                        if (isMounted.current) setShowVenueDropdown(false);
+                                    }, 200);
+                                }}
+                                placeholder="e.g., Lab 201"
+                                required
+                            />
                             {showVenueDropdown && venueSuggestions.length > 0 && (
                                 <div className="tm-venue-dropdown">
                                     {venueSuggestions.map(v => (
-                                        <div key={v.id} className="tm-venue-item" onMouseDown={() => selectVenue(v)}>
+                                        <div
+                                            key={v.id}
+                                            className="tm-venue-item"
+                                            onMouseDown={() => selectVenue(v)}
+                                        >
                                             🏫 {v.name} {v.building_code && `(${v.building_code})`}
                                         </div>
                                     ))}
@@ -461,21 +549,23 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
                 </div>
             </div>
 
-            {/* Delete confirmation */}
+            {/* Delete confirmation dialog – renamed classes to avoid global collisions */}
             {deleteConfirm && (
-                <div className="opp-modal-overlay">
-                    <div className="opp-modal-backdrop" onClick={() => setDeleteConfirm(null)} />
-                    <div className="opp-modal" style={{ maxWidth: 400 }}>
-                        <div className="opp-modal-header">
-                            <span className="opp-modal-title">Delete Entry</span>
-                            <button className="opp-modal-close" onClick={() => setDeleteConfirm(null)}><FiX size={16} /></button>
+                <div className="tm-confirm-overlay">
+                    <div className="tm-confirm-backdrop" onClick={() => setDeleteConfirm(null)} />
+                    <div className="tm-confirm-card">
+                        <div className="tm-confirm-header">
+                            <span className="tm-confirm-title">Delete Entry</span>
+                            <button className="tm-confirm-close" onClick={() => setDeleteConfirm(null)}>
+                                <FiX size={16} />
+                            </button>
                         </div>
-                        <div className="opp-modal-body">
-                            <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Are you sure you want to delete this timetable entry? This cannot be undone.</p>
+                        <div className="tm-confirm-body">
+                            <p>Are you sure you want to delete this timetable entry? This cannot be undone.</p>
                         </div>
-                        <div className="opp-modal-footer">
-                            <button className="opp-btn-cancel" onClick={() => setDeleteConfirm(null)}>Cancel</button>
-                            <button className="opp-btn-submit opp-btn-submit-danger" onClick={() => handleDelete(deleteConfirm)}>Delete</button>
+                        <div className="tm-confirm-footer">
+                            <button className="tm-btn-cancel" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+                            <button className="tm-btn-submit-danger" onClick={() => handleDelete(deleteConfirm)}>Delete</button>
                         </div>
                     </div>
                 </div>

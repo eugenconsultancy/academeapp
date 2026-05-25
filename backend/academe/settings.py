@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'apps.search',
     'apps.geoservice',
     'apps.governance',
+    'apps.notifications',
     'common',
 ]
 
@@ -79,6 +80,9 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+        'OPTIONS': {
+            'timeout': 20,  # Max seconds o wait for a database lock to clear
+        },
     }
 }
 
@@ -98,6 +102,13 @@ MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = os.getenv('EMAIL_USER')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_PASSWORD')
 
 # Cross origin RS
 CORS_ALLOW_ALL_ORIGINS = DEBUG
@@ -134,12 +145,11 @@ if DEBUG and not AWS_ACCESS_KEY_ID:
 # Firebase FOR PUSH NOTIFICATIONS
 FIREBASE_CREDENTIALS = os.getenv('FIREBASE_CREDENTIALS_PATH')
 
-# M-Pesa FOR found items payments system
-MPESA_CONSUMER_KEY = os.getenv('MPESA_CONSUMER_KEY')
-MPESA_CONSUMER_SECRET = os.getenv('MPESA_CONSUMER_SECRET')
-MPESA_PASSKEY = os.getenv('MPESA_PASSKEY')
-MPESA_SHORTCODE = os.getenv('MPESA_SHORTCODE')
-MPESA_ENVIRONMENT = os.getenv('MPESA_ENVIRONMENT', 'sandbox')
+# ==============================================================================
+# 💳 INTASEND PRODUCTION PAYMENT INTEGRATION
+# ==============================================================================
+INTASEND_SECRET_KEY = 'ISSecretKey_live_899f0bd8-6a95-435d-bb1f-6d8803411fd2'
+INTASEND_PUBLISHABLE_KEY = 'ISPubKey_live_442dc7f8-5a18-49e2-b533-ce825a6893b9'
 
 # Rate Limiting
 OTP_RATE_LIMIT = 3
@@ -150,7 +160,7 @@ ATTENDANCE_WINDOW_BEFORE = 10
 ATTENDANCE_WINDOW_AFTER = 10
 SYNC_GRACE_PERIOD = 30
 
-# Escrow
+# Escrow and Platform Rules
 ESCROW_AUTO_CONFIRM_DAYS = 7
 ESCROW_FEE_PERCENTAGE = 50
 PLATFORM_FEE_PERCENTAGE = 50

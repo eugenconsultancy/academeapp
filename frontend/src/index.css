@@ -1,0 +1,353 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   CUSTOM BASE STYLES
+   ============================================ */
+@layer base {
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Better default typography */
+  body {
+    @apply antialiased font-body text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-950;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Focus styles for accessibility */
+  :focus-visible {
+    @apply outline-none ring-2 ring-indigo-500/50 ring-offset-2 dark:ring-offset-gray-900;
+    transition: ring 0.15s ease;
+  }
+
+  /* Selection color */
+  ::selection {
+    @apply bg-indigo-200/70 dark:bg-indigo-800/70 text-indigo-900 dark:text-indigo-100;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 dark:bg-gray-600 rounded-full;
+    border: 2px solid transparent;
+    background-clip: content-box;
+    transition: background-color 0.2s;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-400 dark:bg-gray-500;
+  }
+}
+
+/* ============================================
+   CUSTOM COMPONENT STYLES
+   ============================================ */
+@layer components {
+  /* ── Premium Glass Effects ── */
+  .glass-card {
+    @apply bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl backdrop-saturate-150 
+           border border-white/20 dark:border-gray-700/30 
+           shadow-lg shadow-black/5 dark:shadow-black/20 
+           rounded-2xl;
+  }
+
+  .glass-panel {
+    @apply bg-white/60 dark:bg-gray-900/60 backdrop-blur-2xl backdrop-saturate-200 
+           border border-white/30 dark:border-gray-700/40 
+           shadow-xl shadow-black/5 dark:shadow-black/20;
+  }
+
+  .glass-dropdown {
+    @apply bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm 
+           border border-gray-200/60 dark:border-gray-700/60 
+           shadow-lg rounded-2xl;
+  }
+
+  /* ── Premium Cards ── */
+  .card {
+    @apply bg-white dark:bg-gray-800 rounded-2xl shadow-sm 
+           border border-gray-100 dark:border-gray-700/50 
+           transition-all duration-300 ease-out;
+  }
+
+  .card-hover {
+    @apply hover:shadow-lg hover:shadow-gray-200/40 dark:hover:shadow-gray-900/50 
+           hover:-translate-y-1 hover:border-gray-200 dark:hover:border-gray-600;
+  }
+
+  /* ── Button System (Overridable by Button component) ── */
+  .btn {
+    @apply inline-flex items-center justify-center px-5 py-2.5 rounded-xl font-semibold 
+           tracking-tight transition-all duration-200 ease-out 
+           focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:ring-offset-2 
+           dark:focus:ring-offset-gray-900 
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none;
+  }
+
+  .btn-primary {
+    @apply btn bg-gradient-to-br from-indigo-500 to-purple-600 text-white 
+           shadow-md shadow-indigo-500/25 hover:shadow-lg hover:shadow-indigo-500/35 
+           hover:brightness-110 active:scale-[0.98];
+  }
+
+  .btn-secondary {
+    @apply btn bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 
+           border border-gray-200 dark:border-gray-600 
+           shadow-sm hover:shadow-md hover:border-gray-300 dark:hover:border-gray-500 
+           hover:bg-gray-50 dark:hover:bg-gray-700/50;
+  }
+
+  .btn-outline {
+    @apply btn border-2 border-indigo-500/40 text-indigo-600 dark:text-indigo-400 
+           hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 
+           hover:border-indigo-500/60 shadow-sm;
+  }
+
+  .btn-ghost {
+    @apply btn text-gray-600 dark:text-gray-300 hover:bg-gray-100/60 dark:hover:bg-gray-800/60 
+           active:bg-gray-200/50 dark:active:bg-gray-700/50;
+  }
+
+  /* ── Form Elements ── */
+  .input {
+    @apply w-full px-4 py-3 rounded-xl 
+           bg-white dark:bg-gray-900 
+           border border-gray-200 dark:border-gray-600 
+           text-gray-900 dark:text-gray-100 
+           placeholder-gray-400 dark:placeholder-gray-500 
+           focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent 
+           transition-all duration-200;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5;
+  }
+
+  /* ── Badges ── */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
+  }
+
+  .badge-primary {
+    @apply badge bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300;
+  }
+
+  .badge-success {
+    @apply badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300;
+  }
+
+  .badge-warning {
+    @apply badge bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300;
+  }
+
+  .badge-danger {
+    @apply badge bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300;
+  }
+
+  .badge-info {
+    @apply badge bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300;
+  }
+
+  /* ── Blog Content Prose ── */
+  .blog-content {
+    @apply prose prose-lg dark:prose-invert max-w-none
+           prose-headings:font-heading prose-headings:font-bold
+           prose-h1:text-4xl prose-h1:mt-8 prose-h1:mb-4
+           prose-h2:text-2xl prose-h2:mt-6 prose-h2:mb-3
+           prose-h3:text-xl prose-h3:mt-4 prose-h3:mb-2
+           prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-relaxed
+           prose-a:text-indigo-600 dark:prose-a:text-indigo-400 prose-a:no-underline hover:prose-a:underline
+           prose-strong:text-gray-900 dark:prose-strong:text-gray-100
+           prose-code:text-indigo-600 dark:prose-code:text-indigo-400 prose-code:bg-gray-100 dark:prose-code:bg-gray-800 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-sm
+           prose-pre:bg-gray-900 dark:prose-pre:bg-gray-950 prose-pre:text-gray-100 prose-pre:rounded-xl
+           prose-img:rounded-lg prose-img:shadow-md
+           prose-ul:text-gray-700 dark:prose-ul:text-gray-300
+           prose-li:text-gray-700 dark:prose-li:text-gray-300
+           prose-blockquote:border-l-4 prose-blockquote:border-indigo-500 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-gray-600 dark:prose-blockquote:text-gray-400;
+  }
+
+  /* ── Blog Card ── */
+  .blog-card {
+    @apply card card-hover flex flex-col h-full;
+  }
+
+  .blog-card-image {
+    @apply w-full h-48 object-cover transition-transform duration-300 group-hover:scale-105;
+  }
+
+  /* ── Attendance Status ── */
+  .attendance-status-present {
+    @apply bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300;
+  }
+
+  .attendance-status-absent {
+    @apply bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300;
+  }
+
+  .attendance-status-late {
+    @apply bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300;
+  }
+
+  /* ── Map Styles ── */
+  .leaflet-container {
+    @apply rounded-2xl z-0;
+  }
+}
+
+/* ============================================
+   CUSTOM UTILITIES
+   ============================================ */
+@layer utilities {
+  /* Text gradients */
+  .text-gradient {
+    @apply bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent;
+  }
+
+  .text-gradient-accent {
+    @apply bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent;
+  }
+
+  /* Animation delays */
+  .animation-delay-2000 {
+    animation-delay: 2s;
+  }
+
+  .animation-delay-4000 {
+    animation-delay: 4s;
+  }
+
+  /* Status colors */
+  .status--teal { @apply bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300; }
+  .status--amber { @apply bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300; }
+  .status--blue { @apply bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300; }
+  .status--rose { @apply bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300; }
+  .status--neutral { @apply bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300; }
+  .status--indigo { @apply bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300; }
+
+  /* Marker styles */
+  .marker--blue { @apply bg-blue-500 ring-4 ring-blue-500/30; }
+  .marker--amber { @apply bg-amber-500 ring-4 ring-amber-500/30; }
+  .marker--teal { @apply bg-teal-500 ring-4 ring-teal-500/30; }
+
+  /* Dot indicators */
+  .dot--amber { @apply bg-amber-500; }
+  .dot--teal { @apply bg-teal-500; }
+  .dot--blue { @apply bg-blue-500; }
+  .dot--rose { @apply bg-rose-500; }
+  .dot--neutral { @apply bg-gray-500; }
+
+  /* Trend indicators */
+  .trend--up { @apply text-emerald-600 dark:text-emerald-400; }
+  .trend--down { @apply text-rose-600 dark:text-rose-400; }
+
+  /* Hide scrollbar */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ============================================
+   PRINT STYLES
+   ============================================ */
+@media print {
+  .no-print { display: none !important; }
+  body { @apply bg-white text-black; }
+  a { @apply text-black no-underline; }
+  .card { @apply shadow-none border border-gray-300; }
+}
+
+/* ============================================
+   RESPONSIVE UTILITIES
+   ============================================ */
+@screen xs {
+  .container { @apply px-4; }
+}
+@screen sm {
+  .container { @apply px-6; }
+}
+@screen lg {
+  .container { @apply px-8; }
+}
+@screen xl {
+  .container { @apply px-10; }
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(99, 102, 241, 0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* ============================================
+   DARK MODE TRANSITIONS
+   ============================================ */
+* {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* ============================================
+   RICH TEXT EDITOR STYLES (Blog)
+   ============================================ */
+.ql-editor {
+  @apply min-h-[300px] text-gray-900 dark:text-gray-100;
+}
+
+.ql-toolbar {
+  @apply rounded-t-xl border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/80;
+}
+
+.ql-container {
+  @apply rounded-b-xl border-gray-200 dark:border-gray-700;
+}
+
+/* ============================================
+   MAP TILE LAYER STYLES
+   ============================================ */
+.leaflet-tile-pane {
+  filter: brightness(0.95) contrast(1.05);
+}
+
+.dark .leaflet-tile-pane {
+  filter: brightness(0.7) contrast(1.2) invert(0.9) hue-rotate(180deg);
+}

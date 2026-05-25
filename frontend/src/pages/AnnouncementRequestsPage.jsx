@@ -4,7 +4,14 @@ import { announcementsApi } from '../api/announcementsApi';
 import { useAuth } from '../contexts/AuthContext';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
 import toast from 'react-hot-toast';
-import { FiPlus, FiClock, FiCheckCircle, FiXCircle, FiEye, FiChevronRight } from 'react-icons/fi';
+import {
+    FiPlus,
+    FiClock,
+    FiCheckCircle,
+    FiXCircle,
+    FiEye,
+    FiChevronRight,
+} from 'react-icons/fi';
 
 const STATUS_STYLES = {
     pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
@@ -21,20 +28,26 @@ export default function AnnouncementRequestsPage() {
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all');
 
-    const isLeader = ['student_leader', 'faculty_rep', 'class_rep', 'admin'].includes(user?.role);
+    const isLeader = ['student_leader', 'faculty_rep', 'class_rep', 'admin'].includes(
+        user?.role
+    );
 
+    // Fetch requests whenever the filter changes
     useEffect(() => {
         fetchRequests();
-    }, []);
+    }, [filter]);
 
     const fetchRequests = async () => {
         setLoading(true);
         try {
             const params = filter !== 'all' ? { status: filter } : {};
-            const data = await announcementsApi.listRequests(params);
-            setRequests(data);
+            const response = await announcementsApi.listRequests(params);
+            // Axios wraps the backend array in response.data
+            const data = response.data || [];
+            setRequests(Array.isArray(data) ? data : []);
         } catch (err) {
             toast.error('Failed to load requests');
+            setRequests([]); // ensure it's an array even on failure
         } finally {
             setLoading(false);
         }
@@ -84,8 +97,11 @@ export default function AnnouncementRequestsPage() {
                         {['all', 'pending', 'approved', 'rejected'].map((f) => (
                             <button
                                 key={f}
-                                onClick={() => { setFilter(f); }}
-                                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${filter === f ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                                onClick={() => setFilter(f)}
+                                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${filter === f
+                                        ? 'bg-blue-500 text-white'
+                                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                                    }`}
                             >
                                 {f.charAt(0).toUpperCase() + f.slice(1)}
                             </button>
@@ -102,25 +118,45 @@ export default function AnnouncementRequestsPage() {
 
                 <div className="space-y-4">
                     {requests.map((req) => (
-                        <div key={req.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
+                        <div
+                            key={req.id}
+                            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5"
+                        >
                             <div className="flex items-start justify-between gap-4">
                                 <div className="flex-1">
                                     <div className="flex items-center gap-2 mb-2">
-                                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLES[req.status] || STATUS_STYLES.pending}`}>
+                                        <span
+                                            className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLES[req.status] || STATUS_STYLES.pending
+                                                }`}
+                                        >
                                             {req.status}
                                         </span>
                                     </div>
-                                    <h3 className="font-semibold text-gray-900 dark:text-white">{req.title}</h3>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{req.content}</p>
-                                    <p className="text-xs text-gray-400 mt-2">{new Date(req.created_at).toLocaleDateString()}</p>
+                                    <h3 className="font-semibold text-gray-900 dark:text-white">
+                                        {req.title}
+                                    </h3>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
+                                        {req.content}
+                                    </p>
+                                    <p className="text-xs text-gray-400 mt-2">
+                                        {new Date(req.created_at).toLocaleDateString()}
+                                    </p>
                                 </div>
 
                                 {isLeader && req.status === 'pending' && (
                                     <div className="flex gap-2 flex-shrink-0">
-                                        <button onClick={() => handleApprove(req.id)} className="p-2 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg hover:bg-green-200 transition-colors" title="Approve">
+                                        <button
+                                            onClick={() => handleApprove(req.id)}
+                                            className="p-2 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg hover:bg-green-200 transition-colors"
+                                            title="Approve"
+                                        >
                                             <FiCheckCircle className="w-4 h-4" />
                                         </button>
-                                        <button onClick={() => handleReject(req.id)} className="p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-200 transition-colors" title="Reject">
+                                        <button
+                                            onClick={() => handleReject(req.id)}
+                                            className="p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-200 transition-colors"
+                                            title="Reject"
+                                        >
                                             <FiXCircle className="w-4 h-4" />
                                         </button>
                                     </div>

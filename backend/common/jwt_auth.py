@@ -1,4 +1,5 @@
 import jwt
+import uuid
 from datetime import datetime, timedelta
 from django.conf import settings
 from ninja.security import HttpBearer
@@ -29,23 +30,20 @@ class JWTAuth(HttpBearer):
             return None
 
 def create_token(user, token_type="access"):
-    """Create JWT token"""
-    from datetime import timedelta
+    # Use a specific secret for JWTs
+    secret = getattr(settings, 'JWT_SECRET_KEY', settings.SECRET_KEY)
     
-    if token_type == "access":
-        expiry = datetime.utcnow() + timedelta(hours=24)  # 24 hours
-    else:
-        expiry = datetime.utcnow() + timedelta(days=30)   # 30 days
+    expiry = datetime.utcnow() + (timedelta(hours=24) if token_type == "access" else timedelta(days=30))
     
     payload = {
         "user_id": str(user.id),
-        "phone": user.phone_number,
+        "jti": str(uuid.uuid4()), # Unique ID for blacklisting
         "exp": expiry,
         "type": token_type,
         "iat": datetime.utcnow(),
     }
     
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+    return jwt.encode(payload, secret, algorithm="HS256")
 
 def create_token_pair(user):
     """Create access and refresh token pair"""

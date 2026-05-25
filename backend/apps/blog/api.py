@@ -2,6 +2,7 @@ from typing import List, Optional
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import Router, Query
+from ninja.errors import HttpError
 from common.jwt_auth import JWTAuth
 from .models import BlogPost, BlogCategory, PostLike, PostSave, Comment
 from .schema import BlogPostIn, BlogPostOut, BlogPostListOut, BlogCategoryOut, CommentIn
@@ -207,11 +208,22 @@ def update_post(request, post_id: str, data: BlogPostIn):
     post.save()
     return format_post(post, user)
 
-@router.delete("/posts/{post_id}/", auth=JWTAuth())
+
+@router.delete("/posts/{post_id}/delete/", auth=JWTAuth())
 def delete_post(request, post_id: str):
     user = request.auth
-    if user.role != 'admin':
-        return {"error": "Only admins can delete posts"}
     post = get_object_or_404(BlogPost, id=post_id)
+    # Allow deletion if user is admin OR is the author of the post
+    if user.role != 'admin' and post.author != user:
+        raise HttpError(403, "You do not have permission to delete this post.")
     post.delete()
     return {"message": "Post deleted successfully"}
+
+# ============================================
+# MY POSTS (NEW)
+# ============================================
+@router.get("/my-posts/", auth=JWTAuth())
+def my_posts(request):
+    """List posts created by the currently authenticated user."""
+    posts = BlogPost.objects.filter(author=request.auth).order_by('-published_at')
+    return [format_post(p, request.auth) for p in posts]

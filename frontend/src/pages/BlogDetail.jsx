@@ -746,7 +746,13 @@ export default function BlogDetail() {
               <CommentItem
                 key={comment.id}
                 comment={comment}
-                onReply={(id) => setReplyTo(id)}
+                onReply={(id) => {
+                  setReplyTo(id);
+                  // Smooth scroll to the comment box
+                  textareaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  // Auto-focus the textarea after scroll
+                  setTimeout(() => textareaRef.current?.focus(), 300);
+                }}
               />
             ))}
           </div>

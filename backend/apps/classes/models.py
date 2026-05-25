@@ -21,6 +21,32 @@ class ClassGroup(BaseModel):
     def __str__(self):
         return f"{self.name} - {self.institution}"
 
+class CampusVenue(BaseModel):
+    name = models.CharField(max_length=255, unique=True)
+    institution = models.CharField(max_length=255)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6)
+    is_active = models.BooleanField(default=True)
+
+    # Override inherited fields to avoid reverse accessor clash with geoservice.CampusVenue
+    created_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='classes_campusvenue_created'
+    )
+    updated_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='classes_campusvenue_updated'
+    )
+
+    def __str__(self):
+        return f"{self.name} ({self.institution})"
+
 class TimetableEntry(BaseModel):
     class_group = models.ForeignKey(
         ClassGroup,
@@ -37,13 +63,15 @@ class TimetableEntry(BaseModel):
     venue = models.CharField(max_length=255)
     lecturer = models.CharField(max_length=255, blank=True)  # Added for lecturer name
     is_active = models.BooleanField(default=True)
-    
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+
     class Meta:
         ordering = ['day_of_week', 'start_time']
         indexes = [
             models.Index(fields=['class_group', 'day_of_week']),
         ]
-    
+
     def __str__(self):
         return f"{self.unit_name} - {self.get_day_of_week_display()}"
 
@@ -66,13 +94,13 @@ class AttendanceRecord(BaseModel):
         default='online'
     )
     client_timestamp = models.DateTimeField(null=True, blank=True)
-    
+
     class Meta:
         unique_together = ['student', 'timetable_entry', 'date']  # Prevent duplicates
         indexes = [
             models.Index(fields=['student', 'date']),
             models.Index(fields=['timetable_entry', 'date']),
         ]
-    
+
     def __str__(self):
         return f"{self.student.full_name} - {self.timetable_entry.unit_name} - {self.date}"

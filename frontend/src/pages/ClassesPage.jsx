@@ -1,33 +1,716 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { classesApi } from '../api/classesApi';
 import { useAuth } from '../contexts/AuthContext';
-import { useAttendance } from '../hooks/useAttendance';
 import { useGeolocation } from '../hooks/useGeolocation';
-import apiClient from '../api/client';
+import { useAttendance } from '../hooks/useAttendance';
 import Card from '../components/ui/Card';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
 import TimetableManager from '../components/classes/TimetableManager';
 import toast from 'react-hot-toast';
+import apiClient from '../api/client';
 import {
     FiCalendar, FiCheckCircle, FiClock, FiMapPin, FiUser,
     FiTrendingUp, FiBookOpen, FiPlusCircle, FiNavigation,
     FiTarget, FiWifi, FiWifiOff, FiExternalLink, FiBarChart2,
     FiX, FiAlertCircle, FiLoader, FiChevronRight, FiActivity,
-    FiEye, FiZap,
+    FiEye, FiZap, FiRefreshCw, FiChevronDown, FiChevronUp,
+    FiInfo, FiList, FiPlus,
 } from 'react-icons/fi';
 
-/* ─────────────────────────────────────────────────────────
-   SHARED STYLES
-───────────────────────────────────────────────────────── */
+/* ───────────────────────────────────────────
+   CARD COMPONENT
+────────────────────────────────────────── */
+function ClassCard({ classItem, isOnline, location, onViewDetail, onViewAttendance }) {
+    const [loading, setLoading] = useState(false);
+    const mountedRef = useRef(true);
+    const { isMarked, syncPending, markAttendance } = useAttendance(classItem.id);
+
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
+
+    const handleMark = async () => {
+        if (!mountedRef.current) return;
+        setLoading(true);
+        try {
+            await markAttendance('PRESENT');
+            if (mountedRef.current) toast.success('Attendance marked!', { icon: '✅' });
+        } catch (err) {
+            if (mountedRef.current) toast.error('Failed to mark attendance', { icon: '❌' });
+        } finally {
+            if (mountedRef.current) setLoading(false);
+        }
+    };
+
+    const handleMarkWithLocation = async () => {
+        if (!location) {
+            toast('Location unavailable. Marking without GPS…', { icon: '⚠️' });
+            handleMark();
+            return;
+        }
+        if (!mountedRef.current) return;
+        setLoading(true);
+        try {
+            await markAttendance('PRESENT');
+            if (mountedRef.current) toast.success('Location-verified check-in! 📍', { icon: '✅' });
+        } catch {
+            if (mountedRef.current) toast.error('Failed to mark attendance');
+        } finally {
+            if (mountedRef.current) setLoading(false);
+        }
+    };
+
+    const canMark = classItem.can_mark && isOnline;
+    const isPast = !classItem.can_mark && !isMarked;
+    const stateClass = isMarked ? 'state-marked' : canMark ? 'state-open' : 'state-closed';
+    const hasProgress = classItem.remaining_time !== null && !isMarked && canMark;
+    const pct = hasProgress ? Math.min(100, (classItem.remaining_time / 30) * 100) : 0;
+
+    return (
+        <div
+            className={`cp-class-card ${stateClass}`}
+            onClick={() => onViewDetail(classItem)}
+            style={{ cursor: 'pointer' }}
+        >
+            <div className="cp-card-inner">
+                {/* Time badge */}
+                <div className="cp-time-badge">
+                    <div className="cp-time-start">
+                        {classItem.start_time?.slice(0, 5) || '—'}
+                    </div>
+                    <div className="cp-time-end">
+                        to {classItem.end_time?.slice(0, 5) || '—'}
+                    </div>
+                </div>
+
+                {/* Body */}
+                <div className="cp-card-body">
+                    <div className="cp-card-top">
+                        <h3 className="cp-card-unit">{classItem.unit_name}</h3>
+                        {classItem.lecturer && (
+                            <span className="cp-lecturer-badge">
+                                <FiUser size={11} /> {classItem.lecturer}
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="cp-card-meta">
+                        <span>
+                            <FiMapPin size={12} />
+                            {classItem.venue || 'Venue TBA'}
+                        </span>
+                        <span>
+                            <FiClock size={12} />
+                            {classItem.start_time?.slice(0, 5)} – {classItem.end_time?.slice(0, 5)}
+                        </span>
+                    </div>
+
+                    {hasProgress && (
+                        <div className="cp-progress-wrap">
+                            <div className="cp-progress-labels">
+                                <span className="cp-progress-label">
+                                    <FiClock size={10} style={{ display: 'inline', marginRight: 3 }} />
+                                    {classItem.remaining_time} min left
+                                </span>
+                                <span className="cp-progress-label" style={{ opacity: 0.6 }}>
+                                    {Math.round(pct)}%
+                                </span>
+                            </div>
+                            <div className="cp-progress-track">
+                                <div className="cp-progress-fill" style={{ width: `${pct}%` }} />
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="cp-card-actions" onClick={(e) => e.stopPropagation()}>
+                        {isMarked ? (
+                            <span className="cp-status-badge cp-status-marked">
+                                <FiCheckCircle size={14} /> Attended
+                            </span>
+                        ) : canMark ? (
+                            <button
+                                className={`cp-checkin-btn${location ? ' with-gps' : ''}`}
+                                onClick={location ? handleMarkWithLocation : handleMark}
+                                disabled={loading}
+                            >
+                                {loading ? (
+                                    <>
+                                        <FiLoader size={13} className="cp-spin" /> Processing…
+                                    </>
+                                ) : location ? (
+                                    <>
+                                        <FiNavigation size={13} /> GPS Check-In
+                                    </>
+                                ) : (
+                                    <>
+                                        <FiCheckCircle size={13} /> Check In
+                                    </>
+                                )}
+                            </button>
+                        ) : (
+                            <span className="cp-status-badge cp-status-closed">
+                                {isPast ? 'Window Closed' : 'Not Yet Open'}
+                            </span>
+                        )}
+
+                        {!isOnline && canMark && (
+                            <span className="cp-offline-note">
+                                <FiWifiOff size={12} /> Offline — will sync
+                            </span>
+                        )}
+                        {syncPending && (
+                            <span className="cp-sync-pill">
+                                <FiLoader size={10} className="cp-spin" /> Syncing
+                            </span>
+                        )}
+                    </div>
+
+                    {/* Attendance detail link */}
+                    <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                        <button
+                            onClick={() => onViewAttendance(classItem.id)}
+                            className="text-xs text-indigo-500 hover:underline flex items-center gap-1"
+                        >
+                            <FiList size={11} /> Attendance records
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/* ───────────────────────────────────────────
+   MAIN PAGE COMPONENT
+────────────────────────────────────────── */
+export default function ClassesPage() {
+    const navigate = useNavigate();
+    const { user } = useAuth();
+    const { location, error: geoError, getLocation } = useGeolocation({ autoRequest: false });
+
+    // ── State declarations (all hooks before any conditional return) ──
+    const [showManageModal, setShowManageModal] = useState(false);
+    const [manualClassId, setManualClassId] = useState('');
+    const [classIdToManage, setClassIdToManage] = useState(null);
+    const [showNearby, setShowNearby] = useState(false);
+    const [nearbyClasses, setNearbyClasses] = useState([]);
+    const [nearbyLoading, setNearbyLoading] = useState(false);
+    const [viewTab, setViewTab] = useState('today'); // 'today' | 'week'
+    const [selectedClassDetail, setSelectedClassDetail] = useState(null);
+    const [showQuickAdd, setShowQuickAdd] = useState(false);
+    const [quickForm, setQuickForm] = useState({
+        day_of_week: 0,
+        start_time: '08:00',
+        end_time: '10:00',
+        unit_name: '',
+        venue: '',
+        lecturer: '',
+    });
+    const [quickSaving, setQuickSaving] = useState(false);
+
+    // ── TODAY'S CLASSES ──
+    const {
+        data: todayClasses,
+        isLoading: todayLoading,
+        isError: todayError,
+        refetch: refetchToday,
+    } = useQuery({
+        queryKey: ['today-classes'],
+        queryFn: async () => {
+            const response = await classesApi.getTodayClasses();
+            return response.data || response;
+        },
+        refetchInterval: 60000,
+    });
+
+    // ── WEEKLY TIMETABLE ──
+    const {
+        data: fullTimetable,
+        isLoading: timetableLoading,
+        isError: timetableError,
+    } = useQuery({
+        queryKey: ['full-timetable'],
+        queryFn: async () => {
+            const response = await classesApi.getTimetable();
+            return Array.isArray(response.data) ? response.data : response;
+        },
+        enabled: viewTab === 'week',
+    });
+
+    // ── WEEKLY SUMMARY ──
+    const {
+        data: weeklySummary,
+        isLoading: weeklyLoading,
+        isError: weeklyError,
+    } = useQuery({
+        queryKey: ['weekly-summary'],
+        queryFn: async () => {
+            const response = await classesApi.getWeeklySummary();
+            return response.data || response;
+        },
+    });
+
+    const isClassRep = user?.role === 'class_rep' || user?.role === 'admin';
+    const isOnline = navigator.onLine;
+
+    // ── NEARBY CLASSES ──
+    const handleFindNearby = async () => {
+        if (!location) {
+            getLocation();
+            toast('Getting your location…', { icon: '📍' });
+            return;
+        }
+        setNearbyLoading(true);
+        try {
+            const response = await apiClient.get('/geo/classes/nearby/', {
+                params: { lat: location.latitude, lon: location.longitude, max_distance: 500 },
+            });
+            setNearbyClasses(response.data || []);
+            setShowNearby(true);
+        } catch {
+            toast.error('Failed to find nearby classes');
+        } finally {
+            setNearbyLoading(false);
+        }
+    };
+
+    // ── MANAGE TIMETABLE MODAL ──
+    const handleOpenModal = async () => {
+        setClassIdToManage(null);
+        setManualClassId('');
+        if (isClassRep) {
+            try {
+                const res = await classesApi.getRepresentedClass();
+                const data = res.data || res;
+                if (data?.id) {
+                    setClassIdToManage(data.id);
+                    setShowManageModal(true);
+                    return;
+                }
+            } catch { /* fallback */ }
+        }
+        setShowManageModal(true);
+    };
+
+    const handleStartManaging = () => {
+        if (!manualClassId.trim()) {
+            toast.error('Please enter a valid Class Group ID');
+            return;
+        }
+        setClassIdToManage(manualClassId);
+    };
+
+    // ── DIRECTIONS ──
+    const openDirections = (venue, venueLat, venueLon) => {
+        if (!location) {
+            toast('Enable location for directions', { icon: '📍' });
+            return;
+        }
+        if (!venueLat || !venueLon) {
+            toast('Venue coordinates not available', { icon: '🗺️' });
+            return;
+        }
+        const url = `https://www.google.com/maps/dir/?api=1&origin=${location.latitude},${location.longitude}&destination=${venueLat},${venueLon}&travelmode=walking`;
+        window.open(url, '_blank');
+    };
+
+    // ── STATISTICS DERIVATION ──
+    const attendedCount = todayClasses?.filter(c => c.is_marked)?.length ?? 0;
+    const totalClasses = todayClasses?.length ?? 0;
+    const remaining = totalClasses - attendedCount;
+    const weeklyPct = weeklySummary?.percentage ?? 0;
+
+    const STATS = [
+        { label: "Today's Classes", value: totalClasses, color: '#6366f1', icon: <FiCalendar size={16} style={{ color: '#6366f1' }} /> },
+        { label: 'Attended', value: attendedCount, color: '#10b981', icon: <FiCheckCircle size={16} style={{ color: '#10b981' }} /> },
+        { label: 'Remaining', value: remaining, color: '#f59e0b', icon: <FiClock size={16} style={{ color: '#f59e0b' }} /> },
+        { label: 'Weekly Rate', value: `${weeklyPct}%`, color: '#8b5cf6', icon: <FiTrendingUp size={16} style={{ color: '#8b5cf6' }} /> },
+    ];
+
+    // ── Loading / Error states (placed AFTER all hooks) ──
+    if (todayLoading || weeklyLoading) {
+        return (
+            <>
+                <style>{STYLES}</style>
+                <div className="cp-wrap">
+                    <div className="cp-root">
+                        <SkeletonLoader type="list" count={4} />
+                    </div>
+                </div>
+            </>
+        );
+    }
+
+    if (todayError || weeklyError) {
+        return (
+            <>
+                <style>{STYLES}</style>
+                <div className="cp-wrap">
+                    <div className="cp-root">
+                        <div className="cp-empty" style={{ padding: 64 }}>
+                            <FiAlertCircle size={48} style={{ margin: '0 auto 16px', opacity: 0.4, color: '#ef4444' }} />
+                            <p style={{ fontWeight: 700, fontSize: '1.1rem', color: '#64748b' }}>Failed to load schedule</p>
+                            <p style={{ fontSize: '0.85rem', marginTop: 8, color: '#94a3b8' }}>
+                                {(todayError?.message || weeklyError?.message) || 'An unexpected error occurred.'}
+                            </p>
+                            <button onClick={() => refetchToday()} className="cp-btn cp-btn-primary" style={{ marginTop: 20 }}>
+                                <FiRefreshCw size={14} /> Retry
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </>
+        );
+    }
+
+    // ── Daily Breakdown for Weekly Summary ──
+    const dailyBreakdown = weeklySummary?.daily_breakdown || {};
+    const breakdownEntries = Object.entries(dailyBreakdown).map(([day, count]) => ({ day, count }));
+
+    const handleQuickAdd = async (e) => {
+        e.preventDefault();
+        if (!quickForm.unit_name.trim() || !quickForm.venue.trim()) {
+            toast.error('Unit name and venue required');
+            return;
+        }
+        if (!classIdToManage) {
+            toast.error('Class group not detected');
+            return;
+        }
+        setQuickSaving(true);
+        try {
+            await classesApi.createTimetableEntry({
+                ...quickForm,
+                class_group_id: classIdToManage,
+            });
+            toast.success('Class added!');
+            setQuickForm({ day_of_week: 0, start_time: '08:00', end_time: '10:00', unit_name: '', venue: '', lecturer: '' });
+            refetchToday();
+            setShowQuickAdd(false);
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Failed to add class');
+        } finally {
+            setQuickSaving(false);
+        }
+    };
+
+    // ── MAIN RENDER ──
+    return (
+        <>
+            <style>{STYLES}</style>
+
+            {/* Ambient background */}
+            <div className="cp-bg">
+                <div className="cp-blob cp-blob-1" />
+                <div className="cp-blob cp-blob-2" />
+                <div className="cp-blob cp-blob-3" />
+            </div>
+
+            <div className="cp-wrap">
+                <div className="cp-root">
+                    {/* ── HEADER ── */}
+                    <div className="cp-header">
+                        <div className="cp-header-title-block">
+                            <div className="cp-page-eyebrow">
+                                <FiActivity size={11} /> Academic Schedule
+                            </div>
+                            <h1 className="cp-page-title">Today's Classes</h1>
+                            <span className="cp-page-date">
+                                <FiCalendar size={13} />
+                                {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                            </span>
+                        </div>
+
+                        <div className="cp-header-actions">
+                            {/* Online/offline status */}
+                            <span className={`cp-status-pill ${isOnline ? 'cp-status-online' : 'cp-status-offline'}`}>
+                                {isOnline ? <FiWifi size={13} /> : <FiWifiOff size={13} />}
+                                {isOnline ? 'Online' : 'Offline'}
+                            </span>
+
+                            {/* Tab switch Today / Week */}
+                            <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+                                <button
+                                    onClick={() => setViewTab('today')}
+                                    className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${viewTab === 'today' ? 'bg-white dark:bg-gray-700 shadow-sm' : 'text-gray-500'}`}
+                                >
+                                    Today
+                                </button>
+                                <button
+                                    onClick={() => setViewTab('week')}
+                                    className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${viewTab === 'week' ? 'bg-white dark:bg-gray-700 shadow-sm' : 'text-gray-500'}`}
+                                >
+                                    Week
+                                </button>
+                            </div>
+
+                            <button className="cp-btn cp-btn-cyan" onClick={handleFindNearby} disabled={nearbyLoading}>
+                                {nearbyLoading ? <><FiLoader size={14} className="cp-spin" /> Finding…</> : <><FiNavigation size={14} /> Nearby Classes</>}
+                            </button>
+
+                            {isClassRep && (
+                                <>
+                                    <button className="cp-btn cp-btn-primary" onClick={handleOpenModal}>
+                                        <FiPlusCircle size={14} /> Manage Timetable
+                                    </button>
+                                    <button className="cp-btn cp-btn-primary" onClick={() => setShowQuickAdd(!showQuickAdd)}>
+                                        <FiPlus size={14} /> Quick Add
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Quick Add Form (collapsible) */}
+                    {showQuickAdd && isClassRep && (
+                        <form onSubmit={handleQuickAdd} className="bg-white dark:bg-gray-800 rounded-xl p-4 mb-6 border shadow-sm">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                <div>
+                                    <label className="text-xs font-semibold">Day</label>
+                                    <select value={quickForm.day_of_week} onChange={e => setQuickForm({ ...quickForm, day_of_week: parseInt(e.target.value) })} className="w-full p-2 rounded border text-sm">
+                                        <option value={0}>Monday</option>
+                                        <option value={1}>Tuesday</option>
+                                        <option value={2}>Wednesday</option>
+                                        <option value={3}>Thursday</option>
+                                        <option value={4}>Friday</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold">Start</label>
+                                    <input type="time" value={quickForm.start_time} onChange={e => setQuickForm({ ...quickForm, start_time: e.target.value })} className="w-full p-2 rounded border text-sm" />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold">End</label>
+                                    <input type="time" value={quickForm.end_time} onChange={e => setQuickForm({ ...quickForm, end_time: e.target.value })} className="w-full p-2 rounded border text-sm" />
+                                </div>
+                                <div className="col-span-2">
+                                    <label className="text-xs font-semibold">Unit Name</label>
+                                    <input type="text" value={quickForm.unit_name} onChange={e => setQuickForm({ ...quickForm, unit_name: e.target.value })} className="w-full p-2 rounded border text-sm" />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold">Venue</label>
+                                    <input type="text" value={quickForm.venue} onChange={e => setQuickForm({ ...quickForm, venue: e.target.value })} className="w-full p-2 rounded border text-sm" />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold">Lecturer</label>
+                                    <input type="text" value={quickForm.lecturer} onChange={e => setQuickForm({ ...quickForm, lecturer: e.target.value })} className="w-full p-2 rounded border text-sm" />
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-2 mt-3">
+                                <button type="button" onClick={() => setShowQuickAdd(false)} className="px-4 py-2 border rounded-lg text-sm">Cancel</button>
+                                <button type="submit" disabled={quickSaving} className="px-4 py-2 bg-indigo-500 text-white rounded-lg text-sm">
+                                    {quickSaving ? 'Adding...' : 'Add Class'}
+                                </button>
+                            </div>
+                        </form>
+                    )}
+
+                    {/* ── STAT CARDS ── */}
+                    <div className="cp-stats">
+                        {STATS.map(({ label, value, color, icon }) => (
+                            <div key={label} className="cp-stat" style={{ '--accent': color }}>
+                                <div className="cp-stat-icon">{icon}</div>
+                                <div className="cp-stat-val">{value}</div>
+                                <div className="cp-stat-label">{label}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* ── NEARBY CLASSES ── */}
+                    {showNearby && nearbyClasses.length > 0 && (
+                        <>
+                            <div className="cp-section-head"><FiTarget size={14} style={{ color: '#06b6d4' }} /><span style={{ color: '#06b6d4' }}>Nearby Classes</span></div>
+                            <div className="cp-nearby-section">
+                                <div className="cp-nearby-head">
+                                    <div className="cp-nearby-title"><FiNavigation size={15} style={{ color: '#06b6d4' }} />{nearbyClasses.length} class{nearbyClasses.length !== 1 ? 'es' : ''} within 500m</div>
+                                    <button className="cp-btn cp-btn-ghost" style={{ padding: '6px 12px', fontSize: '0.75rem' }} onClick={() => setShowNearby(false)}><FiX size={13} /> Hide</button>
+                                </div>
+                                <div className="cp-nearby-list">
+                                    {nearbyClasses.map(cls => (
+                                        <div key={cls.entry_id} className="cp-nearby-item">
+                                            <div className="cp-nearby-dot" />
+                                            <div className="cp-nearby-info">
+                                                <div className="cp-nearby-name">{cls.unit_name}</div>
+                                                <div className="cp-nearby-meta">{cls.venue} · {cls.start_time} – {cls.end_time} · 🚶 {cls.walking_time_minutes} min walk</div>
+                                            </div>
+                                            <span className="cp-nearby-dist"><FiMapPin size={10} />{cls.distance_display}</span>
+                                            <button className="cp-dir-btn" onClick={() => openDirections(cls.venue, cls.venue_latitude, cls.venue_longitude)}><FiExternalLink size={11} /> Go</button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </>
+                    )}
+
+                    {/* ── CLASS LIST (Today / Week) ── */}
+                    <div className="cp-section-head">
+                        <FiBookOpen size={14} />
+                        {viewTab === 'today' ? 'Schedule' : 'Weekly Timetable'}
+                        <span style={{ marginLeft: 'auto', fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                            {viewTab === 'today' ? `${attendedCount}/${totalClasses} attended` : ''}
+                        </span>
+                        <Link to="/classes/attendance" className="ml-2 text-xs text-indigo-500 hover:underline flex items-center gap-1" title="Attendance Summary">
+                            <FiBarChart2 size={11} /> Summary
+                        </Link>
+                    </div>
+
+                    {viewTab === 'today' ? (
+                        !todayClasses?.length ? (
+                            <div className="cp-empty"><span className="cp-empty-emoji">🎉</span><div className="cp-empty-title">No classes today!</div><div className="cp-empty-sub">Enjoy your free time or catch up on assignments.</div></div>
+                        ) : (
+                            <div className="cp-class-list">
+                                {todayClasses.map(classItem => (
+                                    <ClassCard
+                                        key={classItem.id}
+                                        classItem={classItem}
+                                        isOnline={isOnline}
+                                        location={location}
+                                        onViewDetail={setSelectedClassDetail}
+                                        onViewAttendance={(entryId) => navigate(`/classes/attendance/${entryId}`)}
+                                    />
+                                ))}
+                            </div>
+                        )
+                    ) : (
+                        /* Weekly timetable view */
+                        <div>
+                            {timetableLoading ? <SkeletonLoader type="list" count={4} /> : !fullTimetable?.length ? (
+                                <div className="cp-empty"><span className="cp-empty-emoji">📅</span><div className="cp-empty-title">No timetable entries</div></div>
+                            ) : (
+                                ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map((day, idx) => {
+                                    const dayEntries = (fullTimetable || []).filter(e => e.day_of_week === idx).sort((a, b) => a.start_time.localeCompare(b.start_time));
+                                    if (!dayEntries.length) return null;
+                                    return (
+                                        <div key={idx} className="mb-4">
+                                            <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">{day}</h3>
+                                            <div className="space-y-2">
+                                                {dayEntries.map(cls => (
+                                                    <div key={cls.id} className="flex items-center gap-4 bg-white dark:bg-gray-800 p-3 rounded-lg border">
+                                                        <span className="text-xs font-bold text-indigo-500 w-12">{cls.start_time?.slice(0, 5)}</span>
+                                                        <div className="flex-1">
+                                                            <p className="font-semibold text-sm">{cls.unit_name}</p>
+                                                            <p className="text-xs text-gray-500">{cls.venue} {cls.lecturer && `· ${cls.lecturer}`}</p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    )}
+
+                    {/* ── WEEKLY SUMMARY ── */}
+                    {weeklySummary && (
+                        <>
+                            <div className="cp-section-head"><FiBarChart2 size={14} /> Weekly Summary</div>
+                            <div className="cp-weekly">
+                                <div className="cp-weekly-head">
+                                    <div className="cp-weekly-icon"><FiBarChart2 size={20} style={{ color: '#6366f1' }} /></div>
+                                    <div><div className="cp-weekly-title">Attendance Overview</div><div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, marginTop: 2 }}>This week's performance</div></div>
+                                </div>
+
+                                <div className="cp-weekly-grid">
+                                    <div><div className="cp-weekly-stat-val" style={{ color: '#6366f1' }}>{weeklySummary.total_classes}</div><div className="cp-weekly-stat-label">Total Classes</div></div>
+                                    <div><div className="cp-weekly-stat-val" style={{ color: '#10b981' }}>{weeklySummary.marked_count}</div><div className="cp-weekly-stat-label">Marked Present</div></div>
+                                    <div><div className="cp-weekly-stat-val" style={{ color: '#f59e0b' }}>{weeklySummary.percentage}%</div><div className="cp-weekly-stat-label">Attendance Rate</div></div>
+                                </div>
+
+                                <div className="cp-weekly-bar-track"><div className="cp-weekly-bar-fill" style={{ width: `${weeklySummary.percentage}%` }} /></div>
+
+                                {/* Daily Breakdown */}
+                                {breakdownEntries.length > 0 && (
+                                    <div className="mt-4">
+                                        <h4 className="text-xs font-bold uppercase text-gray-500 mb-2">Daily Breakdown</h4>
+                                        <div className="space-y-1">
+                                            {breakdownEntries.map(({ day, count }) => (
+                                                <div key={day} className="flex items-center gap-2">
+                                                    <span className="text-xs w-16 text-gray-600">{day}</span>
+                                                    <div className="flex-1 bg-gray-200 dark:bg-gray-600 h-2 rounded-full overflow-hidden">
+                                                        <div className="h-full bg-indigo-400 rounded-full" style={{ width: `${Math.min(100, (count / (weeklySummary.total_classes || 1)) * 100)}%` }} />
+                                                    </div>
+                                                    <span className="text-xs font-semibold text-gray-500">{count}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="cp-weekly-bar-caption">
+                                    <span className="cp-weekly-caption-text">{weeklySummary.percentage}% complete</span>
+                                    <span className={`cp-weekly-caption-badge ${weeklySummary.percentage >= 75 ? 'cp-weekly-good' : 'cp-weekly-warn'}`}>
+                                        {weeklySummary.percentage >= 75 ? '🎯 Great job!' : '📚 Keep attending'}
+                                    </span>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+            </div>
+
+            {/* ── MANAGE TIMETABLE MODAL ── */}
+            {showManageModal && (
+                <div className="cp-modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowManageModal(false)}>
+                    <div className="cp-modal">
+                        <div className="cp-modal-header">
+                            <div className="cp-modal-title">Manage Class Timetable</div>
+                            <button className="cp-modal-close" onClick={() => setShowManageModal(false)}><FiX size={18} /></button>
+                        </div>
+                        <div className="cp-modal-body">
+                            {!classIdToManage ? (
+                                <div className="cp-id-form">
+                                    <div className="cp-id-icon">📚</div>
+                                    <div className="cp-id-title">Enter Class Group ID</div>
+                                    <div className="cp-id-sub">You can find the UUID in Django admin under Class Groups.</div>
+                                    <label className="cp-id-label">Class Group ID (UUID)</label>
+                                    <input type="text" value={manualClassId} onChange={e => setManualClassId(e.target.value)} placeholder="e.g., 27134bbe-..." className="cp-id-input" onKeyDown={(e) => e.key === 'Enter' && handleStartManaging()} />
+                                    <button className="cp-btn cp-btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '12px' }} onClick={handleStartManaging}>Continue <FiChevronRight size={15} /></button>
+                                    <button className="cp-id-cancel" onClick={() => setShowManageModal(false)}>Cancel</button>
+                                </div>
+                            ) : (
+                                <TimetableManager classGroupId={classIdToManage} classGroupName="Selected Class" onClose={() => setShowManageModal(false)} />
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── CLASS DETAIL MODAL ── */}
+            {selectedClassDetail && (
+                <div className="cp-modal-overlay" onClick={() => setSelectedClassDetail(null)}>
+                    <div className="cp-modal" style={{ maxWidth: 500 }}>
+                        <div className="cp-modal-header">
+                            <div className="cp-modal-title">{selectedClassDetail.unit_name}</div>
+                            <button className="cp-modal-close" onClick={() => setSelectedClassDetail(null)}><FiX size={18} /></button>
+                        </div>
+                        <div className="cp-modal-body">
+                            <p className="text-sm"><strong>Time:</strong> {selectedClassDetail.start_time?.slice(0, 5)} – {selectedClassDetail.end_time?.slice(0, 5)}</p>
+                            <p className="text-sm"><strong>Venue:</strong> {selectedClassDetail.venue}</p>
+                            <p className="text-sm"><strong>Lecturer:</strong> {selectedClassDetail.lecturer || 'N/A'}</p>
+                            {selectedClassDetail.latitude && selectedClassDetail.longitude && (
+                                <button onClick={() => openDirections(selectedClassDetail.venue, selectedClassDetail.latitude, selectedClassDetail.longitude)} className="mt-2 text-xs bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 px-3 py-1 rounded-lg">
+                                    <FiExternalLink size={11} className="inline mr-1" /> Directions
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
+    );
+}
+
+// ── STYLES (injected once) ──────────────────────
 const STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap');
 
   .cp-wrap * { box-sizing: border-box; }
   .cp-wrap { font-family: 'DM Sans', sans-serif; min-height: 100vh; position: relative; }
 
-  /* ── Ambient background ── */
   .cp-bg {
     position: fixed; inset: 0; z-index: -2; overflow: hidden;
     background: linear-gradient(155deg, #eef2ff 0%, #f8faff 45%, #f0fdf4 100%);
@@ -62,7 +745,6 @@ const STYLES = `
     to   { transform: translate(40px, 30px) scale(1.06); }
   }
 
-  /* ── Page load animation ── */
   .cp-root {
     max-width: 1080px; margin: 0 auto;
     padding: 28px 20px 100px;
@@ -81,7 +763,6 @@ const STYLES = `
   .cp-root > *:nth-child(4) { animation-delay: 0.15s; }
   .cp-root > *:nth-child(5) { animation-delay: 0.20s; }
 
-  /* ── HEADER ── */
   .cp-header {
     display: flex; align-items: flex-start; justify-content: space-between;
     gap: 16px; margin-bottom: 28px; flex-wrap: wrap;
@@ -111,7 +792,6 @@ const STYLES = `
   .dark .cp-page-date { color: #94a3b8; }
   .cp-header-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; flex-shrink: 0; }
 
-  /* ── Buttons ── */
   .cp-btn {
     display: inline-flex; align-items: center; gap: 8px;
     padding: 10px 18px; border-radius: 12px; border: none;
@@ -147,7 +827,6 @@ const STYLES = `
   .cp-btn-ghost:hover { background: rgba(255,255,255, 0.92); }
   .dark .cp-btn-ghost:hover { background: rgba(255,255,255, 0.1); }
 
-  /* Online / offline pill */
   .cp-status-pill {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 8px 14px; border-radius: 12px;
@@ -159,7 +838,6 @@ const STYLES = `
   .dark .cp-status-online  { background: rgba(16,185,129,0.12); color: #34d399; }
   .dark .cp-status-offline { background: rgba(239,68,68,0.10);  color: #f87171; }
 
-  /* ── STAT CARDS ── */
   .cp-stats {
     display: grid; grid-template-columns: repeat(4, 1fr);
     gap: 12px; margin-bottom: 24px;
@@ -209,7 +887,6 @@ const STYLES = `
     letter-spacing: 0.08em; color: #94a3b8; margin-top: 5px;
   }
 
-  /* ── SECTION HEADING ── */
   .cp-section-head {
     display: flex; align-items: center; gap: 10px;
     font-family: 'Bricolage Grotesque', sans-serif;
@@ -223,10 +900,8 @@ const STYLES = `
   }
   .dark .cp-section-head { color: #818cf8; }
 
-  /* ── CLASS LIST ── */
   .cp-class-list { display: flex; flex-direction: column; gap: 14px; margin-bottom: 32px; }
 
-  /* ── CLASS CARD ── */
   .cp-class-card {
     border-radius: 20px; padding: 20px 22px;
     background: rgba(255,255,255, 0.9);
@@ -254,7 +929,6 @@ const STYLES = `
   }
   .dark .cp-class-card:hover { box-shadow: 0 14px 36px rgba(0,0,0, 0.55); }
 
-  /* Card states */
   .cp-class-card.state-marked  { --status-color: #10b981; background: rgba(236,253,245, 0.92); }
   .cp-class-card.state-open    { --status-color: #6366f1; }
   .cp-class-card.state-closed  { --status-color: #94a3b8; }
@@ -263,7 +937,6 @@ const STYLES = `
   .cp-card-inner { display: flex; align-items: flex-start; gap: 16px; }
   @media (max-width: 560px) { .cp-card-inner { flex-direction: column; } }
 
-  /* Time badge */
   .cp-time-badge {
     flex-shrink: 0; border-radius: 14px; padding: 10px 14px;
     background: rgba(99,102,241, 0.08); text-align: center;
@@ -280,7 +953,6 @@ const STYLES = `
   .cp-class-card.state-marked .cp-time-start { color: #059669; }
   .dark .cp-class-card.state-marked .cp-time-start { color: #34d399; }
 
-  /* Card body */
   .cp-card-body { flex: 1; min-width: 0; }
   .cp-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
   .cp-card-unit {
@@ -302,7 +974,6 @@ const STYLES = `
   .dark .cp-card-meta { color: #94a3b8; }
   .cp-card-meta span { display: flex; align-items: center; gap: 5px; }
 
-  /* Progress bar */
   .cp-progress-wrap { margin-bottom: 10px; }
   .cp-progress-labels { display: flex; justify-content: space-between; margin-bottom: 4px; }
   .cp-progress-track {
@@ -322,7 +993,6 @@ const STYLES = `
   }
   .cp-progress-label { font-size: 0.66rem; font-weight: 700; color: #f59e0b; }
 
-  /* Card action row */
   .cp-card-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .cp-offline-note {
     display: flex; align-items: center; gap: 5px;
@@ -330,7 +1000,6 @@ const STYLES = `
   }
   .dark .cp-offline-note { color: #f87171; }
 
-  /* Status badges */
   .cp-status-badge {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 8px 16px; border-radius: 10px;
@@ -341,7 +1010,6 @@ const STYLES = `
   .dark .cp-status-marked { background: rgba(16,185,129,0.12); color: #34d399; border-color: rgba(16,185,129,0.2); }
   .dark .cp-status-closed { background: rgba(148,163,184,0.08); color: #94a3b8; }
 
-  /* Check-in button */
   .cp-checkin-btn {
     display: inline-flex; align-items: center; gap: 8px;
     padding: 9px 20px; border-radius: 11px; border: none;
@@ -367,7 +1035,6 @@ const STYLES = `
   }
   @keyframes syncPulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
 
-  /* ── NEARBY CLASSES ── */
   .cp-nearby-section {
     border-radius: 20px; padding: 20px;
     background: rgba(255,255,255, 0.85);
@@ -424,7 +1091,6 @@ const STYLES = `
   }
   .cp-dir-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(6,182,212, 0.4); }
 
-  /* ── EMPTY STATE ── */
   .cp-empty {
     text-align: center; padding: 60px 20px;
     border-radius: 24px;
@@ -442,7 +1108,6 @@ const STYLES = `
   .dark .cp-empty-title { color: #f1f5f9; }
   .cp-empty-sub { font-size: 0.85rem; color: #94a3b8; }
 
-  /* ── WEEKLY SUMMARY ── */
   .cp-weekly {
     border-radius: 24px; padding: 28px;
     background: rgba(255,255,255, 0.88);
@@ -497,7 +1162,6 @@ const STYLES = `
   .dark .cp-weekly-good { background: rgba(16,185,129,0.12); color: #34d399; }
   .dark .cp-weekly-warn { background: rgba(245,158,11,0.1); color: #fbbf24; }
 
-  /* ── MODAL ── */
   .cp-modal-overlay {
     position: fixed; inset: 0;
     background: rgba(0,0,0, 0.55);
@@ -542,7 +1206,6 @@ const STYLES = `
   .cp-modal-body::-webkit-scrollbar-thumb { background: rgba(0,0,0, 0.12); border-radius: 99px; }
   .dark .cp-modal-body::-webkit-scrollbar-thumb { background: rgba(255,255,255, 0.1); }
 
-  /* Modal inner form */
   .cp-id-form { max-width: 440px; margin: 0 auto; text-align: center; }
   .cp-id-icon { font-size: 3.5rem; margin-bottom: 14px; }
   .cp-id-title { font-family:'Bricolage Grotesque',sans-serif; font-size:1.3rem; font-weight:700; color:#0f172a; margin-bottom:6px; }
@@ -562,480 +1225,6 @@ const STYLES = `
   .cp-id-cancel { display:block; width:100%; padding:10px; border:none; background:transparent; font-size:.82rem; color:#94a3b8; cursor:pointer; margin-top:8px; transition:color .15s; }
   .cp-id-cancel:hover { color:#ef4444; }
 
-  /* ── Spin ── */
   @keyframes cpSpin { to { transform: rotate(360deg); } }
   .cp-spin { animation: cpSpin 0.8s linear infinite; }
 `;
-
-/* ─────────────────────────────────────────────────────────
-   ClassCard
-───────────────────────────────────────────── */
-function ClassCard({ classItem, isOnline, location }) {
-    const { isMarked, syncPending, markAttendance } = useAttendance(classItem.id);
-    const [loading, setLoading] = useState(false);
-
-    const handleMark = async () => {
-        setLoading(true);
-        try {
-            await markAttendance();
-            toast.success('Attendance marked!', { icon: '✅' });
-        } catch {
-            toast.error('Failed to mark attendance', { icon: '❌' });
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleMarkWithLocation = async () => {
-        if (!location) {
-            toast('Location unavailable. Marking without GPS…', { icon: '⚠️' });
-            handleMark();
-            return;
-        }
-        setLoading(true);
-        try {
-            await apiClient.post('/classes/check-in/', {
-                timetable_entry_id: classItem.id,
-                latitude: location.latitude,
-                longitude: location.longitude,
-                accuracy: location.accuracy,
-            });
-            toast.success('Location-verified check-in! 📍', { icon: '✅' });
-        } catch {
-            toast.error('Failed to mark attendance');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const canMark = classItem.can_mark && isOnline;
-    const isPast = !classItem.can_mark && !isMarked;
-    const stateClass = isMarked ? 'state-marked' : canMark ? 'state-open' : 'state-closed';
-    const hasProgress = classItem.remaining_time !== null && !isMarked && canMark;
-    const pct = hasProgress ? Math.min(100, (classItem.remaining_time / 30) * 100) : 0;
-
-    return (
-        <div className={`cp-class-card ${stateClass}`}>
-            <div className="cp-card-inner">
-                {/* Time badge */}
-                <div className="cp-time-badge">
-                    <div className="cp-time-start">{classItem.start_time?.slice(0, 5) || '—'}</div>
-                    <div className="cp-time-end">to {classItem.end_time?.slice(0, 5) || '—'}</div>
-                </div>
-
-                {/* Body */}
-                <div className="cp-card-body">
-                    <div className="cp-card-top">
-                        <h3 className="cp-card-unit">{classItem.unit_name}</h3>
-                        {classItem.lecturer && (
-                            <span className="cp-lecturer-badge">
-                                <FiUser size={11} /> {classItem.lecturer}
-                            </span>
-                        )}
-                    </div>
-
-                    <div className="cp-card-meta">
-                        <span><FiMapPin size={12} />{classItem.venue || 'Venue TBA'}</span>
-                        <span><FiClock size={12} />{classItem.start_time?.slice(0, 5)} – {classItem.end_time?.slice(0, 5)}</span>
-                    </div>
-
-                    {hasProgress && (
-                        <div className="cp-progress-wrap">
-                            <div className="cp-progress-labels">
-                                <span className="cp-progress-label">
-                                    <FiClock size={10} style={{ display: 'inline', marginRight: 3 }} />
-                                    {classItem.remaining_time} min left
-                                </span>
-                                <span className="cp-progress-label" style={{ opacity: 0.6 }}>{Math.round(pct)}%</span>
-                            </div>
-                            <div className="cp-progress-track">
-                                <div className="cp-progress-fill" style={{ width: `${pct}%` }} />
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="cp-card-actions">
-                        {isMarked ? (
-                            <span className="cp-status-badge cp-status-marked">
-                                <FiCheckCircle size={14} /> Attended
-                            </span>
-                        ) : canMark ? (
-                            <button
-                                className={`cp-checkin-btn${location ? ' with-gps' : ''}`}
-                                onClick={location ? handleMarkWithLocation : handleMark}
-                                disabled={loading}
-                            >
-                                {loading
-                                    ? <><FiLoader size={13} className="cp-spin" /> Processing…</>
-                                    : location
-                                        ? <><FiNavigation size={13} /> GPS Check-In</>
-                                        : <><FiCheckCircle size={13} /> Check In</>}
-                            </button>
-                        ) : (
-                            <span className="cp-status-badge cp-status-closed">
-                                {isPast ? 'Window Closed' : 'Not Yet Open'}
-                            </span>
-                        )}
-
-                        {!isOnline && canMark && (
-                            <span className="cp-offline-note"><FiWifiOff size={12} /> Offline — will sync</span>
-                        )}
-                        {syncPending && (
-                            <span className="cp-sync-pill"><FiLoader size={10} className="cp-spin" /> Syncing</span>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-/* ─────────────────────────────────────────────────────────
-   MAIN PAGE
-───────────────────────────────────────────── */
-export default function ClassesPage() {
-    const { user } = useAuth();
-    const { location, error: geoError, getLocation } = useGeolocation();
-    const [showManageModal, setShowManageModal] = useState(false);
-    const [manualClassId, setManualClassId] = useState('');
-    const [classIdToManage, setClassIdToManage] = useState(null);
-    const [showNearby, setShowNearby] = useState(false);
-    const [nearbyClasses, setNearbyClasses] = useState([]);
-    const [nearbyLoading, setNearbyLoading] = useState(false);
-
-    const { data: todayClasses, isLoading, refetch } = useQuery({
-        queryKey: ['today-classes'],
-        queryFn: async () => {
-            const response = await apiClient.get('/classes/today/');
-            return response.data;
-        },
-        refetchInterval: 60000,
-    });
-
-    const { data: weeklySummary } = useQuery({
-        queryKey: ['weekly-summary'],
-        queryFn: async () => {
-            const response = await apiClient.get('/classes/weekly-summary/');
-            return response.data;
-        },
-    });
-
-    const isClassRep = user?.role === 'class_rep' || user?.role === 'admin';
-    const isOnline = navigator.onLine;
-
-    const handleFindNearby = async () => {
-        if (!location) {
-            getLocation();
-            toast('Getting your location…', { icon: '📍' });
-            return;
-        }
-        setNearbyLoading(true);
-        try {
-            const response = await apiClient.get('/geo/classes/nearby/', {
-                params: { lat: location.latitude, lon: location.longitude, max_distance: 500 },
-            });
-            setNearbyClasses(response.data || []);
-            setShowNearby(true);
-        } catch {
-            toast.error('Failed to find nearby classes');
-        } finally {
-            setNearbyLoading(false);
-        }
-    };
-
-    const handleOpenModal = async () => {
-        setClassIdToManage(null);
-        setManualClassId('');
-        if (isClassRep) {
-            try {
-                const res = await classesApi.getRepresentedClass();
-                const data = res.data || res;
-                if (data?.id) {
-                    setClassIdToManage(data.id);
-                    setShowManageModal(true);
-                    return;
-                }
-            } catch { }
-        }
-        setShowManageModal(true);
-    };
-
-    const handleStartManaging = () => {
-        if (!manualClassId.trim()) {
-            toast.error('Please enter a valid Class Group ID');
-            return;
-        }
-        setClassIdToManage(manualClassId);
-    };
-
-    const openDirections = (venue, venueLat, venueLon) => {
-        if (location) {
-            const url = `https://www.google.com/maps/dir/?api=1&origin=${location.latitude},${location.longitude}&destination=${venueLat || ''},${venueLon || ''}&travelmode=walking`;
-            window.open(url, '_blank');
-        } else {
-            toast('Enable location for directions', { icon: '📍' });
-        }
-    };
-
-    const attendedCount = todayClasses?.filter(c => c.is_marked)?.length ?? 0;
-    const totalClasses = todayClasses?.length ?? 0;
-    const remaining = totalClasses - attendedCount;
-    const weeklyPct = weeklySummary?.percentage ?? 0;
-
-    const STATS = [
-        { label: "Today's Classes", value: totalClasses, color: '#6366f1', icon: <FiCalendar size={16} style={{ color: '#6366f1' }} /> },
-        { label: 'Attended', value: attendedCount, color: '#10b981', icon: <FiCheckCircle size={16} style={{ color: '#10b981' }} /> },
-        { label: 'Remaining', value: remaining, color: '#f59e0b', icon: <FiClock size={16} style={{ color: '#f59e0b' }} /> },
-        { label: 'Weekly Rate', value: `${weeklyPct}%`, color: '#8b5cf6', icon: <FiTrendingUp size={16} style={{ color: '#8b5cf6' }} /> },
-    ];
-
-    if (isLoading) {
-        return (
-            <>
-                <style>{STYLES}</style>
-                <div className="cp-bg">
-                    <div className="cp-blob cp-blob-1" />
-                    <div className="cp-blob cp-blob-2" />
-                    <div className="cp-blob cp-blob-3" />
-                </div>
-                <div className="cp-wrap">
-                    <div className="cp-root">
-                        <SkeletonLoader type="list" count={4} />
-                    </div>
-                </div>
-            </>
-        );
-    }
-
-    return (
-        <>
-            <style>{STYLES}</style>
-
-            {/* Ambient background */}
-            <div className="cp-bg">
-                <div className="cp-blob cp-blob-1" />
-                <div className="cp-blob cp-blob-2" />
-                <div className="cp-blob cp-blob-3" />
-            </div>
-
-            <div className="cp-wrap">
-                <div className="cp-root">
-
-                    {/* ── HEADER ── */}
-                    <div className="cp-header">
-                        <div className="cp-header-title-block">
-                            <div className="cp-page-eyebrow">
-                                <FiActivity size={11} /> Academic Schedule
-                            </div>
-                            <h1 className="cp-page-title">Today's Classes</h1>
-                            <span className="cp-page-date">
-                                <FiCalendar size={13} />
-                                {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                            </span>
-                        </div>
-
-                        <div className="cp-header-actions">
-                            {/* Online indicator */}
-                            <span className={`cp-status-pill ${isOnline ? 'cp-status-online' : 'cp-status-offline'}`}>
-                                {isOnline ? <FiWifi size={13} /> : <FiWifiOff size={13} />}
-                                {isOnline ? 'Online' : 'Offline'}
-                            </span>
-
-                            {/* Nearby classes */}
-                            <button
-                                className="cp-btn cp-btn-cyan"
-                                onClick={handleFindNearby}
-                                disabled={nearbyLoading}
-                            >
-                                {nearbyLoading
-                                    ? <><FiLoader size={14} className="cp-spin" /> Finding…</>
-                                    : <><FiNavigation size={14} /> Nearby Classes</>}
-                            </button>
-
-                            {/* Manage timetable (class reps) */}
-                            {isClassRep && (
-                                <button className="cp-btn cp-btn-primary" onClick={handleOpenModal}>
-                                    <FiPlusCircle size={14} /> Manage Timetable
-                                </button>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* ── STAT CARDS ── */}
-                    <div className="cp-stats">
-                        {STATS.map(({ label, value, color, icon }) => (
-                            <div key={label} className="cp-stat" style={{ '--accent': color }}>
-                                <div className="cp-stat-icon">{icon}</div>
-                                <div className="cp-stat-val">{value}</div>
-                                <div className="cp-stat-label">{label}</div>
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* ── NEARBY CLASSES ── */}
-                    {showNearby && nearbyClasses.length > 0 && (
-                        <>
-                            <div className="cp-section-head">
-                                <FiTarget size={14} style={{ color: '#06b6d4' }} />
-                                <span style={{ color: '#06b6d4' }}>Nearby Classes</span>
-                            </div>
-                            <div className="cp-nearby-section">
-                                <div className="cp-nearby-head">
-                                    <div className="cp-nearby-title">
-                                        <FiNavigation size={15} style={{ color: '#06b6d4' }} />
-                                        {nearbyClasses.length} class{nearbyClasses.length !== 1 ? 'es' : ''} within 500m
-                                    </div>
-                                    <button className="cp-btn cp-btn-ghost" style={{ padding: '6px 12px', fontSize: '0.75rem' }} onClick={() => setShowNearby(false)}>
-                                        <FiX size={13} /> Hide
-                                    </button>
-                                </div>
-                                <div className="cp-nearby-list">
-                                    {nearbyClasses.map(cls => (
-                                        <div key={cls.entry_id} className="cp-nearby-item">
-                                            <div className="cp-nearby-dot" />
-                                            <div className="cp-nearby-info">
-                                                <div className="cp-nearby-name">{cls.unit_name}</div>
-                                                <div className="cp-nearby-meta">
-                                                    {cls.venue} &nbsp;·&nbsp; {cls.start_time} – {cls.end_time}
-                                                    &nbsp;·&nbsp; 🚶 {cls.walking_time_minutes} min walk
-                                                </div>
-                                            </div>
-                                            <span className="cp-nearby-dist"><FiMapPin size={10} />{cls.distance_display}</span>
-                                            <button
-                                                className="cp-dir-btn"
-                                                onClick={() => openDirections(cls.venue, cls.venue_latitude, cls.venue_longitude)}
-                                            >
-                                                <FiExternalLink size={11} /> Go
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </>
-                    )}
-
-                    {/* ── CLASS LIST ── */}
-                    <div className="cp-section-head">
-                        <FiBookOpen size={14} />
-                        Schedule
-                        <span style={{ marginLeft: 'auto', fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-                            {attendedCount}/{totalClasses} attended
-                        </span>
-                    </div>
-
-                    {!todayClasses?.length ? (
-                        <div className="cp-empty">
-                            <span className="cp-empty-emoji">🎉</span>
-                            <div className="cp-empty-title">No classes today!</div>
-                            <div className="cp-empty-sub">Enjoy your free time or catch up on assignments.</div>
-                        </div>
-                    ) : (
-                        <div className="cp-class-list">
-                            {todayClasses.map(classItem => (
-                                <ClassCard
-                                    key={classItem.id}
-                                    classItem={classItem}
-                                    isOnline={isOnline}
-                                    location={location}
-                                />
-                            ))}
-                        </div>
-                    )}
-
-                    {/* ── WEEKLY SUMMARY ── */}
-                    {weeklySummary && (
-                        <>
-                            <div className="cp-section-head">
-                                <FiBarChart2 size={14} /> Weekly Summary
-                            </div>
-                            <div className="cp-weekly">
-                                <div className="cp-weekly-head">
-                                    <div className="cp-weekly-icon">
-                                        <FiBarChart2 size={20} style={{ color: '#6366f1' }} />
-                                    </div>
-                                    <div>
-                                        <div className="cp-weekly-title">Attendance Overview</div>
-                                        <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, marginTop: 2 }}>
-                                            This week's performance
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="cp-weekly-grid">
-                                    <div>
-                                        <div className="cp-weekly-stat-val" style={{ color: '#6366f1' }}>{weeklySummary.total_classes}</div>
-                                        <div className="cp-weekly-stat-label">Total Classes</div>
-                                    </div>
-                                    <div>
-                                        <div className="cp-weekly-stat-val" style={{ color: '#10b981' }}>{weeklySummary.marked_count}</div>
-                                        <div className="cp-weekly-stat-label">Marked Present</div>
-                                    </div>
-                                    <div>
-                                        <div className="cp-weekly-stat-val" style={{ color: '#f59e0b' }}>{weeklySummary.percentage}%</div>
-                                        <div className="cp-weekly-stat-label">Attendance Rate</div>
-                                    </div>
-                                </div>
-
-                                <div className="cp-weekly-bar-track">
-                                    <div className="cp-weekly-bar-fill" style={{ width: `${weeklySummary.percentage}%` }} />
-                                </div>
-                                <div className="cp-weekly-bar-caption">
-                                    <span className="cp-weekly-caption-text">{weeklySummary.percentage}% complete</span>
-                                    <span className={`cp-weekly-caption-badge ${weeklySummary.percentage >= 75 ? 'cp-weekly-good' : 'cp-weekly-warn'}`}>
-                                        {weeklySummary.percentage >= 75 ? '🎯 Great job!' : '📚 Keep attending'}
-                                    </span>
-                                </div>
-                            </div>
-                        </>
-                    )}
-
-                </div>
-            </div>
-
-            {/* ── MANAGE TIMETABLE MODAL ── */}
-            {showManageModal && (
-                <div className="cp-modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowManageModal(false)}>
-                    <div className="cp-modal">
-                        <div className="cp-modal-header">
-                            <div className="cp-modal-title">Manage Class Timetable</div>
-                            <button className="cp-modal-close" onClick={() => setShowManageModal(false)}>
-                                <FiX size={18} />
-                            </button>
-                        </div>
-
-                        <div className="cp-modal-body">
-                            {!classIdToManage ? (
-                                <div className="cp-id-form">
-                                    <div className="cp-id-icon">📚</div>
-                                    <div className="cp-id-title">Enter Class Group ID</div>
-                                    <div className="cp-id-sub">
-                                        You can find the UUID in Django admin under Class Groups.
-                                    </div>
-                                    <label className="cp-id-label">Class Group ID (UUID)</label>
-                                    <input
-                                        type="text"
-                                        value={manualClassId}
-                                        onChange={(e) => setManualClassId(e.target.value)}
-                                        placeholder="e.g., 27134bbe-5e06-47ea-8cf6-c825f9324dd6"
-                                        className="cp-id-input"
-                                        onKeyDown={(e) => e.key === 'Enter' && handleStartManaging()}
-                                    />
-                                    <button className="cp-btn cp-btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '12px' }} onClick={handleStartManaging}>
-                                        Continue <FiChevronRight size={15} />
-                                    </button>
-                                    <button className="cp-id-cancel" onClick={() => setShowManageModal(false)}>Cancel</button>
-                                </div>
-                            ) : (
-                                <TimetableManager
-                                    classGroupId={classIdToManage}
-                                    classGroupName="Selected Class"
-                                    onClose={() => setShowManageModal(false)}
-                                />
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-        </>
-    );
-}

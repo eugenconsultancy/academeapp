@@ -1,7 +1,6 @@
 from ninja import Schema
-from datetime import datetime
 from typing import Optional, List
-from pydantic import validator
+from pydantic import field_validator
 import re
 
 class SignupIn(Schema):
@@ -12,7 +11,8 @@ class SignupIn(Schema):
     class_name: str
     institution: str
     
-    @validator('phone_number')
+    @field_validator('phone_number')
+    @classmethod
     def validate_phone(cls, v):
         if not re.match(r'^\+?254\d{9}$', v):
             raise ValueError('Invalid phone number format. Use +254XXXXXXXXX')
@@ -21,14 +21,19 @@ class SignupIn(Schema):
 class OTPRequestIn(Schema):
     phone_number: str
 
+class ResetPasswordIn(Schema):
+    phone_number: str
+    otp: str
+    new_password: str
+
 class OTPVerifyIn(Schema):
     phone_number: str
     otp: str
 
 class ProfileOut(Schema):
     id: str
-    phone_number: str  # This will be masked
-    admission_number: str  # This will be masked for other users
+    phone_number: str
+    admission_number: str
     full_name: str
     email: Optional[str]
     class_name: str
@@ -38,11 +43,11 @@ class ProfileOut(Schema):
     badges: List[str]
     is_online: bool
     login_count: int
-    
-# THE VALIDATOR FUCNTION IS DEPRCIATED SO CONSIDER OTHER OPTIONS    
-    @validator('admission_number', pre=True)
+    biometric_enabled: bool 
+
+    @field_validator('admission_number', mode='before')
+    @classmethod
     def mask_admission(cls, v):
-        # Mask admission number for privacy
         if v and len(v) > 6:
             return v[:3] + '****' + v[-3:]
         return v
@@ -69,3 +74,16 @@ class DataExportOut(Schema):
 
 class DeleteAccountIn(Schema):
     reason: Optional[str] = None
+
+# ============================================
+# CLOUD BIOMETRIC SCHEMAS
+# ============================================
+
+class BiometricEnrollIn(Schema):
+    """Expects image data (e.g., base64 string or file reference) for cloud verification"""
+    image_data: str 
+
+class BiometricLoginIn(Schema):
+    """Expects phone number and image data for cloud-based verification"""
+    phone_number: str
+    image_data: str

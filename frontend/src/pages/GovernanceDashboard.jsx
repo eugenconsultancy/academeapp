@@ -142,7 +142,12 @@ export default function GovernanceDashboard() {
                 <nav className="gd-breadcrumb">
                     <Link to="/"><FiHome size={13} /> Home</Link>
                     <FiChevronRight size={12} />
-                    {user?.role === 'admin' && <><Link to="/admin"><FiSettings size={13} /> Admin</Link><FiChevronRight size={12} /></>}
+                    {user?.role === 'admin' && (
+                        <>
+                            <Link to="/admin"><FiSettings size={13} /> Admin</Link>
+                            <FiChevronRight size={12} />
+                        </>
+                    )}
                     <span>Governance</span>
                 </nav>
 
@@ -191,7 +196,10 @@ export default function GovernanceDashboard() {
 
                 {/* Expiring Roles */}
                 <div className="gd-section">
-                    <h2 className="gd-section-title"><FiAlertTriangle size={16} style={{ color: '#d97706' }} /> Expiring Roles</h2>
+                    <h2 className="gd-section-title">
+                        <FiAlertTriangle size={16} style={{ color: '#d97706' }} />
+                        Expiring Roles
+                    </h2>
                     {expiringRoles.length > 0 ? (
                         <div className="gd-alert gd-alert-warning">
                             <div style={{ flex: 1 }}>
@@ -213,8 +221,11 @@ export default function GovernanceDashboard() {
 
                 {/* Recent Activity */}
                 <div className="gd-section">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                        <h2 className="gd-section-title" style={{ marginBottom: 0 }}><FiActivity size={16} style={{ color: '#6366f1' }} /> Recent Activity</h2>
+                    <div style={{ display: 'flex', justifycontent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                        <h2 className="gd-section-title" style={{ marginBottom: 0 }}>
+                            <FiActivity size={16} style={{ color: '#6366f1' }} />
+                            Recent Activity
+                        </h2>
                         <Link to="/admin/audit-logs" className="gd-btn">View All</Link>
                     </div>
                     {recentActivity.length > 0 ? (
@@ -241,23 +252,46 @@ export default function GovernanceDashboard() {
 
                 {/* Quick Links */}
                 <div className="gd-section">
-                    <h2 className="gd-section-title"><FiEye size={16} style={{ color: '#6366f1' }} /> Quick Actions</h2>
+                    <h2 className="gd-section-title">
+                        <FiEye size={16} style={{ color: '#6366f1' }} />
+                        Quick Actions
+                    </h2>
                     <div className="gd-links">
                         <Link to="/admin/roles" className="gd-link">
-                            <div className="gd-link-icon" style={{ background: 'rgba(99,102,241,0.08)' }}><FiUserPlus size={18} style={{ color: '#6366f1' }} /></div>
-                            <div><div className="gd-link-title">Role Management</div><div className="gd-link-desc">Assign & revoke leadership roles</div></div>
+                            <div className="gd-link-icon" style={{ background: 'rgba(99,102,241,0.08)' }}>
+                                <FiUserPlus size={18} style={{ color: '#6366f1' }} />
+                            </div>
+                            <div>
+                                <div className="gd-link-title">Role Management</div>
+                                <div className="gd-link-desc">Assign & revoke leadership roles</div>
+                            </div>
                         </Link>
                         <Link to="/admin/audit-logs" className="gd-link">
-                            <div className="gd-link-icon" style={{ background: 'rgba(16,185,129,0.08)' }}><FiActivity size={18} style={{ color: '#10b981' }} /></div>
-                            <div><div className="gd-link-title">Audit Logs</div><div className="gd-link-desc">View all governance actions</div></div>
+                            <div className="gd-link-icon" style={{ background: 'rgba(16,185,129,0.08)' }}>
+                                <FiActivity size={18} style={{ color: '#10b981' }} />
+                            </div>
+                            <div>
+                                <div className="gd-link-title">Audit Logs</div>
+                                <div className="gd-link-desc">View all governance actions</div>
+                            </div>
                         </Link>
                         <Link to="/governance/stats" className="gd-link">
-                            <div className="gd-link-icon" style={{ background: 'rgba(139,92,246,0.08)' }}><FiBarChart2 size={18} style={{ color: '#8b5cf6' }} /></div>
-                            <div><div className="gd-link-title">Platform Statistics</div><div className="gd-link-desc">Detailed metrics & trends</div></div>
+                            <div className="gd-link-icon" style={{ background: 'rgba(139,92,246,0.08)' }}>
+                                <FiBarChart2 size={18} style={{ color: '#8b5cf6' }} />
+                            </div>
+                            <div>
+                                <div className="gd-link-title">Platform Statistics</div>
+                                <div className="gd-link-desc">Detailed metrics & trends</div>
+                            </div>
                         </Link>
                         <Link to="/admin/reports" className="gd-link">
-                            <div className="gd-link-icon" style={{ background: 'rgba(239,68,68,0.08)' }}><FiFlag size={18} style={{ color: '#ef4444' }} /></div>
-                            <div><div className="gd-link-title">Content Reports</div><div className="gd-link-desc">Review reported content</div></div>
+                            <div className="gd-link-icon" style={{ background: 'rgba(239,68,68,0.08)' }}>
+                                <FiFlag size={18} style={{ color: '#ef4444' }} />
+                            </div>
+                            <div>
+                                <div className="gd-link-title">Content Reports</div>
+                                <div className="gd-link-desc">Review reported content</div>
+                            </div>
                         </Link>
                     </div>
                 </div>

@@ -1,14 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { formatDistanceToNow } from 'date-fns';
 import { accountsApi } from '../api/accountsApi';
 import { useAuth } from '../contexts/AuthContext';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
 import toast from 'react-hot-toast';
 import {
     FiSmartphone, FiMonitor, FiTablet, FiX, FiShield,
-    FiLogOut, FiHome, FiChevronRight, FiUser, FiSettings,
+    FiLogOut, FiHome, FiChevronRight, FiUser,
     FiRefreshCw, FiAlertCircle, FiClock, FiMapPin,
-    FiCheckCircle, FiArrowLeft,
+    FiCheckCircle, FiSearch, FiDownload, FiChevronDown,
+    FiChevronUp, FiStar
 } from 'react-icons/fi';
 
 const DEVICE_ICONS = {
@@ -16,20 +18,6 @@ const DEVICE_ICONS = {
     desktop: FiMonitor,
     tablet: FiTablet,
 };
-
-function getRelativeTime(dateStr) {
-    if (!dateStr) return '';
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const seconds = Math.floor(diff / 1000);
-    if (seconds < 60) return 'Just now';
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    if (days < 7) return `${days}d ago`;
-    return new Date(dateStr).toLocaleDateString();
-}
 
 export default function SessionsPage() {
     const { user } = useAuth();
@@ -39,6 +27,16 @@ export default function SessionsPage() {
     const [revokingAll, setRevokingAll] = useState(false);
     const [revokingId, setRevokingId] = useState(null);
     const [showRevokeAllModal, setShowRevokeAllModal] = useState(false);
+    const [expandedSession, setExpandedSession] = useState(null);
+    const [trustedDevices, setTrustedDevices] = useState(() => {
+        try {
+            return JSON.parse(localStorage.getItem('trusted_devices') || '[]');
+        } catch {
+            return [];
+        }
+    });
+    const [searchQuery, setSearchQuery] = useState('');
+    const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
 
     useEffect(() => { fetchSessions(); }, []);
 
@@ -59,11 +57,14 @@ export default function SessionsPage() {
 
     const handleRevokeSession = async (sessionId) => {
         setRevokingId(sessionId);
+        // Optimistic removal
+        setSessions(prev => prev.filter(s => s.id !== sessionId));
         try {
             await accountsApi.revokeSession(sessionId);
             toast.success('Session revoked');
-            fetchSessions();
         } catch (err) {
+            // Revert on failure
+            fetchSessions();
             toast.error('Failed to revoke session');
         } finally {
             setRevokingId(null);
@@ -72,12 +73,14 @@ export default function SessionsPage() {
 
     const handleRevokeAll = async () => {
         setRevokingAll(true);
+        // Optimistic removal of all non-current sessions
+        setSessions(prev => prev.filter(s => s.is_current));
         try {
             const result = await accountsApi.revokeAllSessions();
             toast.success(result?.message || result?.data?.message || 'All other sessions revoked');
             setShowRevokeAllModal(false);
-            fetchSessions();
         } catch (err) {
+            fetchSessions();
             toast.error('Failed to revoke sessions');
         } finally {
             setRevokingAll(false);
@@ -85,9 +88,78 @@ export default function SessionsPage() {
     };
 
     const getDeviceIcon = (deviceInfo) => {
-        const type = deviceInfo?.device_type || (deviceInfo?.os?.toLowerCase().includes('android') || deviceInfo?.os?.toLowerCase().includes('ios') ? 'mobile' : 'desktop');
+        const type = deviceInfo?.device_type ||
+            (deviceInfo?.os?.toLowerCase().includes('android') || deviceInfo?.os?.toLowerCase().includes('ios') ? 'mobile' : 'desktop');
         return DEVICE_ICONS[type] || FiMonitor;
     };
+
+    const toggleSessionDetails = (sessionId) => {
+        setExpandedSession(expandedSession === sessionId ? null : sessionId);
+    };
+
+    const toggleTrustedDevice = (sessionId) => {
+        setTrustedDevices(prev => {
+            const updated = prev.includes(sessionId)
+                ? prev.filter(id => id !== sessionId)
+                : [...prev, sessionId];
+            localStorage.setItem('trusted_devices', JSON.stringify(updated));
+            return updated;
+        });
+    };
+
+    const isSuspiciousSession = (session) => {
+        if (session.is_current) return false;
+        if (!session.created_at) return false;
+        const hoursSinceCreation = (Date.now() - new Date(session.created_at).getTime()) / 3600000;
+        return hoursSinceCreation < 1;
+    };
+
+    const relativeTime = (dateStr) => {
+        if (!dateStr) return '';
+        try {
+            return formatDistanceToNow(new Date(dateStr), { addSuffix: true });
+        } catch {
+            return dateStr;
+        }
+    };
+
+    const exportSessions = () => {
+        const data = sessions.map(s => ({
+            id: s.id,
+            browser: s.browser || s.device_info?.browser,
+            os: s.os || s.device_info?.os,
+            ip_address: s.ip_address,
+            city: s.city,
+            country: s.country,
+            user_agent: s.user_agent?.substring(0, 100),
+            created_at: s.created_at,
+            last_used_at: s.last_used_at,
+            expires_at: s.expires_at,
+            is_current: s.is_current,
+            trusted: trustedDevices.includes(s.id),
+            suspicious: isSuspiciousSession(s),
+        }));
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'sessions-export.json';
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success('Sessions exported');
+    };
+
+    const filteredSessions = useMemo(() => {
+        if (!searchQuery.trim()) return sessions;
+        const query = searchQuery.toLowerCase();
+        return sessions.filter(s =>
+            (s.browser || s.device_info?.browser || '').toLowerCase().includes(query) ||
+            (s.os || s.device_info?.os || '').toLowerCase().includes(query) ||
+            (s.ip_address || '').toLowerCase().includes(query) ||
+            (s.city || '').toLowerCase().includes(query) ||
+            (s.country || '').toLowerCase().includes(query)
+        );
+    }, [sessions, searchQuery]);
 
     const currentSessionCount = sessions.filter(s => s.is_current).length;
     const otherSessionCount = sessions.filter(s => !s.is_current).length;
@@ -95,169 +167,244 @@ export default function SessionsPage() {
     if (loading) {
         return (
             <div className="min-h-screen py-8 px-4">
-                <div className="max-w-2xl mx-auto"><SkeletonLoader type="list" count={3} /></div>
+                <div className="max-w-2xl mx-auto">
+                    <SkeletonLoader type="list" count={3} />
+                </div>
             </div>
         );
     }
 
     return (
-        <>
-            <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&display=swap');
-        .ss-root { font-family: 'Outfit', sans-serif; max-width: 680px; margin: 0 auto; padding: 28px 20px 80px; animation: ssIn .4s cubic-bezier(0.16,1,0.3,1) both; }
-        @keyframes ssIn { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 lg:py-8 animate-fadeIn">
+            {/* Breadcrumb */}
+            <nav className="flex items-center gap-1.5 text-sm font-semibold text-gray-400 dark:text-gray-500 mb-6 flex-wrap" aria-label="Breadcrumb">
+                <Link to="/" className="text-indigo-500 hover:text-indigo-600 dark:text-indigo-400 dark:hover:text-indigo-300 inline-flex items-center gap-1.5">
+                    <FiHome size={14} /> Home
+                </Link>
+                <FiChevronRight size={14} />
+                <Link to="/profile" className="text-indigo-500 hover:text-indigo-600 dark:text-indigo-400 dark:hover:text-indigo-300 inline-flex items-center gap-1.5">
+                    <FiUser size={14} /> Profile
+                </Link>
+                <FiChevronRight size={14} />
+                <span className="text-gray-900 dark:text-white">Sessions</span>
+            </nav>
 
-        .ss-breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; font-weight: 600; color: #94a3b8; margin-bottom: 24px; flex-wrap: wrap; }
-        .ss-breadcrumb a { color: #6366f1; text-decoration: none; display: flex; align-items: center; gap: 4px; }
-
-        .ss-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-        .ss-header h1 { font-size: clamp(1.5rem, 3.5vw, 2rem); font-weight: 900; letter-spacing: -0.04em; color: #0f172a; }
-        .dark .ss-header h1 { color: #f8fafc; }
-        .ss-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 10px; border: 1.5px solid #e2e8f0; background: transparent; font-family: 'Outfit', sans-serif; font-size: 0.8rem; font-weight: 600; color: #64748b; cursor: pointer; text-decoration: none; transition: all 0.15s; }
-        .ss-btn:hover { background: rgba(99,102,241,0.04); border-color: #6366f1; color: #6366f1; }
-        .dark .ss-btn { border-color: #334155; color: #94a3b8; }
-
-        .ss-stats { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
-        .ss-stat { padding: 6px 14px; border-radius: 99px; font-size: 0.75rem; font-weight: 700; background: rgba(255,255,255,0.75); border: 1px solid rgba(0,0,0,0.05); color: #64748b; }
-        .dark .ss-stat { background: rgba(15,23,42,0.75); border-color: rgba(255,255,255,0.05); color: #94a3b8; }
-
-        .ss-alert { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 12px; margin-bottom: 20px; font-size: 0.82rem; font-weight: 600; }
-        .ss-alert-info { background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.12); color: #6366f1; }
-        .ss-alert-error { background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.12); color: #dc2626; }
-
-        .ss-card { background: rgba(255,255,255,0.85); border: 1px solid rgba(0,0,0,0.05); border-radius: 16px; padding: 18px; margin-bottom: 8px; backdrop-filter: blur(12px); transition: all 0.2s; animation: ssIn .4s cubic-bezier(0.16,1,0.3,1) both; }
-        .ss-card.current { border-color: rgba(99,102,241,0.25); background: rgba(99,102,241,0.03); }
-        .dark .ss-card { background: rgba(15,23,42,0.85); border-color: rgba(255,255,255,0.05); }
-        .dark .ss-card.current { border-color: rgba(99,102,241,0.3); background: rgba(99,102,241,0.06); }
-        .ss-card-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-        .ss-card-left { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; }
-        .ss-device-icon { width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .ss-device-icon.current { background: rgba(99,102,241,0.1); color: #6366f1; }
-        .ss-device-icon.other { background: rgba(0,0,0,0.04); color: #64748b; }
-        .dark .ss-device-icon.other { background: rgba(255,255,255,0.05); color: #94a3b8; }
-        .ss-card-info { min-width: 0; }
-        .ss-card-name { font-size: 0.9rem; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 6px; }
-        .dark .ss-card-name { color: #f8fafc; }
-        .ss-card-badge { font-size: 0.6rem; padding: 2px 8px; border-radius: 99px; background: rgba(99,102,241,0.1); color: #6366f1; font-weight: 700; }
-        .ss-card-meta { font-size: 0.75rem; color: #94a3b8; margin-top: 2px; }
-        .ss-card-time { font-size: 0.7rem; color: #94a3b8; margin-top: 3px; display: flex; align-items: center; gap: 4px; }
-        .ss-revoke-btn { width: 34px; height: 34px; border-radius: 8px; border: none; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #94a3b8; transition: all 0.15s; flex-shrink: 0; }
-        .ss-revoke-btn:hover { background: rgba(239,68,68,0.08); color: #ef4444; }
-        .ss-revoke-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-        .ss-empty { text-align: center; padding: 48px 24px; color: #94a3b8; }
-        .ss-danger-zone { margin-top: 28px; padding-top: 20px; border-top: 1px solid rgba(0,0,0,0.06); }
-        .dark .ss-danger-zone { border-color: rgba(255,255,255,0.06); }
-        .ss-btn-danger { background: #ef4444; color: #fff; border: none; width: 100%; padding: 14px; border-radius: 14px; font-family: 'Outfit', sans-serif; font-size: 0.9rem; font-weight: 700; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
-        .ss-btn-danger:hover { background: #dc2626; }
-        .ss-btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
-
-        /* Modal */
-        .ss-modal-overlay { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 20px; }
-        .ss-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(6px); }
-        .ss-modal { position: relative; z-index: 61; width: 100%; max-width: 400px; background: rgba(255,255,255,0.96); border-radius: 24px; backdrop-filter: blur(28px); box-shadow: 0 24px 64px rgba(0,0,0,0.18); animation: ssIn .22s cubic-bezier(0.16,1,0.3,1) both; overflow: hidden; }
-        .dark .ss-modal { background: rgba(12,16,24,0.96); }
-        .ss-modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 22px 16px; border-bottom: 1px solid rgba(0,0,0,0.06); }
-        .ss-modal-title { font-size: 1rem; font-weight: 800; color: #0f172a; }
-        .dark .ss-modal-title { color: #f8fafc; }
-        .ss-modal-close { width: 30px; height: 30px; border-radius: 8px; border: none; background: rgba(0,0,0,0.05); cursor: pointer; display: flex; align-items: center; justify-content: center; color: #6b7280; }
-        .ss-modal-body { padding: 20px 22px; font-size: 0.9rem; color: #64748b; }
-        .ss-modal-footer { padding: 0 22px 20px; display: flex; gap: 10px; }
-        .ss-modal-cancel { flex: 1; padding: 11px; border-radius: 12px; border: 1.5px solid #e2e8f0; background: transparent; cursor: pointer; font-family: 'Outfit', sans-serif; font-size: 0.84rem; font-weight: 700; color: #64748b; }
-        .ss-modal-confirm { flex: 1; padding: 11px; border-radius: 12px; border: none; background: #ef4444; color: #fff; cursor: pointer; font-family: 'Outfit', sans-serif; font-size: 0.84rem; font-weight: 700; }
-      `}</style>
-
-            <div className="ss-root">
-                {/* Breadcrumb */}
-                <nav className="ss-breadcrumb">
-                    <Link to="/"><FiHome size={13} /> Home</Link>
-                    <FiChevronRight size={12} />
-                    <Link to="/profile"><FiUser size={13} /> Profile</Link>
-                    <FiChevronRight size={12} />
-                    <span>Sessions</span>
-                </nav>
-
-                {/* Header */}
-                <div className="ss-header">
-                    <div>
-                        <h1>Active Sessions</h1>
-                        <p style={{ fontSize: '0.83rem', color: '#94a3b8', fontWeight: 500, marginTop: 4 }}>
-                            Manage devices signed into your account
-                        </p>
-                    </div>
-                    <button onClick={fetchSessions} className="ss-btn">
-                        <FiRefreshCw size={14} /> Refresh
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                <div>
+                    <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-gray-900 dark:text-white">
+                        Active Sessions
+                    </h1>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 font-medium">
+                        Manage devices signed into your account
+                    </p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={fetchSessions}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border border-gray-200 dark:border-gray-600 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                        aria-label="Refresh sessions"
+                    >
+                        <FiRefreshCw size={16} /> Refresh
+                    </button>
+                    <button
+                        onClick={exportSessions}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border border-gray-200 dark:border-gray-600 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                        aria-label="Export session data"
+                    >
+                        <FiDownload size={16} /> Export
                     </button>
                 </div>
+            </div>
 
-                {/* Stats */}
-                {sessions.length > 0 && (
-                    <div className="ss-stats">
-                        <span className="ss-stat">📱 {sessions.length} Active</span>
-                        <span className="ss-stat" style={{ color: '#6366f1' }}>✅ {currentSessionCount} This Device</span>
-                        <span className="ss-stat" style={{ color: '#d97706' }}>🔒 {otherSessionCount} Other</span>
-                    </div>
-                )}
-
-                {/* Current Session Info */}
-                <div className="ss-alert ss-alert-info">
-                    <FiShield size={16} />
-                    <span>Your current session is highlighted below. Revoke any unrecognized sessions.</span>
+            {/* Stats */}
+            {sessions.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-6">
+                    <span className="px-4 py-2 rounded-full text-xs font-bold bg-white/80 dark:bg-gray-800/80 border border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-400">
+                        📱 {sessions.length} Active
+                    </span>
+                    <span className="px-4 py-2 rounded-full text-xs font-bold bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400">
+                        ✅ {currentSessionCount} This Device
+                    </span>
+                    <span className="px-4 py-2 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-900/30 border border-amber-100 dark:border-amber-800 text-amber-600 dark:text-amber-400">
+                        🔒 {otherSessionCount} Other
+                    </span>
                 </div>
+            )}
 
-                {/* Error */}
-                {error && (
-                    <div className="ss-alert ss-alert-error">
-                        <FiAlertCircle size={16} />
-                        <span>{error}</span>
-                        <button onClick={fetchSessions} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem' }}>
-                            Retry
-                        </button>
+            {/* 2FA Status Section */}
+            <div className="bg-white/85 dark:bg-gray-800/85 backdrop-blur-sm border border-gray-100 dark:border-gray-700 rounded-2xl p-5 mb-6">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
+                            <FiShield className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-gray-900 dark:text-white">Two-Factor Authentication</h3>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {twoFactorEnabled ? 'Enabled – Your account is more secure' : 'Add an extra layer of security'}
+                            </p>
+                        </div>
                     </div>
-                )}
+                    <Link
+                        to="/settings/security"
+                        className="px-4 py-2 text-sm font-semibold border border-gray-200 dark:border-gray-600 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    >
+                        {twoFactorEnabled ? 'Manage' : 'Enable'}
+                    </Link>
+                </div>
+            </div>
 
-                {/* Sessions List */}
-                {sessions.length > 0 ? (
-                    <div>
-                        {sessions.map((session, i) => {
-                            const DeviceIcon = getDeviceIcon(session.device_info);
-                            const isCurrent = session.is_current;
-                            return (
-                                <div key={session.id} className={`ss-card ${isCurrent ? 'current' : ''}`} style={{ animationDelay: `${i * 60}ms` }}>
-                                    <div className="ss-card-row">
-                                        <div className="ss-card-left">
-                                            <div className={`ss-device-icon ${isCurrent ? 'current' : 'other'}`}>
-                                                <DeviceIcon size={20} />
-                                            </div>
-                                            <div className="ss-card-info">
-                                                <div className="ss-card-name">
+            {/* Search */}
+            {sessions.length > 1 && (
+                <div className="relative mb-6">
+                    <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                    <input
+                        type="text"
+                        placeholder="Search by browser, OS, IP or location…"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-11 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition"
+                        aria-label="Search sessions"
+                    />
+                </div>
+            )}
+
+            {/* Info Alert */}
+            <div className="flex items-center gap-3 p-4 mb-6 bg-indigo-50/70 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-xl text-sm font-semibold text-indigo-700 dark:text-indigo-300">
+                <FiShield size={18} className="flex-shrink-0" />
+                <span>Your current session is highlighted. Revoke any unrecognized sessions immediately.</span>
+            </div>
+
+            {/* Error */}
+            {error && (
+                <div className="flex items-center gap-3 p-4 mb-6 bg-red-50/70 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-sm font-semibold text-red-700 dark:text-red-400">
+                    <FiAlertCircle size={18} className="flex-shrink-0" />
+                    <span>{error}</span>
+                    <button
+                        onClick={fetchSessions}
+                        className="ml-auto text-red-700 dark:text-red-400 font-bold underline hover:no-underline"
+                    >
+                        Retry
+                    </button>
+                </div>
+            )}
+
+            {/* Sessions List */}
+            {filteredSessions.length > 0 ? (
+                <ul className="space-y-3" role="list">
+                    {filteredSessions.map((session) => {
+                        const DeviceIcon = getDeviceIcon(session.device_info);
+                        const isCurrent = session.is_current;
+                        const isTrusted = trustedDevices.includes(session.id);
+                        const suspicious = isSuspiciousSession(session);
+                        const isExpanded = expandedSession === session.id;
+
+                        return (
+                            <li
+                                key={session.id}
+                                className={`group bg-white/85 dark:bg-gray-800/85 backdrop-blur-sm border rounded-2xl p-5 transition-all duration-200 ${isCurrent
+                                        ? 'border-indigo-200 dark:border-indigo-800 bg-indigo-50/60 dark:bg-indigo-900/20'
+                                        : 'border-gray-100 dark:border-gray-700 hover:border-gray-200 dark:hover:border-gray-600'
+                                    }`}
+                            >
+                                <div className="flex items-center justify-between gap-4">
+                                    <div className="flex items-center gap-4 min-w-0 flex-1">
+                                        <div
+                                            className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${isCurrent
+                                                    ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
+                                                    : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                                                }`}
+                                            aria-hidden="true"
+                                        >
+                                            <DeviceIcon size={22} />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="font-bold text-gray-900 dark:text-white truncate">
                                                     {session.browser || session.device_info?.browser || 'Unknown Browser'}
-                                                    {isCurrent && <span className="ss-card-badge">Current</span>}
-                                                </div>
-                                                <div className="ss-card-meta">
-                                                    {session.os || session.device_info?.os || 'Unknown OS'}
-                                                    {session.ip_address && <> • {session.ip_address}</>}
-                                                </div>
-                                                <div className="ss-card-time">
-                                                    <FiClock size={10} />
-                                                    {session.last_used_at
-                                                        ? `Active ${getRelativeTime(session.last_used_at)}`
-                                                        : session.created_at
-                                                            ? `Created ${getRelativeTime(session.created_at)}`
-                                                            : 'Unknown'}
-                                                </div>
+                                                </span>
+                                                {isCurrent && (
+                                                    <span className="px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300">
+                                                        Current
+                                                    </span>
+                                                )}
+                                                {suspicious && (
+                                                    <span
+                                                        className="px-2 py-0.5 text-[0.65rem] font-bold rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 flex items-center gap-1"
+                                                        title="New sign-in detected"
+                                                    >
+                                                        <FiAlertCircle size={10} /> New
+                                                    </span>
+                                                )}
+                                                {isTrusted && (
+                                                    <span className="text-emerald-500 dark:text-emerald-400" title="Trusted device">
+                                                        <FiStar size={14} className="fill-current" />
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                                {session.os || session.device_info?.os || 'Unknown OS'}
+                                                {session.ip_address && (
+                                                    <>
+                                                        {' • '}
+                                                        {session.ip_address}
+                                                        {(session.city || session.country) && (
+                                                            <span className="ml-1">
+                                                                ({[session.city, session.country].filter(Boolean).join(', ')})
+                                                            </span>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </p>
+                                            <div className="flex items-center gap-1.5 mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                                <FiClock size={11} />
+                                                {session.last_used_at
+                                                    ? `Active ${relativeTime(session.last_used_at)}`
+                                                    : session.created_at
+                                                        ? `Created ${relativeTime(session.created_at)}`
+                                                        : 'Unknown'}
                                             </div>
                                         </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-1">
+                                        {/* Trust toggle */}
+                                        {!isCurrent && (
+                                            <button
+                                                onClick={() => toggleTrustedDevice(session.id)}
+                                                className={`p-2 rounded-lg text-sm transition-colors ${isTrusted
+                                                        ? 'text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
+                                                        : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-500'
+                                                    }`}
+                                                aria-label={isTrusted ? 'Remove from trusted devices' : 'Mark as trusted device'}
+                                                title={isTrusted ? 'Trusted' : 'Trust this device'}
+                                            >
+                                                <FiStar size={16} className={isTrusted ? 'fill-current' : ''} />
+                                            </button>
+                                        )}
+
+                                        {/* Expand details */}
+                                        <button
+                                            onClick={() => toggleSessionDetails(session.id)}
+                                            className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                            aria-expanded={isExpanded}
+                                            aria-label="Toggle session details"
+                                        >
+                                            {isExpanded ? <FiChevronUp size={16} /> : <FiChevronDown size={16} />}
+                                        </button>
+
+                                        {/* Revoke */}
                                         {!isCurrent && (
                                             <button
                                                 onClick={() => handleRevokeSession(session.id)}
                                                 disabled={revokingId === session.id}
-                                                className="ss-revoke-btn"
-                                                title="Revoke session"
+                                                className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                                aria-label="Revoke session"
                                             >
                                                 {revokingId === session.id ? (
-                                                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                                                     </svg>
                                                 ) : (
@@ -267,53 +414,131 @@ export default function SessionsPage() {
                                         )}
                                     </div>
                                 </div>
-                            );
-                        })}
-                    </div>
-                ) : !error ? (
-                    <div className="ss-empty">
-                        <FiMonitor size={40} style={{ opacity: 0.3, marginBottom: 12 }} />
-                        <p style={{ fontWeight: 600 }}>No active sessions found</p>
-                        <p style={{ fontSize: '0.8rem', marginTop: 4 }}>This feature requires the sessions endpoint to be deployed.</p>
-                    </div>
-                ) : null}
 
-                {/* Revoke All */}
-                {otherSessionCount > 0 && (
-                    <div className="ss-danger-zone">
-                        <button
-                            onClick={() => setShowRevokeAllModal(true)}
-                            disabled={revokingAll}
-                            className="ss-btn-danger"
-                        >
-                            <FiLogOut size={18} />
-                            {revokingAll ? 'Revoking...' : `Sign Out Everywhere Else (${otherSessionCount} device${otherSessionCount > 1 ? 's' : ''})`}
-                        </button>
-                    </div>
-                )}
-            </div>
+                                {/* Expanded details */}
+                                {isExpanded && (
+                                    <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 animate-fadeIn">
+                                        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                                            <div>
+                                                <dt className="font-semibold text-gray-500 dark:text-gray-400">IP Address</dt>
+                                                <dd className="text-gray-900 dark:text-white mt-0.5">{session.ip_address || 'N/A'}</dd>
+                                            </div>
+                                            <div>
+                                                <dt className="font-semibold text-gray-500 dark:text-gray-400">Location</dt>
+                                                <dd className="text-gray-900 dark:text-white mt-0.5">
+                                                    {session.city && session.country
+                                                        ? `${session.city}, ${session.country}`
+                                                        : session.city || session.country || 'Unknown'}
+                                                </dd>
+                                            </div>
+                                            <div className="sm:col-span-2">
+                                                <dt className="font-semibold text-gray-500 dark:text-gray-400">User Agent</dt>
+                                                <dd className="text-gray-900 dark:text-white mt-0.5 break-all">
+                                                    {session.user_agent?.substring(0, 100) || 'N/A'}
+                                                </dd>
+                                            </div>
+                                            <div>
+                                                <dt className="font-semibold text-gray-500 dark:text-gray-400">Created</dt>
+                                                <dd className="text-gray-900 dark:text-white mt-0.5">
+                                                    {session.created_at ? new Date(session.created_at).toLocaleString() : 'N/A'}
+                                                </dd>
+                                            </div>
+                                            <div>
+                                                <dt className="font-semibold text-gray-500 dark:text-gray-400">Last Active</dt>
+                                                <dd className="text-gray-900 dark:text-white mt-0.5">
+                                                    {session.last_used_at ? new Date(session.last_used_at).toLocaleString() : 'N/A'}
+                                                </dd>
+                                            </div>
+                                            <div>
+                                                <dt className="font-semibold text-gray-500 dark:text-gray-400">Expires</dt>
+                                                <dd className="text-gray-900 dark:text-white mt-0.5">
+                                                    {session.expires_at ? new Date(session.expires_at).toLocaleString() : 'Session-based'}
+                                                </dd>
+                                            </div>
+                                            <div>
+                                                <dt className="font-semibold text-gray-500 dark:text-gray-400">Trusted</dt>
+                                                <dd className="text-gray-900 dark:text-white mt-0.5">
+                                                    {isTrusted ? 'Yes' : 'No'}
+                                                </dd>
+                                            </div>
+                                        </dl>
+                                    </div>
+                                )}
+                            </li>
+                        );
+                    })}
+                </ul>
+            ) : (
+                <div className="text-center py-16 px-4">
+                    <FiMonitor className="mx-auto text-gray-300 dark:text-gray-600" size={48} />
+                    <h3 className="mt-4 text-lg font-bold text-gray-500 dark:text-gray-400">
+                        {searchQuery ? 'No matching sessions found' : 'No active sessions'}
+                    </h3>
+                    <p className="mt-1 text-sm text-gray-400 dark:text-gray-500">
+                        {searchQuery
+                            ? 'Try a different search term.'
+                            : 'Sessions from other devices will appear here once you sign in.'}
+                    </p>
+                </div>
+            )}
 
-            {/* Revoke All Confirmation Modal */}
+            {/* Revoke All */}
+            {otherSessionCount > 0 && (
+                <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-700">
+                    <button
+                        onClick={() => setShowRevokeAllModal(true)}
+                        disabled={revokingAll}
+                        className="w-full py-3.5 px-5 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <FiLogOut size={18} />
+                        {revokingAll
+                            ? 'Revoking…'
+                            : `Sign Out Everywhere Else (${otherSessionCount} device${otherSessionCount > 1 ? 's' : ''})`}
+                    </button>
+                </div>
+            )}
+
+            {/* Revoke All Modal */}
             {showRevokeAllModal && (
-                <div className="ss-modal-overlay">
-                    <div className="ss-modal-backdrop" onClick={() => setShowRevokeAllModal(false)} />
-                    <div className="ss-modal">
-                        <div className="ss-modal-header">
-                            <span className="ss-modal-title">Sign Out Everywhere Else</span>
-                            <button className="ss-modal-close" onClick={() => setShowRevokeAllModal(false)}><FiX size={16} /></button>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div
+                        className="fixed inset-0 bg-black/40 backdrop-blur-sm"
+                        onClick={() => setShowRevokeAllModal(false)}
+                    />
+                    <div className="relative z-50 w-full max-w-sm bg-white dark:bg-gray-800 rounded-3xl shadow-2xl animate-scaleIn">
+                        <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-700">
+                            <h2 className="text-lg font-black text-gray-900 dark:text-white">Sign Out Everywhere Else</h2>
+                            <button
+                                onClick={() => setShowRevokeAllModal(false)}
+                                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500"
+                                aria-label="Close modal"
+                            >
+                                <FiX size={18} />
+                            </button>
                         </div>
-                        <div className="ss-modal-body">
-                            <p>This will sign you out of <strong>{otherSessionCount} other device{otherSessionCount > 1 ? 's' : ''}</strong>. Your current session will remain active.</p>
+                        <div className="p-5 text-sm text-gray-600 dark:text-gray-300">
+                            <p>
+                                This will sign you out of <strong>{otherSessionCount} other device{otherSessionCount > 1 ? 's' : ''}</strong>. Your current session will remain active.
+                            </p>
                         </div>
-                        <div className="ss-modal-footer">
-                            <button className="ss-modal-cancel" onClick={() => setShowRevokeAllModal(false)}>Cancel</button>
-                            <button className="ss-modal-confirm" onClick={handleRevokeAll} disabled={revokingAll}>
-                                {revokingAll ? 'Revoking...' : 'Sign Out All Others'}
+                        <div className="flex gap-3 p-5 pt-0">
+                            <button
+                                onClick={() => setShowRevokeAllModal(false)}
+                                className="flex-1 py-3 px-4 border border-gray-200 dark:border-gray-600 rounded-xl font-bold text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleRevokeAll}
+                                disabled={revokingAll}
+                                className="flex-1 py-3 px-4 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-sm transition-colors disabled:opacity-50"
+                            >
+                                {revokingAll ? 'Revoking…' : 'Sign Out All Others'}
                             </button>
                         </div>
                     </div>
                 </div>
             )}
-        </>
+        </div>
     );
 }

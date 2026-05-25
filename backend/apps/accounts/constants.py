@@ -310,3 +310,24 @@ class PasswordPolicy:
     
     # Password expiry
     PASSWORD_EXPIRY_DAYS = 90  # Force change every 90 days
+
+
+
+# ============================================
+# BIOMETRIC AUTHENTICATION SETTINGS (CLOUD)
+# ============================================
+
+class BiometricSettings:
+    """Configuration for Cloud-based Face Recognition authentication"""
+    
+    # AWS Rekognition uses a similarity score from 0 to 100.
+    # 80-90 is generally considered a highly secure threshold.
+    MATCH_TOLERANCE = 80 
+    
+    # Toggle to globally enable/disable face login
+    ENABLED = True
+    
+    # Security: Require Liveness Detection
+    # Cloud APIs often handle liveness via specific API calls. 
+    # Keep this True to ensure your UI logic still enforces the check.
+    REQUIRE_LIVENESS_CHECK = True

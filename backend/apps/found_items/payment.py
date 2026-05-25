@@ -1,92 +1,105 @@
-import requests
-import base64
-from datetime import datetime
-from django.conf import settings
 import logging
+import intasend
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
 class MpesaClient:
     def __init__(self):
-        self.consumer_key = settings.MPESA_CONSUMER_KEY
-        self.consumer_secret = settings.MPESA_CONSUMER_SECRET
-        self.passkey = settings.MPESA_PASSKEY
-        self.shortcode = settings.MPESA_SHORTCODE
-        self.base_url = (
-            'https://sandbox.safaricom.co.ke'
-            if settings.MPESA_ENVIRONMENT == 'sandbox'
-            else 'https://api.safaricom.co.ke'
-        )
-    
-    def _get_access_token(self):
-        """Get OAuth access token"""
-        auth = base64.b64encode(
-            f"{self.consumer_key}:{self.consumer_secret}".encode()
-        ).decode()
+        """
+        Initializes the IntaSend APIService gateway using settings tokens.
+        The SDK dynamically handles routing based on credential signatures.
+        """
+        raw_token = settings.INTASEND_SECRET_KEY
         
-        response = requests.get(
-            f"{self.base_url}/oauth/v1/generate?grant_type=client_credentials",
-            headers={'Authorization': f'Basic {auth}'}
-        )
+        # Enforce 'Bearer ' schema string alignment natively if missing
+        if raw_token and not raw_token.startswith("Bearer "):
+            self.token = f"Bearer {raw_token}"
+        else:
+            self.token = raw_token
+
+        self.publishable_key = settings.INTASEND_PUBLISHABLE_KEY
         
-        return response.json().get('access_token')
+        # Verified official entry class from package inspection
+        self.service = intasend.APIService(
+            token=self.token, 
+            publishable_key=self.publishable_key
+        )
     
     def stk_push(self, phone_number, amount, account_reference, transaction_desc):
-        """Initiate STK Push"""
-        token = self._get_access_token()
-        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-        password = base64.b64encode(
-            f"{self.shortcode}{self.passkey}{timestamp}".encode()
-        ).decode()
-        
-        # Format phone number (remove +254 or 0)
+        """
+        Initiates an automated IntaSend M-Pesa STK Push collection transaction.
+        """
+        # Ensure proper telephone schema serialization (254XXXXXXXXX)
         phone = phone_number.replace('+254', '254').replace('0', '254', 1)
-        
-        payload = {
-            "BusinessShortCode": self.shortcode,
-            "Password": password,
-            "Timestamp": timestamp,
-            "TransactionType": "CustomerPayBillOnline",
-            "Amount": amount,
-            "PartyA": phone,
-            "PartyB": self.shortcode,
-            "PhoneNumber": phone,
-            "CallBackURL": f"{settings.BACKEND_URL}/api/found-items/payment-callback/",
-            "AccountReference": account_reference[:12],
-            "TransactionDesc": transaction_desc[:13]
-        }
-        
-        response = requests.post(
-            f"{self.base_url}/mpesa/stkpush/v1/processrequest",
-            json=payload,
-            headers={'Authorization': f'Bearer {token}'}
-        )
-        
-        return response.json()
-    
+        if (phone.startswith('7') or phone.startswith('1')) and len(phone) == 9:
+            phone = f"254{phone}"
+
+        try:
+            # Instantiate the verified Collect class directly via the service engine
+            collector = intasend.Collect(service=self.service)
+            response = collector.mpesa_stk_push(
+                phone_number=phone,
+                amount=int(amount),
+                narrative=transaction_desc[:20]
+            )
+            
+            # Extract tracking fields cleanly based on returned SDK types
+            invoice_id = None
+            if isinstance(response, dict):
+                invoice_id = response.get("invoice", {}).get("invoice_id")
+            else:
+                invoice_data = getattr(response, 'invoice', {})
+                invoice_id = invoice_data.get("invoice_id") if isinstance(invoice_data, dict) else getattr(invoice_data, 'invoice_id', None)
+
+            return {
+                "status": "SUCCESS",
+                "invoice": invoice_id,
+                "ResponseCode": "0",
+                "raw_response": response
+            }
+        except Exception as e:
+            logger.error(f"IntaSend STK Push Request Execution Failure: {str(e)}")
+            return {
+                "status": "FAILED",
+                "ResponseCode": "1",
+                "error": str(e)
+            }
+            
     def b2c_disbursement(self, phone_number, amount, occasion):
-        """Initiate B2C disbursement"""
-        token = self._get_access_token()
-        
+        """
+        Triggers an instant automated B2C payout request via mobile wallet.
+        """
         phone = phone_number.replace('+254', '254').replace('0', '254', 1)
-        
-        payload = {
-            "InitiatorName": "testapi",
-            "SecurityCredential": "your-security-credential",
-            "CommandID": "BusinessPayment",
-            "Amount": str(amount),
-            "PartyA": self.shortcode,
-            "PartyB": phone,
-            "Remarks": occasion[:100],
-            "QueueTimeOutURL": f"{settings.BACKEND_URL}/api/found-items/queue-timeout/",
-            "ResultURL": f"{settings.BACKEND_URL}/api/found-items/b2c-result/",
-            "Occasion": occasion[:100]
-        }
-        
-        response = requests.post(
-            f"{self.base_url}/mpesa/b2c/v1/paymentrequest",
-            json=payload,
-            headers={'Authorization': f'Bearer {token}'}
-        )
-        
-        return response.json()
+        if (phone.startswith('7') or phone.startswith('1')) and len(phone) == 9:
+            phone = f"254{phone}"
+
+        try:
+            # Instantiate the verified Transfer class directly via the service engine
+            dispatcher = intasend.Transfer(service=self.service)
+            transactions = [
+                {
+                    "account": phone,
+                    "amount": str(amount),
+                    "narrative": occasion[:20]
+                }
+            ]
+            
+            response = dispatcher.mpesa(
+                currency="KES",
+                transactions=transactions
+            )
+            
+            tracking_id = response.get("tracking_id") if isinstance(response, dict) else getattr(response, 'tracking_id', None)
+            
+            return {
+                "status": "SUCCESS",
+                "tracking_id": tracking_id,
+                "raw_response": response
+            }
+        except Exception as e:
+            logger.error(f"IntaSend B2C Disbursal Engine Failure: {str(e)}")
+            return {
+                "status": "FAILED",
+                "error": str(e)
+            }

@@ -7,7 +7,6 @@ from common.notifications import NotificationService
 def user_created(sender, instance, created, **kwargs):
     """Handle new user creation events"""
     if created:
-        # Welcome notification
         notifier = NotificationService()
         notifier.send_push_notification(
             instance,
@@ -23,3 +22,17 @@ def check_badges(sender, instance, **kwargs):
     from .services import AccountService
     AccountService.check_login_badges(instance)
     AccountService.check_engagement_badge(instance)
+
+@receiver(post_save, sender=User)
+def notify_biometric_enrollment(sender, instance, update_fields, **kwargs):
+    """Notify the user when biometric authentication is enabled/updated"""
+    # Assuming you now have a boolean field 'biometric_enabled' in your User model
+    if update_fields and 'biometric_enabled' in update_fields:
+        if instance.biometric_enabled:
+            notifier = NotificationService()
+            notifier.send_push_notification(
+                instance,
+                "Biometric Security Enabled",
+                "You have successfully enabled Face Login for your Academe account.",
+                {'type': 'security_update'}
+            )

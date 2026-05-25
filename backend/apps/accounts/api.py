@@ -10,7 +10,9 @@ from .models import User, Badge, DataExport
 from .schema import (
     SignupIn, OTPRequestIn, OTPVerifyIn, ProfileUpdateIn
 )
+from .schema import ResetPasswordIn
 from .permissions import IsAdmin
+from .schema import BiometricEnrollIn, BiometricLoginIn
 from .services import AccountService
 
 router = Router()
@@ -96,23 +98,19 @@ def forgot_password(request, data: OTPRequestIn):
 
 
 @router.post("/reset-password/")
-def reset_password(request, data: dict):
-    """Step 2: Verify OTP and set new password"""
-    phone_number = data.get('phone_number')
-    otp = data.get('otp')
-    new_password = data.get('new_password')
+def reset_password(request, data: ResetPasswordIn):
+    """Step 2: Verify OTP and set new password with strict validation"""
     
-    if not all([phone_number, otp, new_password]):
-        return {"error": "phone_number, otp, and new_password are required"}
-    
-    if not PhoneOTPAuth.verify_otp(phone_number, otp):
+    # 1. Verify OTP using the validated data
+    if not PhoneOTPAuth.verify_otp(data.phone_number, data.otp):
         return {"error": "Invalid OTP"}
     
-    user = get_object_or_404(User, phone_number=phone_number)
-    user.set_password(new_password)
+    # 2. Get user and set password
+    user = get_object_or_404(User, phone_number=data.phone_number)
+    user.set_password(data.new_password)
     user.save()
     
-    # Revoke all existing sessions for security
+    # 3. Revoke all existing sessions for security
     from .models import UserSession
     from django.utils import timezone
     UserSession.objects.filter(user=user, is_active=True).update(
@@ -319,7 +317,7 @@ def revoke_role(request, role_id: str, data: dict = None):
 
 
 # ============================================
-# SESSION MANAGEMENT (ONLY ONCE - NO DUPLICATES)
+# SESSION MANAGEMENT
 # ============================================
 
 @router.get("/sessions/", auth=JWTAuth())
@@ -395,15 +393,87 @@ def revoke_all_sessions(request):
 @router.post("/refresh-token/", auth=None)
 def refresh_token(request):
     """Refresh the JWT access token using a valid refresh token."""
-    refresh_token_value = request.data.get('refresh')
+    import json
+    try:
+        body = json.loads(request.body)
+        refresh_token_value = body.get('refresh')
+    except (json.JSONDecodeError, AttributeError):
+        refresh_token_value = None
+    
     if not refresh_token_value:
         return {"error": "Refresh token required"}
     
     try:
-        tokens = create_token_pair(request.auth)
+        from rest_framework_simplejwt.tokens import RefreshToken
+        from django.contrib.auth import get_user_model
+        
+        User = get_user_model()
+        token = RefreshToken(refresh_token_value)
+        user_id = token.get('user_id')
+        user = User.objects.get(id=user_id)
+        
+        new_tokens = create_token_pair(user)
         return {
-            "access": tokens["access"],
-            "refresh": tokens["refresh"],
+            "access": new_tokens["access"],
+            "refresh": new_tokens["refresh"],
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": f"Invalid refresh token: {str(e)}"}
+
+
+
+@router.post("/biometric/enroll/", auth=JWTAuth())
+def enroll_biometric(request, data: BiometricEnrollIn):
+    """
+    Enroll user's face in the Cloud provider (e.g., AWS Rekognition).
+    """
+    user = request.auth
+    
+    # Pass the image data to your service which now handles the cloud SDK call
+    success, message = AccountService.enroll_face_cloud(user, data.image_data)
+    
+    if not success:
+        return {"error": message}
+        
+    return {"message": "Biometric data enrolled successfully."}
+
+@router.post("/biometric/login/", auth=None)
+def biometric_login(request, data: BiometricLoginIn):
+    """
+    Verify identity via Cloud face comparison and issue new JWT tokens.
+    """
+    user = User.objects.filter(phone_number=data.phone_number).first()
+    
+    if not user:
+        return {"error": "User not found."}
+
+    # Verify against Cloud provider
+    is_match, message = AccountService.verify_face_cloud(user, data.image_data)
+    
+    if not is_match:
+        return {"error": message}
+
+    # If match is successful, issue tokens
+    tokens = create_token_pair(user)
+    AccountService.increment_login_count(user)
+    
+    return {
+        "access": tokens["access"],
+        "refresh": tokens["refresh"],
+        "user": {
+            "id": str(user.id),
+            "full_name": user.full_name,
+            "role": user.role
+        }
+    }
+
+# ============================================
+# TWO-FACTOR AUTHENTICATION (NEW)
+# ============================================
+@router.post("/2fa/toggle/", auth=JWTAuth())
+def toggle_2fa(request):
+    """Toggle two-factor authentication for the authenticated user."""
+    user = request.auth
+    user.two_factor_enabled = not user.two_factor_enabled
+    user.save(update_fields=['two_factor_enabled'])
+    return {"two_factor_enabled": user.two_factor_enabled}

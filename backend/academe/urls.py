@@ -2,6 +2,10 @@ from django.contrib import admin
 from django.urls import path
 from ninja import NinjaAPI
 
+# Imports for serving static/media files in development
+from django.conf import settings
+from django.conf.urls.static import static
+
 from apps.accounts.api import router as accounts_router
 from apps.classes.api import router as classes_router
 from apps.found_items.api import router as found_items_router
@@ -10,9 +14,9 @@ from apps.opportunities.api import router as opportunities_router
 from apps.support.api import router as support_router
 from apps.blog.api import router as blog_router
 from apps.search.api import router as search_router
-# Make sure to import your geo router here:
 from apps.geoservice.api import router as geoservice_router
 from apps.governance.api import router as governance_router
+from apps.notifications.api import router as notifications_router   # <-- NEW
 
 api = NinjaAPI(
     title="Academe API",
@@ -27,11 +31,24 @@ api.add_router("/opportunities/", opportunities_router, tags=["Opportunities"])
 api.add_router("/support/", support_router, tags=["Support"])
 api.add_router("/search/", search_router, tags=["Search"])
 api.add_router("/blog/", blog_router, tags=["Blog"])
-# Fixed: Closed the parenthesis at the very end of the line
 api.add_router("/geo/", geoservice_router, tags=["Geoservice"]) 
 api.add_router("/governance/", governance_router, tags=["Governance"])
+api.add_router("/notifications/", notifications_router, tags=["Notifications"])  # <-- NEW
+
+
+# Health check
+from django.http import JsonResponse
+
+def health_check(request):
+    return JsonResponse({'status': 'ok', 'version': '1.0.0'})
+
 
 urlpatterns = [
+    path('api/health/', health_check),
     path('admin/', admin.site.urls),
-    path('api/', api.urls),
+    path('', api.urls),
 ]
+
+# APPEND THIS BLOCK AT THE VERY BOTTOM OF THE FILE:
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -1,23 +1,48 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { classesApi } from '../api/classesApi';
-import Card from '../components/ui/Card';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
 import toast from 'react-hot-toast';
 import {
     FiArrowLeft, FiHome, FiBook, FiChevronRight,
-    FiChevronLeft, FiRefreshCw, FiDownload, FiCalendar,
+    FiChevronLeft, FiRefreshCw, FiCalendar,
     FiTrendingUp, FiTarget, FiCheckCircle, FiXCircle,
     FiClock, FiBarChart2, FiActivity, FiStar,
+    FiAlertTriangle,
 } from 'react-icons/fi';
 
-function getWeekDates(date) {
-    const start = new Date(date);
-    start.setDate(start.getDate() - start.getDay() + 1); // Monday
-    const end = new Date(start);
-    end.setDate(end.getDate() + 6); // Sunday
-    return { start, end };
+/**
+ * Return a local YYYY-MM-DD string for the given date (defaults to today).
+ * Avoids toISOString() so we stay in the user's local timezone.
+ */
+function toLocalDateString(date = new Date()) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+/**
+ * Parse a YYYY-MM-DD string into a local Date object without UTC shift.
+ */
+function parseLocalDate(str) {
+    const [year, month, day] = str.split('-').map(Number);
+    return new Date(year, month - 1, day);
+}
+
+/**
+ * Get Monday and Sunday of the week that contains `dateString` (YYYY-MM-DD).
+ */
+function getWeekDates(dateString) {
+    const date = parseLocalDate(dateString);
+    const dayOfWeek = date.getDay(); // 0 = Sunday
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = new Date(date);
+    monday.setDate(date.getDate() + mondayOffset);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    return { start: monday, end: sunday };
 }
 
 function formatDate(date) {
@@ -28,27 +53,32 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export default function AttendanceSummary() {
     const [currentWeekStart, setCurrentWeekStart] = useState(() => {
-        const d = new Date();
-        d.setDate(d.getDate() - d.getDay() + 1);
-        return d.toISOString().split('T')[0];
+        // Get the Monday of the current local week
+        const today = new Date();
+        const dayOfWeek = today.getDay(); // Sunday = 0
+        const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+        const monday = new Date(today);
+        monday.setDate(today.getDate() + mondayOffset);
+        return toLocalDateString(monday);
     });
 
-    const weekDates = getWeekDates(new Date(currentWeekStart));
-    const isCurrentWeek = new Date().toISOString().split('T')[0] >= currentWeekStart &&
-        new Date().toISOString().split('T')[0] <= new Date(new Date(currentWeekStart).getTime() + 6 * 86400000).toISOString().split('T')[0];
+    const weekDates = getWeekDates(currentWeekStart);
+    const todayStr = toLocalDateString();
+    const isCurrentWeek = todayStr >= currentWeekStart && todayStr <= toLocalDateString(new Date(weekDates.end.getTime()));
 
-    const { data: summary, isLoading, refetch } = useQuery({
+    const { data: summary, isLoading, isError, error, refetch } = useQuery({
         queryKey: ['weekly-summary', currentWeekStart],
         queryFn: async () => {
             const response = await classesApi.getWeeklySummary(currentWeekStart);
             return response.data || response;
         },
+        retry: 1,
     });
 
     const navigateWeek = (direction) => {
-        const d = new Date(currentWeekStart);
+        const d = parseLocalDate(currentWeekStart);
         d.setDate(d.getDate() + direction * 7);
-        setCurrentWeekStart(d.toISOString().split('T')[0]);
+        setCurrentWeekStart(toLocalDateString(d));
     };
 
     const getDayColor = (marked, total) => {
@@ -69,11 +99,47 @@ export default function AttendanceSummary() {
 
     const attendanceRate = summary?.percentage || 0;
 
+    // Sort daily breakdown data by date key for consistent rendering
+    const sortedDailyBreakdown = useMemo(() => {
+        if (!summary?.daily_breakdown) return [];
+        return Object.entries(summary.daily_breakdown)
+            .map(([date, data]) => ({ date, ...data }))
+            .sort((a, b) => a.date.localeCompare(b.date));
+    }, [summary]);
+
     if (isLoading) {
         return (
             <div className="min-h-screen py-8 px-4">
                 <div className="max-w-3xl mx-auto">
                     <SkeletonLoader type="page" />
+                </div>
+            </div>
+        );
+    }
+
+    if (isError) {
+        return (
+            <div className="min-h-screen py-8 px-4">
+                <div className="max-w-3xl mx-auto">
+                    <div className="as-root">
+                        <nav className="as-breadcrumb">
+                            <Link to="/"><FiHome size={13} /> Home</Link>
+                            <FiChevronRight size={12} />
+                            <Link to="/classes"><FiBook size={13} /> Classes</Link>
+                            <FiChevronRight size={12} />
+                            <span>Attendance</span>
+                        </nav>
+                        <div className="as-empty" style={{ padding: 64 }}>
+                            <FiAlertTriangle size={48} style={{ margin: '0 auto 16px', opacity: 0.4, color: '#ef4444' }} />
+                            <p style={{ fontWeight: 700, fontSize: '1.1rem', color: '#64748b' }}>Failed to load attendance data</p>
+                            <p style={{ fontSize: '0.85rem', marginTop: 8, color: '#94a3b8' }}>
+                                {error?.message || 'An unexpected error occurred.'}
+                            </p>
+                            <button onClick={() => refetch()} className="as-btn" style={{ marginTop: 20, display: 'inline-flex', color: '#6366f1', borderColor: '#6366f1', padding: '10px 20px' }}>
+                                <FiRefreshCw size={14} /> Retry
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         );
@@ -225,15 +291,16 @@ export default function AttendanceSummary() {
                             <h3 style={{ fontWeight: 800, color: '#0f172a', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <FiActivity size={18} style={{ color: '#6366f1' }} /> Daily Breakdown
                             </h3>
-                            {Object.keys(summary.daily_breakdown || {}).length > 0 ? (
-                                Object.entries(summary.daily_breakdown || {}).map(([date, data]) => {
-                                    const pct = data.total > 0 ? (data.marked / data.total) * 100 : 0;
-                                    const DayIcon = getDayIcon(data.marked, data.total);
-                                    const color = getDayColor(data.marked, data.total);
+                            {sortedDailyBreakdown.length > 0 ? (
+                                sortedDailyBreakdown.map((item) => {
+                                    const { date, marked, total } = item;
+                                    const pct = total > 0 ? (marked / total) * 100 : 0;
+                                    const DayIcon = getDayIcon(marked, total);
+                                    const color = getDayColor(marked, total);
                                     return (
                                         <div key={date} className="as-day-row">
                                             <span className="as-day-label">
-                                                {new Date(date).toLocaleDateString('en-US', { weekday: 'short' })}
+                                                {new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' })}
                                             </span>
                                             <span className="as-day-icon" style={{ color }}>
                                                 {DayIcon && <DayIcon size={16} />}
@@ -241,7 +308,7 @@ export default function AttendanceSummary() {
                                             <div className="as-day-bar-wrap">
                                                 <div className="as-day-bar" style={{ width: `${pct}%`, background: color }} />
                                             </div>
-                                            <span className="as-day-count">{data.marked}/{data.total}</span>
+                                            <span className="as-day-count">{marked}/{total}</span>
                                         </div>
                                     );
                                 })

@@ -2,11 +2,13 @@ from typing import List, Optional
 from uuid import UUID
 from django.shortcuts import get_object_or_404
 from ninja import Router
+from ninja.errors import HttpError
 from common.jwt_auth import JWTAuth
 from .models import ClassGroup, TimetableEntry, AttendanceRecord
 from .services import AttendanceService, TimetableService
 from .schema import (
     TimetableEntryCreate, TimetableEntryUpdate, TimetableEntryOutDetail,
+    AttendanceMarkIn,
 )
 
 router = Router()
@@ -31,7 +33,9 @@ def get_timetable(request):
         "end_time": str(e.end_time),
         "venue": e.venue,
         "lecturer": e.lecturer,
-        "is_active": e.is_active
+        "is_active": e.is_active,
+        "latitude": float(e.latitude) if e.latitude else None,
+        "longitude": float(e.longitude) if e.longitude else None,
     } for e in entries]
 
 @router.get("/today/", auth=JWTAuth())
@@ -41,14 +45,16 @@ def get_today_classes(request):
     return classes
 
 @router.post("/mark-attendance/", auth=JWTAuth())
-def mark_attendance(request, data: dict):
-    """Mark attendance for a given timetable entry."""
+def mark_attendance(request, data: AttendanceMarkIn):
+    """Mark attendance with optional geofence verification."""
     record, error = AttendanceService.mark_attendance(
         request.auth,
-        data.get("timetable_entry_id")
+        data.timetable_entry_id,
+        student_lat=data.student_lat,
+        student_lon=data.student_lon
     )
     if error:
-        return {"error": error}
+        raise HttpError(400, error)
     return {"message": "Attendance marked", "id": str(record.id)}
 
 @router.get("/weekly-summary/", auth=JWTAuth())
@@ -60,10 +66,6 @@ def get_weekly_summary(request):
 # ========== NEW ENDPOINT FOR CLASS REPRESENTATIVE ==========
 @router.get("/my-represented-class/", auth=JWTAuth())
 def get_represented_class(request):
-    """
-    Returns the class group where the authenticated user is the class representative.
-    Useful for frontend to know which class the rep can manage.
-    """
     user = request.auth
     try:
         class_group = ClassGroup.objects.get(class_rep=user)
@@ -73,29 +75,19 @@ def get_represented_class(request):
             "institution": class_group.institution,
         }
     except ClassGroup.DoesNotExist:
-        from ninja.errors import HttpError
         raise HttpError(404, "You are not a class representative for any class")
 
 # ========== CRUD ENDPOINTS FOR TIMETABLE MANAGEMENT (CLASS REP ONLY) ==========
 
 @router.get("/timetable/class/{class_group_id}/", auth=JWTAuth(), response=List[TimetableEntryOutDetail])
 def get_class_timetable(request, class_group_id: str):
-    """
-    Get all timetable entries for a specific class.
-    Accessible to:
-      - Students enrolled in the class
-      - The class representative
-      - Admin users
-    """
     user = request.auth
     class_group = get_object_or_404(ClassGroup, id=class_group_id)
 
-    # Check permissions
     is_admin = user.role == "admin"
     is_enrolled = class_group.students.filter(id=user.id).exists()
     is_class_rep = class_group.class_rep_id == user.id
     if not (is_admin or is_enrolled or is_class_rep):
-        from ninja.errors import HttpError
         raise HttpError(403, "You are not a member of this class")
 
     entries = TimetableEntry.objects.filter(class_group=class_group, is_active=True)
@@ -109,13 +101,12 @@ def get_class_timetable(request, class_group_id: str):
         "venue": e.venue,
         "lecturer": e.lecturer,
         "is_active": e.is_active,
+        "latitude": float(e.latitude) if e.latitude else None,
+        "longitude": float(e.longitude) if e.longitude else None,
     } for e in entries]
 
 @router.post("/timetable/", auth=JWTAuth(), response={201: TimetableEntryOutDetail, 403: dict})
 def create_timetable_entry(request, payload: TimetableEntryCreate):
-    """
-    Create a new timetable entry (class rep only).
-    """
     user = request.auth
     class_group_id = str(payload.class_group_id)
 
@@ -131,6 +122,8 @@ def create_timetable_entry(request, payload: TimetableEntryCreate):
         unit_name=payload.unit_name,
         venue=payload.venue,
         lecturer=payload.lecturer or "",
+        latitude=payload.latitude,
+        longitude=payload.longitude,
         is_active=True
     )
 
@@ -144,20 +137,18 @@ def create_timetable_entry(request, payload: TimetableEntryCreate):
         "venue": entry.venue,
         "lecturer": entry.lecturer,
         "is_active": entry.is_active,
+        "latitude": float(entry.latitude) if entry.latitude else None,
+        "longitude": float(entry.longitude) if entry.longitude else None,
     }
 
 @router.put("/timetable/{entry_id}/", auth=JWTAuth(), response={200: TimetableEntryOutDetail, 403: dict, 404: dict})
 def update_timetable_entry(request, entry_id: UUID, payload: TimetableEntryUpdate):
-    """
-    Update an existing timetable entry (class rep only).
-    """
     user = request.auth
     entry = get_object_or_404(TimetableEntry, id=entry_id)
 
     if not is_class_rep_of(user, str(entry.class_group_id)):
         return 403, {"error": "Only the class representative can edit this timetable entry"}
 
-    # Update only provided fields
     for field, value in payload.dict(exclude_unset=True).items():
         setattr(entry, field, value)
     entry.save()
@@ -172,13 +163,12 @@ def update_timetable_entry(request, entry_id: UUID, payload: TimetableEntryUpdat
         "venue": entry.venue,
         "lecturer": entry.lecturer,
         "is_active": entry.is_active,
+        "latitude": float(entry.latitude) if entry.latitude else None,
+        "longitude": float(entry.longitude) if entry.longitude else None,
     }
 
 @router.delete("/timetable/{entry_id}/", auth=JWTAuth(), response={204: None, 403: dict, 404: dict})
 def delete_timetable_entry(request, entry_id: UUID):
-    """
-    Delete a timetable entry (class rep only).
-    """
     user = request.auth
     entry = get_object_or_404(TimetableEntry, id=entry_id)
 
@@ -187,3 +177,23 @@ def delete_timetable_entry(request, entry_id: UUID):
 
     entry.delete()
     return 204, None
+
+# ============================================
+# ATTENDANCE DETAIL (NEW)
+# ============================================
+@router.get("/attendance/{entry_id}/", auth=JWTAuth())
+def get_entry_attendance(request, entry_id: UUID):
+    """Get attendance records for a specific timetable entry."""
+    entry = get_object_or_404(TimetableEntry, id=entry_id)
+    # Only allow class rep or enrolled students
+    if not (entry.class_group.class_rep == request.auth or
+            entry.class_group.students.filter(id=request.auth.id).exists()):
+        raise HttpError(403, "You are not a member of this class")
+    records = AttendanceRecord.objects.filter(timetable_entry=entry).select_related('student')
+    return [{
+        "id": str(r.id),
+        "student_name": r.student.full_name,
+        "date": str(r.date),
+        "status": "PRESENT",   # adjust if you later add a status field
+        "sync_method": r.sync_method,
+    } for r in records]

@@ -36,7 +36,8 @@ export default function AnnouncementDetailPage() {
         setLoading(true);
         setError(null);
         try {
-            const data = await announcementsApi.get(id);
+            const response = await announcementsApi.get(id);   // Axios response
+            const data = response.data;                        // extract the actual announcement
             setAnnouncement(data);
             setEditForm({
                 title: data.title || '',
@@ -53,7 +54,11 @@ export default function AnnouncementDetailPage() {
     const handleReport = async () => {
         setReporting(true);
         try {
-            await announcementsApi.report(id, reportReason, reportDescription);
+            // FIXED: pass a single object { reason, description }
+            await announcementsApi.report(id, {
+                reason: reportReason,
+                description: reportDescription,
+            });
             toast.success('Report submitted successfully');
             setShowReportModal(false);
             setReportDescription('');
@@ -424,7 +429,7 @@ export default function AnnouncementDetailPage() {
                         )}
                     </div>
 
-                    {/* Content */}
+                    {/* Content — now correctly displayed */}
                     <div className="ad-content">
                         {announcement.content?.split('\n').map((paragraph, i) => (
                             <p key={i} style={{ marginBottom: '0.8em' }}>

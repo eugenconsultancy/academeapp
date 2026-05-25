@@ -4,10 +4,108 @@ import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
 import toast from 'react-hot-toast';
 import {
-  FiZap, FiPhone, FiLock, FiArrowRight, FiArrowLeft,
-  FiShield, FiUsers, FiRefreshCw, FiWifi, FiWifiOff,
+  FiZap, FiPhone, FiArrowRight, FiArrowLeft,
+  FiWifiOff, FiCamera, FiBookOpen, FiUsers,
+  FiTrendingUp,
 } from 'react-icons/fi';
 
+// ------------------------------------------------------------
+// Camera capture helper (used for biometric login)
+// ------------------------------------------------------------
+async function captureImageFromCamera() {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.setAttribute('autoplay', '');
+    video.setAttribute('playsinline', '');
+    video.style.position = 'fixed';
+    video.style.top = '0';
+    video.style.left = '0';
+    video.style.width = '100%';
+    video.style.height = '100%';
+    video.style.objectFit = 'cover';
+    video.style.zIndex = '9999';
+    video.style.background = '#000';
+    document.body.appendChild(video);
+
+    const captureBtn = document.createElement('button');
+    captureBtn.innerText = 'Capture Face';
+    captureBtn.style.position = 'fixed';
+    captureBtn.style.bottom = '30px';
+    captureBtn.style.left = '50%';
+    captureBtn.style.transform = 'translateX(-50%)';
+    captureBtn.style.zIndex = '10000';
+    captureBtn.style.padding = '12px 32px';
+    captureBtn.style.borderRadius = '999px';
+    captureBtn.style.background = '#6366f1';
+    captureBtn.style.color = '#fff';
+    captureBtn.style.border = 'none';
+    captureBtn.style.fontSize = '1rem';
+    captureBtn.style.fontWeight = '600';
+    captureBtn.style.cursor = 'pointer';
+    document.body.appendChild(captureBtn);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.innerText = 'Cancel';
+    closeBtn.style.position = 'fixed';
+    closeBtn.style.top = '20px';
+    closeBtn.style.right = '20px';
+    closeBtn.style.zIndex = '10000';
+    closeBtn.style.padding = '8px 16px';
+    closeBtn.style.borderRadius = '8px';
+    closeBtn.style.background = 'rgba(255,255,255,0.2)';
+    closeBtn.style.color = '#fff';
+    closeBtn.style.border = 'none';
+    closeBtn.style.cursor = 'pointer';
+    document.body.appendChild(closeBtn);
+
+    let stream = null;
+
+    const cleanup = () => {
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+      if (video.parentNode) video.parentNode.removeChild(video);
+      if (captureBtn.parentNode) captureBtn.parentNode.removeChild(captureBtn);
+      if (closeBtn.parentNode) closeBtn.parentNode.removeChild(closeBtn);
+    };
+
+    const handleCapture = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+      cleanup();
+      resolve(base64);
+    };
+
+    const handleCancel = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    captureBtn.addEventListener('click', handleCapture);
+    closeBtn.addEventListener('click', handleCancel);
+
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } })
+      .then((s) => {
+        stream = s;
+        video.srcObject = s;
+        video.play().catch(() => {
+          cleanup();
+          reject(new Error('Unable to start camera'));
+        });
+      })
+      .catch((err) => {
+        cleanup();
+        reject(err);
+      });
+  });
+}
+
+// ------------------------------------------------------------
+// Login Page Component
+// ------------------------------------------------------------
 export default function LoginPage() {
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
@@ -15,11 +113,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [resendTimer, setResendTimer] = useState(0);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const { login } = useAuth();
+
+  const { login, biometricLogin } = useAuth();
   const navigate = useNavigate();
   const otpRef = useRef(null);
 
-  // Online/offline detection
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -31,7 +129,6 @@ export default function LoginPage() {
     };
   }, []);
 
-  // Resend OTP countdown
   useEffect(() => {
     if (resendTimer > 0) {
       const interval = setInterval(() => setResendTimer(t => t - 1), 1000);
@@ -39,21 +136,10 @@ export default function LoginPage() {
     }
   }, [resendTimer]);
 
-  // Focus OTP input when step changes
-  useEffect(() => {
-    if (step === 'otp' && otpRef.current) {
-      otpRef.current.focus();
-    }
-  }, [step]);
-
   const requestOTP = async (e) => {
     e.preventDefault();
     if (!phone.trim() || phone.length < 10) {
       toast.error('Please enter a valid phone number');
-      return;
-    }
-    if (!isOnline) {
-      toast.error('You are offline. Please check your connection.');
       return;
     }
     setLoading(true);
@@ -63,8 +149,7 @@ export default function LoginPage() {
       setResendTimer(30);
       toast.success('OTP sent to your phone');
     } catch (error) {
-      const msg = error.response?.data?.error || 'Failed to send OTP';
-      toast.error(msg);
+      toast.error(error.response?.data?.error || 'Failed to send OTP');
     } finally {
       setLoading(false);
     }
@@ -72,310 +157,576 @@ export default function LoginPage() {
 
   const verifyOTP = async (e) => {
     e.preventDefault();
-    if (!otp.trim() || otp.length < 6) {
-      toast.error('Please enter a valid 6-digit OTP');
-      return;
-    }
     setLoading(true);
     try {
       await login(phone, otp);
       toast.success('Welcome back! 🎉');
       navigate('/');
     } catch (error) {
-      const msg = error.response?.data?.error || 'Invalid OTP. Please try again.';
-      toast.error(msg);
+      toast.error(error.message || 'Invalid OTP');
       setOtp('');
-      if (otpRef.current) otpRef.current.focus();
     } finally {
       setLoading(false);
     }
   };
 
-  const handleResendOTP = async () => {
-    if (resendTimer > 0 || loading) return;
+  const handleBiometricLogin = async () => {
+    if (!phone.trim() || phone.length < 10) {
+      toast.error('Please enter your phone number first');
+      return;
+    }
+
     setLoading(true);
     try {
-      await apiClient.post('/accounts/request-otp/', { phone_number: phone });
-      setResendTimer(30);
-      toast.success('OTP resent!');
-      setOtp('');
-      if (otpRef.current) otpRef.current.focus();
+      const base64Image = await captureImageFromCamera();
+
+      if (!base64Image) {
+        toast('Biometric login cancelled', { icon: '📷' });
+        setLoading(false);
+        return;
+      }
+
+      await biometricLogin(phone, base64Image);
+      toast.success('Biometric login successful! ✨');
+      navigate('/');
     } catch (error) {
-      toast.error('Failed to resend OTP');
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        toast.error('Camera permission denied. Please allow camera access.');
+      } else {
+        toast.error(error.response?.data?.error || error.message || 'Biometric authentication failed');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=DM+Sans:wght@400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&display=swap');
 
-        .login-container {
-          font-family: 'Sora', sans-serif;
-          width: 100%;
-          max-width: 440px;
-          animation: loginFadeIn 0.6s ease both;
+        @keyframes float {
+          0%, 100% { transform: translateY(0px) rotate(0deg); }
+          33% { transform: translateY(-15px) rotate(1deg); }
+          66% { transform: translateY(-8px) rotate(-1deg); }
         }
-        @keyframes loginFadeIn {
-          from { opacity: 0; transform: translateY(20px) scale(0.97); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
+        @keyframes pulse-glow {
+          0%, 100% { box-shadow: 0 0 20px rgba(99,102,241,0.3), 0 0 60px rgba(99,102,241,0.1); }
+          50% { box-shadow: 0 0 35px rgba(99,102,241,0.5), 0 0 80px rgba(139,92,246,0.2); }
+        }
+        @keyframes gradient-shift {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(30px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeInScale {
+          from { opacity: 0; transform: scale(0.9); }
+          to { opacity: 1; transform: scale(1); }
+        }
+
+        .login-page-wrapper {
+          font-family: 'Outfit', sans-serif;
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 1.5rem;
+          position: relative;
+          overflow: hidden;
+          background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 25%, #312e81 50%, #1e1b4b 75%, #0f172a 100%);
+          background-size: 400% 400%;
+          animation: gradient-shift 15s ease infinite;
+        }
+
+        .login-bg-orb {
+          position: absolute;
+          border-radius: 50%;
+          filter: blur(80px);
+          opacity: 0.3;
+          pointer-events: none;
+        }
+        .login-bg-orb-1 {
+          width: 400px; height: 400px;
+          background: radial-gradient(circle, #6366f1 0%, transparent 70%);
+          top: -100px; left: -100px;
+          animation: float 8s ease-in-out infinite;
+        }
+        .login-bg-orb-2 {
+          width: 350px; height: 350px;
+          background: radial-gradient(circle, #8b5cf6 0%, transparent 70%);
+          bottom: -80px; right: -80px;
+          animation: float 10s ease-in-out infinite reverse;
+        }
+        .login-bg-orb-3 {
+          width: 250px; height: 250px;
+          background: radial-gradient(circle, #ec4899 0%, transparent 70%);
+          top: 50%; left: 50%;
+          transform: translate(-50%, -50%);
+          animation: float 12s ease-in-out infinite;
+          opacity: 0.15;
+        }
+
+        .login-bg-grid {
+          position: absolute;
+          inset: 0;
+          background-image: 
+            linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+          background-size: 60px 60px;
+          pointer-events: none;
         }
 
         .login-card {
-          background: rgba(255,255,255,0.85);
-          backdrop-filter: blur(24px) saturate(180%);
-          -webkit-backdrop-filter: blur(24px) saturate(180%);
-          border: 1px solid rgba(255,255,255,0.5);
+          position: relative;
+          z-index: 10;
+          width: 100%;
+          max-width: 440px;
+          background: rgba(255,255,255,0.95);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
           border-radius: 28px;
-          padding: 40px 32px;
-          box-shadow: 0 4px 24px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+          padding: 2.5rem 2rem;
+          box-shadow: 0 25px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.1);
+          animation: slideUp 0.6s cubic-bezier(0.16,1,0.3,1) both;
+          border: 1px solid rgba(255,255,255,0.2);
         }
+
         .dark .login-card {
-          background: rgba(17,17,34,0.85);
-          border-color: rgba(255,255,255,0.06);
-          box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+          background: rgba(15,15,30,0.92);
+          border-color: rgba(255,255,255,0.08);
         }
 
-        .login-logo {
-          width: 56px; height: 56px;
-          background: linear-gradient(135deg, #6366f1, #8b5cf6, #ec4899);
-          border-radius: 16px;
-          display: flex; align-items: center; justify-content: center;
-          margin: 0 auto 16px;
-          box-shadow: 0 8px 32px rgba(99,102,241,0.35);
+        .login-brand {
+          text-align: center;
+          margin-bottom: 1.5rem;
         }
-        .login-logo svg { color: white; width: 28px; height: 28px; }
-
-        .login-title {
-          font-size: 1.6rem; font-weight: 800; text-align: center;
-          background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        .login-logo-mark {
+          width: 64px; height: 64px;
+          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a78bfa 100%);
+          border-radius: 18px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 1rem;
+          animation: pulse-glow 3s ease-in-out infinite;
+          box-shadow: 0 8px 32px rgba(99,102,241,0.4);
+        }
+        .login-logo-mark svg {
+          color: white;
+          width: 28px;
+          height: 28px;
+        }
+        .login-brand-name {
+          font-family: 'Bricolage Grotesque', sans-serif;
+          font-size: 1.8rem;
+          font-weight: 800;
+          letter-spacing: -0.04em;
+          background: linear-gradient(135deg, #6366f1, #8b5cf6, #a78bfa);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
-          margin-bottom: 4px;
+          margin-bottom: 0.25rem;
         }
-        .login-subtitle {
-          text-align: center; font-size: 0.85rem; color: #9ca3af; margin-bottom: 32px;
+        .login-tagline {
+          font-size: 0.85rem;
+          color: #6b7280;
+          font-weight: 500;
+          letter-spacing: 0.01em;
+          line-height: 1.5;
+        }
+        .login-tagline-highlight {
+          color: #6366f1;
+          font-weight: 600;
         }
 
-        .login-steps {
-          display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 28px;
+        .dark .login-tagline {
+          color: #9ca3af;
         }
-        .login-step-dot {
-          width: 10px; height: 10px; border-radius: 50%;
-          background: #e5e7eb; transition: all .3s;
+        .dark .login-tagline-highlight {
+          color: #818cf8;
         }
-        .dark .login-step-dot { background: #374151; }
-        .login-step-dot.active {
-          background: #6366f1; box-shadow: 0 0 8px rgba(99,102,241,.4);
-          transform: scale(1.3);
-        }
-        .login-step-line {
-          width: 32px; height: 2px; background: #e5e7eb; border-radius: 1px;
-        }
-        .dark .login-step-line { background: #374151; }
-        .login-step-line.done { background: #6366f1; }
 
-        .login-input-group { margin-bottom: 20px; }
-        .login-label { display: block; font-size: 0.8rem; font-weight: 600; color: #374151; margin-bottom: 8px; letter-spacing: 0.02em; }
-        .dark .login-label { color: #d1d5db; }
-        .login-input-wrapper { position: relative; }
-        .login-input-icon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #9ca3af; pointer-events: none; }
+        .login-features {
+          display: flex;
+          justify-content: center;
+          gap: 1rem;
+          margin-top: 0.75rem;
+          flex-wrap: wrap;
+        }
+        .login-feature-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 5px 12px;
+          border-radius: 99px;
+          font-size: 0.68rem;
+          font-weight: 600;
+          background: rgba(99,102,241,0.08);
+          color: #6366f1;
+          border: 1px solid rgba(99,102,241,0.15);
+        }
+        .dark .login-feature-pill {
+          background: rgba(99,102,241,0.12);
+          border-color: rgba(99,102,241,0.2);
+          color: #a5b4fc;
+        }
+
+        .login-form-group {
+          margin-bottom: 1rem;
+        }
+        .login-label {
+          display: block;
+          font-size: 0.78rem;
+          font-weight: 600;
+          color: #374151;
+          margin-bottom: 0.5rem;
+          letter-spacing: 0.01em;
+        }
+        .dark .login-label {
+          color: #d1d5db;
+        }
         .login-input {
-          width: 100%; padding: 14px 16px 14px 46px;
+          width: 100%;
+          padding: 0.8rem 1rem;
           border-radius: 14px;
-          border: 1.5px solid rgba(0,0,0,0.1);
-          background: rgba(255,255,255,0.6);
-          font-size: 0.95rem; font-family: 'DM Sans', sans-serif;
-          outline: none; transition: all .2s; color: #1f2937;
+          border: 1.5px solid #e5e7eb;
+          background: #f9fafb;
+          font-family: 'Outfit', sans-serif;
+          font-size: 0.95rem;
+          font-weight: 500;
+          color: #111827;
+          outline: none;
+          transition: all 0.2s ease;
         }
-        .dark .login-input { background: rgba(30,30,50,0.6); border-color: rgba(255,255,255,0.08); color: #f3f4f6; }
-        .login-input:focus { border-color: #6366f1; box-shadow: 0 0 0 4px rgba(99,102,241,0.1); }
-        .login-input.otp-input {
-          text-align: center; font-size: 1.5rem; letter-spacing: 0.5em;
-          padding-left: 16px; font-weight: 700;
+        .login-input:focus {
+          border-color: #3e40b3;
+          box-shadow: 0 0 0 4px rgba(99,102,241,0.1);
+          background: white;
+        }
+        .login-input::placeholder {
+          color: #576d92;
+        }
+        .login-input-icon {
+          position: relative;
+        }
+        .login-input-icon svg {
+          position: absolute;
+          left: 0.85rem;
+          top: 50%;
+          transform: translateY(-50%);
+          color: #9ca3af;
+          z-index: 1;
+        }
+        .login-input-icon input {
+          padding-left: 2.6rem;
+        }
+        .dark .login-input {
+          background: rgba(30,30,50,0.8);
+          border-color: rgba(255,255,255,0.1);
+          color: #f3f4f6;
+        }
+        .dark .login-input:focus {
+          background: rgba(40,40,60,0.9);
+          border-color: #818cf8;
+          box-shadow: 0 0 0 4px rgba(129,140,248,0.15);
         }
 
-        .login-btn {
-          width: 100%; padding: 14px; border-radius: 14px; border: none;
-          font-size: 0.95rem; font-weight: 600; cursor: pointer;
-          transition: all .25s; font-family: 'Sora', sans-serif;
-          display: flex; align-items: center; justify-content: center; gap: 8px;
+        .login-otp-input {
+          text-align: center;
+          font-size: 1.5rem;
+          letter-spacing: 0.6em;
+          font-weight: 700;
+          padding: 0.9rem 0.5rem;
         }
-        .login-btn-primary { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; box-shadow: 0 4px 16px rgba(99,102,241,0.3); }
-        .login-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(99,102,241,0.4); }
-        .login-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
-        .login-btn-ghost { background: transparent; color: #6366f1; font-size: 0.85rem; margin-top: 12px; }
-        .login-btn-ghost:hover { background: rgba(99,102,241,0.06); }
-        .login-btn-resend { background: transparent; color: #6366f1; font-size: 0.82rem; padding: 8px; margin-top: 4px; border: none; cursor: pointer; font-family: 'Sora', sans-serif; font-weight: 600; }
-        .login-btn-resend:disabled { color: #9ca3af; cursor: not-allowed; }
 
-        .login-footer { text-align: center; margin-top: 24px; font-size: 0.85rem; color: #6b7280; }
-        .dark .login-footer { color: #9ca3af; }
-        .login-footer a { color: #6366f1; font-weight: 600; text-decoration: none; }
-        .login-footer a:hover { text-decoration: underline; }
+        .login-btn-primary {
+          width: 100%;
+          padding: 0.85rem;
+          border-radius: 14px;
+          border: none;
+          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+          color: white;
+          font-family: 'Outfit', sans-serif;
+          font-size: 0.9rem;
+          font-weight: 700;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.5rem;
+          transition: all 0.2s ease;
+          box-shadow: 0 6px 20px rgba(99,102,241,0.35);
+          margin-bottom: 0.75rem;
+        }
+        .login-btn-primary:hover:not(:disabled) {
+          transform: translateY(-2px);
+          box-shadow: 0 10px 28px rgba(99,102,241,0.45);
+        }
+        .login-btn-primary:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
 
-        .login-features { display: flex; justify-content: center; gap: 16px; margin-top: 20px; font-size: 0.7rem; color: #9ca3af; }
-        .login-features span { display: flex; align-items: center; gap: 4px; }
+        .login-btn-secondary {
+          width: 100%;
+          padding: 0.75rem;
+          border-radius: 14px;
+          border: 1.5px solid rgba(99,102,241,0.3);
+          background: rgba(99,102,241,0.04);
+          color: #6366f1;
+          font-family: 'Outfit', sans-serif;
+          font-size: 0.85rem;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.5rem;
+          transition: all 0.2s ease;
+        }
+        .login-btn-secondary:hover {
+          background: rgba(99,102,241,0.08);
+          border-color: rgba(99,102,241,0.5);
+        }
+        .dark .login-btn-secondary {
+          color: #a5b4fc;
+          border-color: rgba(129,140,248,0.3);
+          background: rgba(129,140,248,0.06);
+        }
+
+        .login-divider {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          margin: 1rem 0;
+          color: #9ca3af;
+          font-size: 0.72rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        .login-divider::before,
+        .login-divider::after {
+          content: '';
+          flex: 1;
+          height: 1px;
+          background: #e5e7eb;
+        }
+        .dark .login-divider::before,
+        .dark .login-divider::after {
+          background: rgba(255,255,255,0.1);
+        }
+
+        .login-footer {
+          text-align: center;
+          margin-top: 1.25rem;
+          font-size: 0.82rem;
+          color: #6b7280;
+        }
+        .login-footer a {
+          color: #6366f1;
+          font-weight: 700;
+          text-decoration: none;
+          transition: color 0.15s;
+        }
+        .login-footer a:hover {
+          color: #4f46e5;
+          text-decoration: underline;
+        }
+        .dark .login-footer {
+          color: #9ca3af;
+        }
+        .dark .login-footer a {
+          color: #818cf8;
+        }
 
         .login-offline-banner {
-          display: flex; align-items: center; justify-content: center; gap: 6px;
-          padding: 8px 14px; border-radius: 10px; margin-bottom: 16px;
-          background: #fef3c7; color: #92400e; font-size: 0.78rem; font-weight: 600;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.75rem 1rem;
+          border-radius: 12px;
+          background: rgba(245,158,11,0.1);
+          border: 1px solid rgba(245,158,11,0.25);
+          color: #d97706;
+          font-size: 0.78rem;
+          font-weight: 600;
+          margin-bottom: 1rem;
         }
-        .dark .login-offline-banner { background: rgba(251,191,36,0.1); color: #fbbf24; }
 
-        .login-forgot-link { display: block; text-align: center; font-size: 0.82rem; color: #6366f1; text-decoration: none; font-weight: 600; margin-top: 8px; }
-        .login-forgot-link:hover { text-decoration: underline; }
+        .login-resend-btn {
+          background: none;
+          border: none;
+          color: #6366f1;
+          font-size: 0.78rem;
+          font-weight: 600;
+          cursor: pointer;
+          padding: 0;
+          transition: color 0.15s;
+        }
+        .login-resend-btn:hover:not(:disabled) {
+          color: #4f46e5;
+          text-decoration: underline;
+        }
+        .login-resend-btn:disabled {
+          color: #9ca3af;
+          cursor: not-allowed;
+        }
 
-        @media (max-width: 480px) {
-          .login-card { padding: 28px 20px; border-radius: 24px; }
+        .login-back-btn {
+          width: 100%;
+          padding: 0.6rem;
+          border: none;
+          background: transparent;
+          color: #6b7280;
+          font-family: 'Outfit', sans-serif;
+          font-size: 0.8rem;
+          font-weight: 500;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.4rem;
+          transition: color 0.15s;
+          margin-top: 0.25rem;
+        }
+        .login-back-btn:hover {
+          color: #6366f1;
+        }
+        .dark .login-back-btn {
+          color: #9ca3af;
         }
       `}</style>
 
-      <div className="login-container">
-        <div className="login-card">
-          {/* Logo */}
-          <div className="login-logo">
-            <FiZap />
-          </div>
-          <h1 className="login-title">Academe</h1>
-          <p className="login-subtitle">Student Ecosystem</p>
+      <div className="login-page-wrapper">
+        <div className="login-bg-orb login-bg-orb-1" />
+        <div className="login-bg-orb login-bg-orb-2" />
+        <div className="login-bg-orb login-bg-orb-3" />
+        <div className="login-bg-grid" />
 
-          {/* Offline Banner */}
+        <div className="login-card">
+          <div className="login-brand">
+            <div className="login-logo-mark">
+              <FiZap size={28} />
+            </div>
+            <h1 className="login-brand-name">Academe</h1>
+            <p className="login-tagline">
+              Where <span className="login-tagline-highlight">education</span> meets{' '}
+              <span className="login-tagline-highlight">innovation</span>
+            </p>
+            <p className="login-tagline" style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
+              Your all-in-one campus companion — announcements, classes, opportunities & more.
+            </p>
+            <div className="login-features">
+              <span className="login-feature-pill"><FiBookOpen size={11} /> Academics</span>
+              <span className="login-feature-pill"><FiUsers size={11} /> Community</span>
+              <span className="login-feature-pill"><FiTrendingUp size={11} /> Growth</span>
+            </div>
+          </div>
+
           {!isOnline && (
             <div className="login-offline-banner">
-              <FiWifiOff size={14} /> You are offline — check your connection
+              <FiWifiOff size={16} /> You're offline — limited functionality
             </div>
           )}
 
-          {/* Step Indicator */}
-          <div className="login-steps">
-            <div className={`login-step-dot ${step === 'phone' ? 'active' : ''}`} />
-            <div className={`login-step-line ${step === 'otp' ? 'done' : ''}`} />
-            <div className={`login-step-dot ${step === 'otp' ? 'active' : ''}`} />
-          </div>
-
           {step === 'phone' ? (
             <form onSubmit={requestOTP}>
-              <div className="login-input-group">
+              <div className="login-form-group">
                 <label className="login-label">Phone Number</label>
-                <div className="login-input-wrapper">
-                  <FiPhone size={18} className="login-input-icon" />
+                <div className="login-input-icon">
+                  <FiPhone size={16} />
                   <input
                     type="tel"
+                    className="login-input"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="+254 700 000 000"
-                    className="login-input"
-                    autoFocus
-                    autoComplete="tel"
                     required
                   />
                 </div>
               </div>
-
-              <button type="submit" disabled={loading || !isOnline} className="login-btn login-btn-primary">
-                {loading ? (
-                  <>
-                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Sending OTP...
-                  </>
-                ) : (
-                  <>
-                    Get OTP <FiArrowRight size={16} />
-                  </>
+              <button
+                type="submit"
+                className="login-btn-primary"
+                disabled={loading}
+              >
+                {loading ? 'Sending OTP...' : (
+                  <>Get OTP <FiArrowRight size={18} /></>
                 )}
               </button>
             </form>
           ) : (
             <form onSubmit={verifyOTP}>
-              <div className="login-input-group">
-                <label className="login-label">Enter OTP Code</label>
-                <div className="login-input-wrapper">
-                  <FiLock size={18} className="login-input-icon" />
-                  <input
-                    ref={otpRef}
-                    type="text"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    placeholder="••••••"
-                    maxLength={6}
-                    className="login-input otp-input"
-                    autoComplete="one-time-code"
-                    inputMode="numeric"
-                    required
-                  />
+              <div className="login-form-group">
+                <label className="login-label">
+                  Enter OTP Code
+                  {resendTimer > 0 && (
+                    <span style={{ color: '#9ca3af', marginLeft: '0.5rem', fontWeight: 400 }}>
+                      ({resendTimer}s)
+                    </span>
+                  )}
+                </label>
+                <input
+                  ref={otpRef}
+                  className="login-input login-otp-input"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  placeholder="••••••"
+                  maxLength={6}
+                  required
+                />
+                <div style={{ textAlign: 'right', marginTop: '0.5rem' }}>
+                  <button
+                    type="button"
+                    className="login-resend-btn"
+                    disabled={resendTimer > 0}
+                    onClick={requestOTP}
+                  >
+                    {resendTimer > 0 ? `Resend in ${resendTimer}s` : 'Resend OTP'}
+                  </button>
                 </div>
-                <p className="text-xs text-gray-400 mt-2 text-center">
-                  Sent to {phone}
-                </p>
               </div>
 
-              <button type="submit" disabled={loading} className="login-btn login-btn-primary">
-                {loading ? (
-                  <>
-                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Verifying...
-                  </>
-                ) : (
-                  <>
-                    Verify & Login <FiArrowRight size={16} />
-                  </>
-                )}
-              </button>
-
-              {/* Resend OTP */}
               <button
-                type="button"
-                onClick={handleResendOTP}
-                disabled={resendTimer > 0 || loading}
-                className="login-btn-resend"
+                type="submit"
+                className="login-btn-primary"
+                disabled={loading}
               >
-                {resendTimer > 0 ? (
-                  <>Resend OTP in {resendTimer}s</>
-                ) : (
-                  <><FiRefreshCw size={12} /> Resend OTP</>
-                )}
+                {loading ? 'Verifying...' : 'Verify & Login'}
+              </button>
+
+              <div className="login-divider">or continue with</div>
+
+              <button
+                type="button"
+                className="login-btn-secondary"
+                onClick={handleBiometricLogin}
+                disabled={loading}
+              >
+                <FiCamera size={18} /> Face ID
               </button>
 
               <button
                 type="button"
-                onClick={() => { setStep('phone'); setOtp(''); }}
-                className="login-btn login-btn-ghost"
+                className="login-back-btn"
+                onClick={() => setStep('phone')}
               >
                 <FiArrowLeft size={14} /> Change phone number
               </button>
             </form>
           )}
 
-          {/* Forgot Password Link */}
-          <Link to="/forgot-password" className="login-forgot-link">
-            Forgot your password?
-          </Link>
-
-          {/* Footer */}
-          <p className="login-footer">
+          <div className="login-footer">
             Don't have an account?{' '}
             <Link to="/signup">Create one</Link>
-          </p>
-
-          {/* Trust badges */}
-          <div className="login-features">
-            <span><FiShield size={10} /> Secure</span>
-            <span><FiUsers size={10} /> 5,000+ Students</span>
-            <span><FiZap size={10} /> Fast</span>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

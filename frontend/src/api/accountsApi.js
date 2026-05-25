@@ -11,18 +11,28 @@ export const accountsApi = {
   verifyOTP: (phone, otp) => apiClient.post('/accounts/verify-otp/', { phone_number: phone, otp: otp }),
 
   // ==========================================
-  // PASSWORD RESET (NEW - Self-Serve)
+  // PASSWORD RESET
   // ==========================================
-
-  /** Step 1: Request password reset OTP */
   forgotPassword: (phone) => apiClient.post('/accounts/forgot-password/', { phone_number: phone }),
 
-  /** Step 2: Verify OTP and set new password */
   resetPassword: (phone, otp, newPassword) =>
     apiClient.post('/accounts/reset-password/', {
       phone_number: phone,
       otp: otp,
       new_password: newPassword,
+    }),
+
+  // ==========================================
+  // BIOMETRIC AUTHENTICATION
+  // ==========================================
+  // Now sends 'image_data' (Base64 string) instead of 'face_embedding'; this is light weight for backend
+  enrollBiometric: (imageData) =>
+    apiClient.post('/accounts/biometric/enroll/', { image_data: imageData }),
+
+  biometricLogin: (phone, imageData) =>
+    apiClient.post('/accounts/biometric/login/', {
+      phone_number: phone,
+      image_data: imageData
     }),
 
   // ==========================================
@@ -48,19 +58,19 @@ export const accountsApi = {
   deleteAccount: () => apiClient.post('/accounts/delete-account/'),
 
   // ==========================================
-  // SESSION MANAGEMENT (NEW)
+  // SESSION MANAGEMENT
   // ==========================================
-
-  /** List all active sessions for current user */
   listSessions: () => apiClient.get('/accounts/sessions/'),
 
-  /** Revoke a specific session by ID */
   revokeSession: (sessionId) => apiClient.post(`/accounts/sessions/${sessionId}/revoke/`),
 
-  /** Revoke all sessions except current one */
   revokeAllSessions: () => apiClient.post('/accounts/sessions/revoke-all/'),
 
-  /** Refresh JWT access token */
   refreshToken: (refreshToken) =>
     apiClient.post('/accounts/refresh-token/', { refresh: refreshToken }),
+
+  // ==========================================
+  // TWO-FACTOR AUTHENTICATION (NEW)
+  // ==========================================
+  toggleTwoFactor: () => apiClient.post('/accounts/2fa/toggle/'),
 };

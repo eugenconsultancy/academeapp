@@ -1,19 +1,19 @@
-const CACHE_NAME = 'academe-v1';
+// ── Service Worker v2 ──────────────────────────────────────────
+const CACHE_NAME = 'academe-v2';
 const OFFLINE_URL = '/offline.html';
+
+// Import IndexedDB support for service worker
+importScripts('https://cdn.jsdelivr.net/npm/idb@7/build/umd.js');
 
 const STATIC_ASSETS = [
     '/',
     '/index.html',
     '/manifest.json',
-    '/icons/icon-192.png',
-    '/icons/icon-512.png',
 ];
 
 self.addEventListener('install', (event) => {
     event.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => {
-            return cache.addAll(STATIC_ASSETS);
-        })
+        caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
     );
     self.skipWaiting();
 });
@@ -32,16 +32,14 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-    // Skip API calls
+    // 1. Skip API calls and Biometric verification routes
     if (event.request.url.includes('/api/')) {
         return;
     }
 
     event.respondWith(
         caches.match(event.request).then((cachedResponse) => {
-            if (cachedResponse) {
-                return cachedResponse;
-            }
+            if (cachedResponse) return cachedResponse;
 
             return fetch(event.request).catch(() => {
                 if (event.request.mode === 'navigate') {
@@ -52,7 +50,7 @@ self.addEventListener('fetch', (event) => {
     );
 });
 
-// Background sync for offline attendance
+// ── BACKGROUND SYNC ──────────────────────────────────────────
 self.addEventListener('sync', (event) => {
     if (event.tag === 'sync-attendance') {
         event.waitUntil(syncOfflineAttendance());
@@ -60,16 +58,18 @@ self.addEventListener('sync', (event) => {
 });
 
 async function syncOfflineAttendance() {
-    const db = await openDB('AcademeOfflineDB', 1);
+    // Use the idb library imported via importScripts
+    const db = await idb.openDB('AcademeOfflineDB', 3);
     const offlineData = await db.getAll('offlineAttendance');
 
     for (const record of offlineData) {
         try {
+            const token = await getAccessToken();
             const response = await fetch('/api/classes/mark-attendance/', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${getAccessToken()}`,
+                    'Authorization': `Bearer ${token}`,
                 },
                 body: JSON.stringify(record),
             });
@@ -83,7 +83,10 @@ async function syncOfflineAttendance() {
     }
 }
 
-function getAccessToken() {
-    // Get token from IndexedDB or localStorage
-    return localStorage.getItem('access_token');
+// Service workers cannot access localStorage. 
+// You should store your token in IndexedDB for the SW to read it.
+async function getAccessToken() {
+    const db = await idb.openDB('AcademeOfflineDB', 3);
+    const token = await db.get('settings', 'access_token');
+    return token;
 }

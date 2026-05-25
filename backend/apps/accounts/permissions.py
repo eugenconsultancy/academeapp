@@ -25,3 +25,16 @@ class IsStudentLeader(JWTAuth):
 class IsOwner:
     def check_object_permissions(self, request, obj):
         return obj.user == request.user
+
+        
+class IsBiometricAuthenticated(JWTAuth):
+    """
+    Allows access if the user has enabled biometric authentication 
+    and is performing an action authorized for their role.
+    """
+    def authenticate(self, request, token):
+        user = super().authenticate(request, token)
+        # Updated: Check the boolean flag instead of the legacy face_embedding field
+        if user and user.biometric_enabled:
+            return user
+        return None
