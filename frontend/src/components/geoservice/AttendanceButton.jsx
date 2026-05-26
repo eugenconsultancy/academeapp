@@ -1,16 +1,13 @@
 import React, { useState } from 'react';
-import { useGeolocation } from '../../hooks/useGeolocation';
-import GeoService from '../../services/geoService';
+import GeoService from '../../api/geoService';
 
 export function LocationAttendanceButton({ entryId, unitName, venue, isMarked }) {
-  const { location, error: geoError, loading: geoLoading, getLocation } = useGeolocation();
   const [marking, setMarking] = useState(false);
   const [result, setResult] = useState(null);
 
   const handleMarkAttendance = async () => {
     setMarking(true);
     setResult(null);
-
     try {
       // Get GPS location
       const position = await new Promise((resolve, reject) => {
@@ -20,7 +17,7 @@ export function LocationAttendanceButton({ entryId, unitName, venue, isMarked })
         });
       });
 
-      // Submit location check-in
+      // Submit location check‑in via corrected API client
       const response = await GeoService.submitCheckIn({
         timetable_entry_id: entryId,
         latitude: position.coords.latitude,
@@ -61,11 +58,8 @@ export function LocationAttendanceButton({ entryId, unitName, venue, isMarked })
       >
         {marking ? 'Verifying Location...' : 'Mark Attendance with GPS'}
       </button>
-      
       {result && (
         <div className={`result-banner ${result.type}`}>
-          {result.type === 'success' && ' '}
-          {result.type === 'warning' && ' '}
           {result.message}
           {result.distance && ` (${result.distance})`}
         </div>

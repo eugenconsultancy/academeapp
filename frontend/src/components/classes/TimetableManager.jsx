@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { classesApi } from '../../api/classesApi';
-import GeoService from '../../services/geoService';
+import GeoService from "../../api/geoService";
 import SkeletonLoader from '../shared/SkeletonLoader';
 import toast from 'react-hot-toast';
 import {

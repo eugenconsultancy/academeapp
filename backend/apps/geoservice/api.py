@@ -8,6 +8,7 @@ from ninja import Router, Query
 from common.jwt_auth import JWTAuth
 from .models import CampusVenue, LocationCheckIn
 from .services import LocationService, AttendanceLocationService
+from django.utils import timezone
 
 router = Router(tags=['Location Services'])
 
@@ -91,6 +92,81 @@ def get_nearby_venues(
     )
     
     return venues
+
+
+# ============================================
+# VENUE OCCUPANCY (NEW)
+# ============================================
+@router.get("/venues/{venue_id}/occupancy/", auth=JWTAuth())
+def get_venue_occupancy(request, venue_id: str):
+    """
+    Check if a venue is currently occupied.
+    Returns the currently active class if any.
+    """
+    from apps.classes.models import TimetableEntry
+    from django.utils import timezone
+
+    venue = get_object_or_404(CampusVenue, id=venue_id, is_active=True)
+
+    now = timezone.localtime()
+    current_time = now.time()
+
+    entry = TimetableEntry.objects.filter(
+        venue__iexact=venue.name,
+        day_of_week=now.weekday(),
+        is_active=True,
+        start_time__lte=current_time,
+        end_time__gte=current_time,
+    ).first()
+
+    if entry:
+        return {
+            "occupied": True,
+            "current_class": {
+                "unit_name": entry.unit_name,
+                "start_time": str(entry.start_time),
+                "end_time": str(entry.end_time),
+                "lecturer": entry.lecturer or "",
+            }
+        }
+    return {"occupied": False, "current_class": None}
+
+
+# ============================================
+# VENUE SCHEDULE (NEW)
+# ============================================
+@router.get("/venues/{venue_id}/schedule/", auth=JWTAuth())
+def get_venue_schedule(request, venue_id: str, date: str = None):
+    """
+    Get today's (or a specific date's) timetable for a venue.
+    """
+    from apps.classes.models import TimetableEntry
+    from datetime import datetime
+
+    venue = get_object_or_404(CampusVenue, id=venue_id, is_active=True)
+
+    if date:
+        try:
+            dt = datetime.strptime(date, '%Y-%m-%d')
+            day_of_week = dt.weekday()
+        except ValueError:
+            return {"error": "Invalid date format. Use YYYY-MM-DD"}
+    else:
+        day_of_week = timezone.localtime().weekday()
+
+    entries = TimetableEntry.objects.filter(
+        venue__iexact=venue.name,
+        day_of_week=day_of_week,
+        is_active=True
+    ).order_by('start_time')
+
+    return [{
+        "id": str(e.id),
+        "unit_name": e.unit_name,
+        "start_time": str(e.start_time),
+        "end_time": str(e.end_time),
+        "lecturer": e.lecturer or "",
+    } for e in entries]
 
 
 # ============================================
@@ -296,3 +372,25 @@ def get_checkin_summary(request):
     """Get today's location check-in summary"""
     summary = attendance_service.get_daily_checkin_summary(request.auth)
     return summary
+
+
+# ============================================
+# LOCATION RECORD (NEW)
+# ============================================
+@router.post("/location/record/", auth=JWTAuth())
+def record_location(request, data: dict):
+    """
+    Record a location update for analytics (non-critical).
+    Body: { latitude, longitude, accuracy, timestamp, event_type, metadata }
+    """
+    from .models import StudentLocationHistory
+
+    StudentLocationHistory.objects.create(
+        student=request.auth,
+        latitude=data['latitude'],
+        longitude=data['longitude'],
+        accuracy=data.get('accuracy'),
+        event_type=data.get('event_type', 'background'),
+        metadata=data.get('metadata', {})
+    )
+    return {"status": "recorded"}

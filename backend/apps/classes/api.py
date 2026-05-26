@@ -8,7 +8,7 @@ from .models import ClassGroup, TimetableEntry, AttendanceRecord
 from .services import AttendanceService, TimetableService
 from .schema import (
     TimetableEntryCreate, TimetableEntryUpdate, TimetableEntryOutDetail,
-    AttendanceMarkIn,
+    AttendanceMarkIn, ClassGroupOut,
 )
 
 router = Router()
@@ -76,6 +76,15 @@ def get_represented_class(request):
         }
     except ClassGroup.DoesNotExist:
         raise HttpError(404, "You are not a class representative for any class")
+
+# ========== ADMIN: LIST ALL CLASS GROUPS ==========
+@router.get("/class-groups/", auth=JWTAuth(), response=List[ClassGroupOut])
+def list_class_groups(request):
+    """Return all class groups (for admins to manage any timetable)."""
+    if request.auth.role != "admin":
+        raise HttpError(403, "Only admins can list all class groups")
+    groups = ClassGroup.objects.all()
+    return [{"id": str(g.id), "name": g.name, "institution": g.institution} for g in groups]
 
 # ========== CRUD ENDPOINTS FOR TIMETABLE MANAGEMENT (CLASS REP ONLY) ==========
 

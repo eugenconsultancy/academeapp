@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
-import apiClient from '@/api/client';
-import { accountsApi } from '@/api/accountsApi';
-import { blogApi } from '@/api/blogApi';
-import { foundItemsApi } from '@/api/foundItemsApi';
-import { classesApi } from '@/api/classesApi';
+import apiClient from '../api/client';
+import { accountsApi } from '../api/accountsApi';
+import { blogApi } from '../api/blogApi';
+import { foundItemsApi } from '../api/foundItemsApi';
+import { classesApi } from '../api/classesApi';
 import Card from '../components/ui/Card';
+import SkeletonLoader from '../components/shared/SkeletonLoader';
 import toast from 'react-hot-toast';
 import {
   FiUser, FiMail, FiPhone, FiBook, FiMapPin, FiShield,
@@ -16,23 +17,36 @@ import {
   FiAward, FiActivity, FiHeart, FiStar, FiTrendingUp,
   FiBell, FiBarChart2, FiPackage, FiBookOpen,
   FiUserCheck, FiHelpCircle, FiInfo, FiFileText,
+  FiRefreshCw
 } from 'react-icons/fi';
 
 export default function ProfilePage() {
   const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
-  const [editing, setEditing] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [formData, setFormData] = useState({
-    full_name: user?.full_name || '',
-    email: user?.email || '',
-    class_name: user?.class_name || '',
-  });
-  const [loading, setLoading] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
+
+  // Ensure we have latest user data (with 2fa, biometric fields)
+  useEffect(() => {
+    (async () => {
+      try {
+        setProfileLoading(true);
+        const response = await accountsApi.getProfile();
+        const freshUser = response.data || response;
+        // Only update if we have fresh data
+        if (freshUser) {
+          updateUser(freshUser);
+        }
+      } catch (err) {
+        console.error('Failed to refresh profile', err);
+      } finally {
+        setProfileLoading(false);
+      }
+    })();
+  }, []);
 
   // ---------- Dynamic stats (with queries) ----------
-  const { data: myPosts } = useQuery({
+  const { data: myPosts, isLoading: postsLoading } = useQuery({
     queryKey: ['my-blog-posts-count'],
     queryFn: async () => {
       const res = await blogApi.getMyPosts();
@@ -41,7 +55,7 @@ export default function ProfilePage() {
     enabled: !!user,
   });
 
-  const { data: myItems } = useQuery({
+  const { data: myItems, isLoading: itemsLoading } = useQuery({
     queryKey: ['my-found-items-count'],
     queryFn: async () => {
       const res = await foundItemsApi.getMyItems();
@@ -50,7 +64,7 @@ export default function ProfilePage() {
     enabled: !!user,
   });
 
-  const { data: weeklySummary } = useQuery({
+  const { data: weeklySummary, isLoading: weeklyLoading } = useQuery({
     queryKey: ['weekly-summary'],
     queryFn: async () => {
       const res = await classesApi.getWeeklySummary();
@@ -72,20 +86,6 @@ export default function ProfilePage() {
       : `${apiClient.defaults.baseURL}${user.profile_pic}`)
     : null;
 
-  const handleUpdate = async () => {
-    setLoading(true);
-    try {
-      const response = await accountsApi.updateProfile(formData);
-      updateUser(response.data);
-      toast.success('Profile updated successfully!');
-      setEditing(false);
-    } catch (error) {
-      toast.error(error.response?.data?.error || 'Update failed.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -97,15 +97,15 @@ export default function ProfilePage() {
       toast.error('Only image files are allowed');
       return;
     }
-    setUploading(true);
     try {
-      const response = await accountsApi.uploadProfilePic(file);
-      updateUser(response.data.user);
+      const result = await accountsApi.uploadProfilePic(file);
+      // result is { message, profile_pic }
+      const newProfilePic = result.profile_pic;
+      // Update user context with new picture
+      updateUser({ profile_pic: newProfilePic });
       toast.success('Profile picture updated!');
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Upload failed');
-    } finally {
-      setUploading(false);
+      toast.error(error.response?.data?.error || error.message || 'Upload failed');
     }
   };
 
@@ -144,6 +144,10 @@ export default function ProfilePage() {
   const itemCount = myItems?.length ?? 0;
   const attendanceRate = weeklySummary?.percentage ?? null;
 
+  if (profileLoading) {
+    return <SkeletonLoader type="page" />;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-8 px-4">
       <div className="max-w-2xl mx-auto space-y-6">
@@ -176,7 +180,7 @@ export default function ProfilePage() {
                 <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                   <span className="text-white text-xs font-medium flex items-center gap-1">
                     <FiCamera size={14} />
-                    {uploading ? 'Uploading...' : 'Change Photo'}
+                    Change Photo
                   </span>
                 </div>
                 <input
@@ -184,7 +188,6 @@ export default function ProfilePage() {
                   className="hidden"
                   onChange={handleImageUpload}
                   accept="image/*"
-                  disabled={uploading}
                 />
               </label>
             </div>
@@ -207,6 +210,16 @@ export default function ProfilePage() {
                 {isLeader && (
                   <span className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-full text-xs font-semibold">
                     Leadership
+                  </span>
+                )}
+                {user?.two_factor_enabled && (
+                  <span className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full text-xs font-semibold">
+                    🔐 2FA
+                  </span>
+                )}
+                {user?.biometric_enabled && (
+                  <span className="px-3 py-1 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 rounded-full text-xs font-semibold">
+                    👤 Face ID
                   </span>
                 )}
                 {user?.is_online && (
@@ -233,18 +246,28 @@ export default function ProfilePage() {
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Badges</p>
             </div>
-            <Link to="/blog/my-posts" className="text-center p-3 rounded-xl bg-pink-50 dark:bg-pink-900/20 hover:bg-pink-100 dark:hover:bg-pink-900/40 transition-colors">
-              <p className="text-xl font-bold text-pink-600 dark:text-pink-400">
-                {postCount}
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Posts</p>
-            </Link>
-            <Link to="/found-items/my-listings" className="text-center p-3 rounded-xl bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors">
-              <p className="text-xl font-bold text-purple-600 dark:text-purple-400">
-                {itemCount}
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Items Listed</p>
-            </Link>
+            {postsLoading ? (
+              <div className="text-center p-3 rounded-xl bg-pink-50 dark:bg-pink-900/20">
+                <FiRefreshCw className="animate-spin mx-auto text-pink-500" />
+                <p className="text-xs text-gray-400 mt-1">Loading...</p>
+              </div>
+            ) : (
+              <Link to="/blog/my-posts" className="text-center p-3 rounded-xl bg-pink-50 dark:bg-pink-900/20 hover:bg-pink-100 dark:hover:bg-pink-900/40 transition-colors">
+                <p className="text-xl font-bold text-pink-600 dark:text-pink-400">{postCount}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Posts</p>
+              </Link>
+            )}
+            {itemsLoading ? (
+              <div className="text-center p-3 rounded-xl bg-purple-50 dark:bg-purple-900/20">
+                <FiRefreshCw className="animate-spin mx-auto text-purple-500" />
+                <p className="text-xs text-gray-400 mt-1">Loading...</p>
+              </div>
+            ) : (
+              <Link to="/found-items/my-listings" className="text-center p-3 rounded-xl bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors">
+                <p className="text-xl font-bold text-purple-600 dark:text-purple-400">{itemCount}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Items Listed</p>
+              </Link>
+            )}
           </div>
 
           {/* Badges Section */}
@@ -301,14 +324,21 @@ export default function ProfilePage() {
               </span>
               <span className="font-medium text-gray-900 dark:text-white">{user?.email || 'Not set'}</span>
             </div>
-            {attendanceRate !== null && (
+            {attendanceRate !== null && !weeklyLoading ? (
               <div className="flex justify-between items-center py-3 border-b border-gray-100 dark:border-gray-700">
                 <span className="text-gray-500 dark:text-gray-400 flex items-center gap-2">
                   <FiBarChart2 size={14} /> Weekly Attendance
                 </span>
                 <span className="font-medium text-green-600">{attendanceRate}%</span>
               </div>
-            )}
+            ) : weeklyLoading ? (
+              <div className="flex justify-between items-center py-3 border-b border-gray-100 dark:border-gray-700">
+                <span className="text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                  <FiBarChart2 size={14} /> Weekly Attendance
+                </span>
+                <FiRefreshCw className="animate-spin text-gray-400" size={14} />
+              </div>
+            ) : null}
             <div className="flex justify-between items-center py-3 border-b border-gray-100 dark:border-gray-700">
               <span className="text-gray-500 dark:text-gray-400 flex items-center gap-2">
                 <FiClock size={14} /> Last Login
@@ -338,7 +368,9 @@ export default function ProfilePage() {
                 </div>
                 <div>
                   <p className="font-medium text-gray-900 dark:text-white text-sm">Two-Factor Authentication</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Enhance your account security</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {user?.two_factor_enabled ? 'Enabled' : 'Disabled'}
+                  </p>
                 </div>
               </div>
               <FiChevronRight size={18} className="text-gray-400" />
@@ -355,7 +387,9 @@ export default function ProfilePage() {
                 </div>
                 <div>
                   <p className="font-medium text-gray-900 dark:text-white text-sm">Biometric Login</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Set up face recognition</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {user?.biometric_enabled ? 'Face ID enrolled' : 'Not set up'}
+                  </p>
                 </div>
               </div>
               <FiChevronRight size={18} className="text-gray-400" />
@@ -440,7 +474,7 @@ export default function ProfilePage() {
                 </div>
                 <div>
                   <p className="font-medium text-gray-900 dark:text-white text-sm">My Blog Posts</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{postCount} published</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{postsLoading ? '...' : `${postCount} published`}</p>
                 </div>
               </div>
               <FiChevronRight size={18} className="text-gray-400" />
@@ -457,7 +491,7 @@ export default function ProfilePage() {
                 </div>
                 <div>
                   <p className="font-medium text-gray-900 dark:text-white text-sm">My Found Items</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{itemCount} listed</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{itemsLoading ? '...' : `${itemCount} listed`}</p>
                 </div>
               </div>
               <FiChevronRight size={18} className="text-gray-400" />

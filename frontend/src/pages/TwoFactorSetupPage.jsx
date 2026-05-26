@@ -1,23 +1,40 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { accountsApi } from '../api/accountsApi';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { FiShield, FiCheckCircle, FiArrowLeft } from 'react-icons/fi';
+import { FiShield, FiCheckCircle, FiArrowLeft, FiRefreshCw } from 'react-icons/fi';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
 
 export default function TwoFactorSetupPage() {
-    const { user, loading } = useAuth();
-    const [enabled, setEnabled] = useState(user?.two_factor_enabled || false);
+    const { user, updateUser, loading } = useAuth();
+    const [enabled, setEnabled] = useState(false);
     const [toggling, setToggling] = useState(false);
+    const [pageLoading, setPageLoading] = useState(true);
+
+    // Fetch current 2FA status from backend on mount
+    useEffect(() => {
+        (async () => {
+            try {
+                const response = await accountsApi.getProfile();
+                const profile = response.data || response;
+                setEnabled(profile.two_factor_enabled || false);
+            } catch (err) {
+                toast.error('Failed to load 2FA status');
+            } finally {
+                setPageLoading(false);
+            }
+        })();
+    }, []);
 
     const handleToggle = async () => {
         setToggling(true);
         try {
-            // Simulate API call – replace with your actual endpoint
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-            // Suppose we call: await apiClient.post('/accounts/2fa/toggle/');
+            await accountsApi.toggleTwoFactor();
             const newStatus = !enabled;
             setEnabled(newStatus);
+            // Update auth context so profile page and other components reflect the change
+            updateUser({ two_factor_enabled: newStatus });
             toast.success(newStatus ? '2FA enabled' : '2FA disabled');
         } catch (err) {
             toast.error('Failed to update 2FA status');
@@ -26,7 +43,7 @@ export default function TwoFactorSetupPage() {
         }
     };
 
-    if (loading) return <SkeletonLoader type="page" />;
+    if (pageLoading || loading) return <SkeletonLoader type="page" />;
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-8 px-4">
@@ -61,11 +78,19 @@ export default function TwoFactorSetupPage() {
                                 onClick={handleToggle}
                                 disabled={toggling}
                                 className={`px-6 py-3 rounded-xl text-sm font-semibold text-white transition-colors shadow-md ${enabled
-                                        ? 'bg-red-500 hover:bg-red-600'
-                                        : 'bg-indigo-500 hover:bg-indigo-600'
+                                    ? 'bg-red-500 hover:bg-red-600'
+                                    : 'bg-indigo-500 hover:bg-indigo-600'
                                     } disabled:opacity-50`}
                             >
-                                {toggling ? 'Updating...' : enabled ? 'Disable' : 'Enable'}
+                                {toggling ? (
+                                    <span className="flex items-center gap-2">
+                                        <FiRefreshCw className="animate-spin" size={14} /> Updating...
+                                    </span>
+                                ) : enabled ? (
+                                    'Disable'
+                                ) : (
+                                    'Enable'
+                                )}
                             </button>
                         </div>
                     </div>

@@ -36,6 +36,10 @@ class User(AbstractBaseUser, PermissionsMixin, BaseModel):
         default=False,
         help_text="Flag indicating if the user has enabled cloud-based face login"
     )
+    face_data = models.TextField(
+        blank=True,
+        help_text="Base64-encoded face image for cloud verification"
+    )
     
     # Role & Permissions
     role = models.CharField(

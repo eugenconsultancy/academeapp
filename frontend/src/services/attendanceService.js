@@ -1,6 +1,6 @@
 import { classesApi } from '../api/classesApi';
 import { academicsApi } from '../api/academicsApi.js';
-import GeoService from './geoService';
+import GeoService from '../api/geoService';
 import { offlineStorage } from '../utils/storage';
 import { isWithinAttendanceWindow, isSchoolDay, formatISODate } from '../utils/time';
 

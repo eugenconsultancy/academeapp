@@ -210,6 +210,8 @@ export default function ClassesPage() {
         lecturer: '',
     });
     const [quickSaving, setQuickSaving] = useState(false);
+    const [classGroups, setClassGroups] = useState([]);
+    const [selectedClassId, setSelectedClassId] = useState('');
 
     // ── TODAY'S CLASSES ──
     const {
@@ -281,6 +283,8 @@ export default function ClassesPage() {
     const handleOpenModal = async () => {
         setClassIdToManage(null);
         setManualClassId('');
+        setSelectedClassId('');
+        // If class rep, auto-detect
         if (isClassRep) {
             try {
                 const res = await classesApi.getRepresentedClass();
@@ -291,6 +295,15 @@ export default function ClassesPage() {
                     return;
                 }
             } catch { /* fallback */ }
+        }
+        // For admins (or if auto-detect failed), fetch the list of class groups
+        if (user?.role === 'admin') {
+            try {
+                const res = await apiClient.get('/classes/class-groups/');
+                setClassGroups(res.data || res);
+            } catch (err) {
+                toast.error('Failed to load class groups');
+            }
         }
         setShowManageModal(true);
     };
@@ -664,15 +677,68 @@ export default function ClassesPage() {
                             {!classIdToManage ? (
                                 <div className="cp-id-form">
                                     <div className="cp-id-icon">📚</div>
-                                    <div className="cp-id-title">Enter Class Group ID</div>
-                                    <div className="cp-id-sub">You can find the UUID in Django admin under Class Groups.</div>
-                                    <label className="cp-id-label">Class Group ID (UUID)</label>
-                                    <input type="text" value={manualClassId} onChange={e => setManualClassId(e.target.value)} placeholder="e.g., 27134bbe-..." className="cp-id-input" onKeyDown={(e) => e.key === 'Enter' && handleStartManaging()} />
-                                    <button className="cp-btn cp-btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '12px' }} onClick={handleStartManaging}>Continue <FiChevronRight size={15} /></button>
+                                    <div className="cp-id-title">Select a Class Group</div>
+                                    <div className="cp-id-sub">Choose the class whose timetable you want to manage.</div>
+                                    {classGroups.length > 0 ? (
+                                        <>
+                                            <label className="cp-id-label">Class Group</label>
+                                            <select
+                                                value={selectedClassId}
+                                                onChange={e => setSelectedClassId(e.target.value)}
+                                                className="cp-id-input"
+                                            >
+                                                <option value="">-- Choose a class --</option>
+                                                {classGroups.map(g => (
+                                                    <option key={g.id} value={g.id}>
+                                                        {g.name} ({g.institution})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <button
+                                                className="cp-btn cp-btn-primary"
+                                                style={{ width: '100%', justifyContent: 'center', padding: '12px' }}
+                                                onClick={() => {
+                                                    if (!selectedClassId) {
+                                                        toast.error('Please select a class group');
+                                                        return;
+                                                    }
+                                                    setClassIdToManage(selectedClassId);
+                                                }}
+                                            >
+                                                Continue <FiChevronRight size={15} />
+                                            </button>
+                                        </>
+                                    ) : (
+                                        // Fallback if no groups loaded – keep the original UUID input
+                                        <>
+                                            <label className="cp-id-label">Class Group ID (UUID)</label>
+                                            <input
+                                                type="text"
+                                                value={manualClassId}
+                                                onChange={e => setManualClassId(e.target.value)}
+                                                placeholder="e.g., 27134bbe-..."
+                                                className="cp-id-input"
+                                                onKeyDown={(e) => e.key === 'Enter' && handleStartManaging()}
+                                            />
+                                            <button
+                                                className="cp-btn cp-btn-primary"
+                                                style={{ width: '100%', justifyContent: 'center', padding: '12px' }}
+                                                onClick={handleStartManaging}
+                                            >
+                                                Continue <FiChevronRight size={15} />
+                                            </button>
+                                        </>
+                                    )}
                                     <button className="cp-id-cancel" onClick={() => setShowManageModal(false)}>Cancel</button>
                                 </div>
                             ) : (
-                                <TimetableManager classGroupId={classIdToManage} classGroupName="Selected Class" onClose={() => setShowManageModal(false)} />
+                                <TimetableManager
+                                    classGroupId={classIdToManage}
+                                    classGroupName={
+                                        classGroups.find(g => g.id === classIdToManage)?.name || 'Selected Class'
+                                    }
+                                    onClose={() => setShowManageModal(false)}
+                                />
                             )}
                         </div>
                     </div>

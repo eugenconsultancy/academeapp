@@ -640,3 +640,273 @@ After changing `.env`, always rebuild (`npm run build`) and sync (`npx cap sync 
 ---
 
 Now you can test all features (location, camera, etc.) directly on your phone as a native Android app.
+
+
+
+
+
+
+You can test your Academe app **without waiting for Gradle** by exposing your local development server to the internet. This lets you open the app on any device (real phone, tablet, or online emulator) instantly.
+
+Below are two fast approaches – choose the one that fits your needs.
+
+---
+
+## Option 1 – Test the web app (PWA) instantly with ngrok
+
+This is the easiest way. It works with the Vite dev server or the built Capacitor app (since it loads the same web frontend).
+
+### 1. Install ngrok  
+Download from [ngrok.com](https://ngrok.com) and create a free account to get your authtoken.
+
+```bash
+ngrok config add-authtoken <YOUR_AUTH_TOKEN>
+```
+
+### 2. Start your backend (already running on `0.0.0.0:8000`)
+```bash
+cd academe/backend
+python manage.py runserver 0.0.0.0:8000
+```
+
+### 3. Start your frontend dev server (or build + `npx cap sync` if you already built)
+For quick testing with hot reload:
+```bash
+cd academe/frontend
+npm run dev
+```
+It runs on `http://localhost:5173`.
+
+### 4. Expose the frontend (or backend + frontend)  
+Expose the frontend port:
+```bash
+ngrok http 5173
+```
+ngrok will give you a public URL like `https://abc123.ngrok.io`.
+
+### 5. Open the app on any online emulator or real device  
+Copy that ngrok URL and open it in:
+- A real phone’s browser (Chrome/Safari)
+- An online emulator like **BrowserStack Live**, **Sauce Labs**, or **LambdaTest** (just paste the URL)
+- Your computer’s browser to test mobile view
+
+The app will load and communicate with your local Django backend (because the frontend’s `VITE_API_URL` is set to your local IP – but ngrok only exposes the frontend; the backend must also be reachable from the internet. To make it work, you can either:
+
+**A. Run ngrok for the backend too**  
+In another terminal:
+```bash
+ngrok http 8000
+```
+Then update the frontend `.env` to use that ngrok URL:
+```
+VITE_API_URL=https://backend-xyz.ngrok.io
+```
+After changing `.env`, restart the frontend dev server.
+
+**B. Use your local IP if the online emulator is on the same network** (not possible for remote emulators). So option A is the way to go for remote testing.
+
+---
+
+## Option 2 – Test the native APK with an online emulator
+
+If you want to test the full Capacitor native experience (camera, GPS, etc.) on an emulator without a physical device, you can:
+
+1. **Wait for Gradle to finish** and build the APK.  
+2. In Android Studio, once synced, go to **Build → Build Bundle(s) / APK(s) → Build APK(s)**.  
+3. The APK file will be located at `android/app/build/outputs/apk/debug/app-debug.apk`.  
+4. Upload that APK to a cloud emulator service that accepts APK uploads, such as:
+   - **BrowserStack App Live** (paid)  
+   - **LambdaTest Real Device Cloud** (paid)  
+   - **Firebase Test Lab** (free tier available)  
+   - **Sauce Labs Real Devices** (paid)
+
+These services let you install the APK on a real Android device in the cloud and interact with it.
+
+---
+
+## Recommended quick path for now
+
+While Gradle downloads, use **Option 1 with ngrok** to test the PWA immediately. Once the APK is built, you can also upload it to an online emulator for native feature testing.
+
+If you need help setting up ngrok or Firebase Test Lab, just ask.
+
+
+
+
+
+Yes, Android Studio has a **built‑in terminal** – you open it via **View → Tool Windows → Terminal** (or the **Terminal** tab at the bottom).
+
+### Do we use it in this project?
+
+You can, but **most commands are run in your system terminal (Command Prompt / PowerShell)** outside Android Studio.
+
+Here’s why and when you might use each:
+
+| Terminal | Typical use in this project |
+|----------|----------------------------|
+| **System terminal** (outside Android Studio) | – Start backend: `python manage.py runserver`<br>– Start frontend: `npm run dev`<br>– Build web assets: `npm run build`<br>– Sync with Capacitor: `npx cap sync android`<br>– Open Android Studio: `npx cap open android` |
+| **Android Studio terminal** | – Run Gradle tasks (e.g., `./gradlew assembleDebug` to build APK)<br>– Install APK on device: `./gradlew installDebug`<br>– ADB commands (e.g., `adb devices` to check connected phone)<br>– Run the same npm/Capacitor commands if you open the root project folder (the `academe` folder) in Android Studio instead of just the `android` sub‑folder. |
+
+### Why the terminal inside Android Studio?
+
+- The built‑in terminal **automatically opens in the `android/` project folder**, so running Gradle commands is convenient.
+- You can issue ADB commands without switching windows.
+- You don’t need to leave the IDE to rebuild or reinstall the app after making native changes.
+
+### In practice
+
+Right now you don’t need to do anything in the Android Studio terminal – the Gradle download you see in the status bar will finish automatically. Once it’s done, you’ll run the app by clicking the **Run** button (green triangle) or by opening the Terminal and typing `./gradlew installDebug` to build and install the APK.
+
+If you ever need to manually rebuild just the Android part, you can use the Android Studio terminal for that. But for all web‑related build steps (Vite, Capacitor sync), continue using your regular system terminal.
+
+
+
+
+Once the Gradle download finishes and the project syncs, follow these steps to run your app on your Android device.
+
+---
+
+### 1. Ensure your backend is running
+
+Open a **system terminal** (Command Prompt) in `academe/backend`:
+
+```bash
+cd C:\Users\GATARA-BJTU\academe\backend
+python manage.py runserver 0.0.0.0:8000
+```
+
+Keep it running. Your phone will connect to this server.
+
+---
+
+### 2. Confirm your frontend `.env` is correct
+
+`VITE_API_URL` must point to your computer's IP. You already set it to `http://10.5.50.212:8000`. If not, update and rebuild:
+
+```bash
+cd ../frontend
+# Edit .env if necessary
+npm run build
+npx cap sync android
+```
+
+*(You already built and synced, so skip this if you haven't changed anything.)*
+
+---
+
+### 3. Connect your phone
+
+- Enable **Developer Options** and **USB debugging** on your phone.
+- Connect it via USB cable. You should see "Allow USB debugging?" – tap **Allow**.
+
+---
+
+### 4. Run the app from Android Studio
+
+- Once Gradle finishes syncing, you'll see a green **Run** triangle at the top.
+- Click the **Run** button (or press `Shift+F10`).
+- Select your device from the list and click **OK**.
+
+Android Studio will build the APK, install it on your phone, and launch the app automatically.
+
+---
+
+### Alternatively – use the terminal inside Android Studio (or system terminal)
+
+If you prefer the command line or want to manually install the APK:
+
+```bash
+# Inside Android Studio's Terminal tab (or system terminal from the android/ directory)
+./gradlew installDebug
+```
+
+This builds and installs the app on the connected device.
+
+---
+
+### 5. Test the app
+
+The app will open on your phone. It loads the web frontend from the device's assets and makes API calls to `http://10.5.50.212:8000`. Log in with a test phone number (e.g., `+254700000003`), request an OTP, and check the backend terminal for the code.
+
+You can now test GPS attendance, classes, announcements, blog, etc., all from your real device.
+
+
+
+
+
+
+
+Below are common Android Studio / Gradle commands you can run to diagnose and fix typical issues. Each includes what the command does, which files it interacts with, and when to use it.
+
+---
+
+## 📋 Essential Commands
+
+| Command | What it does | Files it touches | When to use |
+|---------|--------------|------------------|-------------|
+| **`./gradlew sync`** (or click "Sync Project with Gradle Files") | Re-reads all `build.gradle` files and downloads missing dependencies | All `*.gradle` files, `settings.gradle`, `local.properties` | When you add a new dependency, change SDK versions, or get "project sync failed" |
+| **`./gradlew clean`** | Deletes the `build/` folder (compiled files, cached outputs) | `build/` directories in each module | When you suspect old compiled code is causing errors, after changing package name, or before a fresh build |
+| **`./gradlew assembleDebug`** | Builds a debug APK from scratch (compiles Java/Kotlin, processes resources, signs with debug key) | All source files, resources, `build.gradle` | When you want to test the build without installing; useful if the Run button fails |
+| **`./gradlew installDebug`** | Builds debug APK **and installs it** on the connected device | Same as above + ADB connection to device | Quick build-and-install loop from terminal |
+| **`./gradlew assembleRelease`** | Builds a release APK (must have signing configured) | Source files, `build.gradle`, signing config | Before uploading to Play Store or testing release build |
+| **`./gradlew lint`** | Runs the linter to find code quality / potential bugs | All source files, `lint.xml` (if exists) | When you want to see warnings about deprecated APIs, missing translations, etc. |
+| **`./gradlew dependencies`** | Prints the full dependency tree for each configuration | All `build.gradle` dependencies | When you face version conflicts or want to see transitive dependencies |
+| **`./gradlew --stop`** | Stops the Gradle daemon process | Gradle daemon (background process) | When you want to kill a stuck daemon before a clean build |
+| **`./gradlew --refresh-dependencies`** | Forces re-download of all dependencies (ignoring cached versions) | Gradle cache (`~/.gradle/caches`) | When you suspect corrupted downloads or need the very latest snapshot versions |
+| **`./gradlew signInReport`** | Prints your signing configuration (keystore path, alias) | `build.gradle` (signing config block) | Debugging signing issues; useful before release builds |
+
+---
+
+## 🔧 Environment & Cache Commands
+
+| Command | What it does | Files it touches |
+|---------|--------------|------------------|
+| **`rmdir /S /Q %USERPROFILE%\.gradle\caches`** (Windows) | Deletes the entire Gradle cache (dependencies, compiled scripts) | `~/.gradle/caches` |
+| **`rm -rf ~/.gradle/caches`** (Mac/Linux) | Same – force redownload of all dependencies | `~/.gradle/caches` |
+| **`rmdir /S /Q %USERPROFILE%\.gradle\build-cache`** (or `rm -rf ~/.gradle/build-cache`) | Clears the local build cache (stored task outputs) | `~/.gradle/build-cache` |
+| **`rmdir /S /Q android\build`** (from project root) | Deletes the Android build output folder | `android/build/` |
+| **Delete `android/.gradle` folder** | Removes Gradle wrapper’s own cache for this project | `android/.gradle/` |
+
+---
+
+## 📱 Device & ADB Commands (in terminal)
+
+| Command | What it does |
+|---------|--------------|
+| **`adb devices`** | Lists connected Android devices and emulators |
+| **`adb install app-debug.apk`** | Installs an APK directly (useful if Studio can’t auto-install) |
+| **`adb uninstall com.example.app`** | Uninstalls the app (replace with your actual package name) |
+| **`adb logcat`** | Shows live device logs – great for debugging crashes on the phone |
+| **`adb shell`** | Opens a remote shell on the device |
+| **`adb kill-server && adb start-server`** | Restarts the ADB server – fixes many "device not found" errors |
+
+---
+
+## 🗂️ Key Files Explained
+
+| File | Role |
+|------|------|
+| **`build.gradle`** (project root) | Defines Gradle plugin versions (AGP, Kotlin, Google Services) |
+| **`build.gradle`** (app module, `android/app/`) | Defines app dependencies, SDK versions, signing config |
+| **`settings.gradle`** | Tells Gradle which modules to include |
+| **`local.properties`** | Stores SDK location, NDK path (auto-generated) |
+| **`gradle.properties`** | Global Gradle settings (e.g., JVM args, AndroidX usage) |
+| **`gradle/wrapper/gradle-wrapper.properties`** | Specifies the Gradle distribution version used by the project |
+
+---
+
+## 💡 Common Scenarios
+
+**1. Build fails with "Unsupported class file major version"**  
+→ Change Gradle JDK in Studio settings (File → Settings → Build Tools → Gradle) to Java 17, or update `gradle-wrapper.properties` to use Gradle 8.6+.
+
+**2. Project sync fails after changing dependencies**  
+→ Run `./gradlew clean` then `./gradlew --refresh-dependencies`. If still failing, delete `~/.gradle/caches`.
+
+**3. Phone not showing in Android Studio**  
+→ Open terminal: `adb kill-server && adb start-server`, then `adb devices`. Check that USB debugging is enabled and you accepted the RSA key prompt on the phone.
+
+**4. APK installs but crashes on launch**  
+→ Use `adb logcat` (filter by your app’s package name) to see the crash stacktrace.
+
+These commands will help you troubleshoot most common issues during development and testing. Use them from the **Android Studio Terminal** (or your system terminal from the `android/` directory) whenever you hit a problem.

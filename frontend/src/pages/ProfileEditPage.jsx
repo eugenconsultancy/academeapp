@@ -1,18 +1,18 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { accountsApi } from '../api/accountsApi';
 import toast from 'react-hot-toast';
 import { FiArrowLeft, FiSave } from 'react-icons/fi';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
 
 export default function ProfileEditPage() {
-    const { user, updateProfile, loading } = useAuth();
+    const { user, updateUser, loading } = useAuth();
     const navigate = useNavigate();
     const [form, setForm] = useState({
         full_name: user?.full_name || '',
         email: user?.email || '',
-        phone_number: user?.phone_number || '',
-        // add other fields as needed
+        // Phone number is not editable via this form
     });
     const [saving, setSaving] = useState(false);
 
@@ -26,11 +26,21 @@ export default function ProfileEditPage() {
         }
         setSaving(true);
         try {
-            await updateProfile(form);
+            // Update profile via API
+            await accountsApi.updateProfile({
+                full_name: form.full_name,
+                email: form.email,
+            });
+
+            // Refetch the full profile to get updated data and update context
+            const response = await accountsApi.getProfile();
+            const updatedUser = response.data || response;
+            updateUser(updatedUser);
+
             toast.success('Profile updated!');
             navigate('/profile');
         } catch (err) {
-            toast.error(err.message || 'Failed to update profile');
+            toast.error(err.response?.data?.error || err.message || 'Failed to update profile');
         } finally {
             setSaving(false);
         }
@@ -72,13 +82,12 @@ export default function ProfileEditPage() {
                             <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Phone Number</label>
                             <input
                                 type="tel"
-                                value={form.phone_number}
-                                onChange={(e) => setForm({ ...form, phone_number: e.target.value })}
-                                className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                                value={user?.phone_number || ''}
+                                disabled
+                                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
                             />
+                            <p className="text-xs text-gray-400 mt-1">Phone number changes require verification.</p>
                         </div>
-
-                        {/* Add more fields as necessary */}
 
                         <div className="flex justify-end gap-4 pt-4">
                             <button

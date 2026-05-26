@@ -453,5 +453,3 @@ export function FoundItemImage(props) {
         />
     );
 }
-
-export { IDCardImage, DocumentImage, FoundItemImage };

@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { accountsApi } from '../api/accountsApi';
+import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import {
     FiCamera, FiCheckCircle, FiRefreshCw,
@@ -69,7 +70,7 @@ async function captureImageFromCamera() {
             canvas.height = video.videoHeight || 480;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1]; // remove data:… prefix
+            const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
             cleanup();
             resolve(base64);
         };
@@ -82,7 +83,6 @@ async function captureImageFromCamera() {
         captureBtn.addEventListener('click', handleCapture);
         closeBtn.addEventListener('click', handleCancel);
 
-        // Start camera
         navigator.mediaDevices
             .getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } })
             .then((s) => {
@@ -101,13 +101,31 @@ async function captureImageFromCamera() {
 }
 
 export default function BiometricEnrollmentPage() {
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [enrolling, setEnrolling] = useState(false);
     const [success, setSuccess] = useState(false);
+    const [biometricEnabled, setBiometricEnabled] = useState(false);
     const navigate = useNavigate();
+    const { user, updateUser } = useAuth();
+
+    // Fetch current biometric status on mount
+    useEffect(() => {
+        (async () => {
+            try {
+                const response = await accountsApi.getProfile();
+                const profile = response.data || response;
+                setBiometricEnabled(profile.biometric_enabled || false);
+            } catch (err) {
+                toast.error('Failed to load biometric status');
+            } finally {
+                setLoading(false);
+            }
+        })();
+    }, []);
 
     const handleEnroll = async () => {
         try {
-            setLoading(true);
+            setEnrolling(true);
             const base64Image = await captureImageFromCamera();
 
             if (!base64Image) {
@@ -115,9 +133,11 @@ export default function BiometricEnrollmentPage() {
                 return;
             }
 
-            // Call enrollment API – sends base64 image data
             await accountsApi.enrollBiometric(base64Image);
             setSuccess(true);
+            setBiometricEnabled(true);
+            // Update auth context to reflect the new biometric state
+            updateUser({ biometric_enabled: true });
             toast.success('Face ID enrolled successfully! 🎉');
         } catch (error) {
             if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
@@ -126,13 +146,21 @@ export default function BiometricEnrollmentPage() {
                 toast.error(error.response?.data?.error || error.message || 'Enrollment failed');
             }
         } finally {
-            setLoading(false);
+            setEnrolling(false);
         }
     };
 
     const handleRetry = () => {
         setSuccess(false);
     };
+
+    if (loading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center">
+                <FiRefreshCw className="animate-spin text-4xl text-indigo-600" />
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">
@@ -145,7 +173,40 @@ export default function BiometricEnrollmentPage() {
                 </button>
 
                 <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 text-center">
-                    {!success ? (
+                    {biometricEnabled && !success ? (
+                        <>
+                            <div className="mx-auto w-16 h-16 bg-green-100 dark:bg-green-900/40 rounded-full flex items-center justify-center mb-4">
+                                <FiCheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
+                            </div>
+                            <h1 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                                Face ID Already Enrolled
+                            </h1>
+                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                                You have already set up Face ID. Would you like to re‑enroll?
+                            </p>
+                            <button
+                                onClick={handleEnroll}
+                                disabled={enrolling}
+                                className="w-full px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+                            >
+                                {enrolling ? (
+                                    <>
+                                        <FiRefreshCw className="animate-spin" size={18} /> Opening camera…
+                                    </>
+                                ) : (
+                                    <>
+                                        <FiCamera size={18} /> Re‑enroll Face
+                                    </>
+                                )}
+                            </button>
+                            <button
+                                onClick={() => navigate('/profile')}
+                                className="w-full mt-2 px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 font-medium transition-colors"
+                            >
+                                Back to Profile
+                            </button>
+                        </>
+                    ) : !success ? (
                         <>
                             <div className="mx-auto w-16 h-16 bg-indigo-100 dark:bg-indigo-900/40 rounded-full flex items-center justify-center mb-4">
                                 <FiCamera className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
@@ -159,10 +220,10 @@ export default function BiometricEnrollmentPage() {
                             </p>
                             <button
                                 onClick={handleEnroll}
-                                disabled={loading}
+                                disabled={enrolling}
                                 className="w-full px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
                             >
-                                {loading ? (
+                                {enrolling ? (
                                     <>
                                         <FiRefreshCw className="animate-spin" size={18} /> Opening camera…
                                     </>
@@ -185,10 +246,10 @@ export default function BiometricEnrollmentPage() {
                                 You can now log in using Face ID on the login screen.
                             </p>
                             <button
-                                onClick={() => navigate('/two-factor-setup')}
+                                onClick={() => navigate('/profile')}
                                 className="w-full px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-colors"
                             >
-                                Back to Security Settings
+                                Back to Profile
                             </button>
                             <button
                                 onClick={handleRetry}

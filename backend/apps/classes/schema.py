@@ -72,8 +72,8 @@ class TodayClassOut(Schema):
     is_marked: bool
     can_mark: bool
     remaining_time: Optional[int] = None
-    latitude: Optional[float] = None      # <-- NEW
-    longitude: Optional[float] = None     # <-- NEW
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 # Additional schemas for CRUD operations
 class TimetableEntryCreate(Schema):
@@ -113,3 +113,8 @@ class TimetableEntryOutDetail(Schema):
     is_active: bool
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+
+class ClassGroupOut(Schema):
+    id: str
+    name: str
+    institution: str

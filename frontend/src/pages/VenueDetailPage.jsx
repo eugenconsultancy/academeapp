@@ -1,18 +1,17 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useGeolocation } from '../hooks/useGeolocation';
 import GeoService from '../api/geoService';
-import { classesApi } from '../api/classesApi';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
 import toast from 'react-hot-toast';
 import {
     FiMapPin, FiNavigation, FiHome, FiChevronRight, FiArrowLeft,
     FiRefreshCw, FiExternalLink, FiShare2, FiCopy, FiCheck,
     FiClock, FiTarget, FiAlertCircle, FiInfo, FiBook,
-    FiStar, FiUsers, FiWifi, FiMonitor, FiVolume2, FiThermometer
+    FiStar, FiUsers, FiWifi, FiMonitor, FiThermometer
 } from 'react-icons/fi';
 
-// ─── Client‑side distance helpers; calculate based on longitude and latitude ─
+// ─── Client‑side distance helpers ──────────────────────────────
 function haversineDistance(lat1, lon1, lat2, lon2) {
     const R = 6371e3;
     const φ1 = lat1 * Math.PI / 180;
@@ -34,7 +33,7 @@ function formatDistance(meters) {
 }
 
 function estimateWalkTime(meters) {
-    return Math.round(meters / 1.4 / 60); // average walking speed 1.4 m/s
+    return Math.round(meters / 1.4 / 60);
 }
 
 const VENUE_TYPE_LABELS = {
@@ -50,7 +49,6 @@ const VENUE_TYPE_LABELS = {
 
 export default function VenueDetailPage() {
     const { venueId } = useParams();
-    const navigate = useNavigate();
     const { location, getLocation, loading: geoLoading } = useGeolocation();
     const [venue, setVenue] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -76,19 +74,16 @@ export default function VenueDetailPage() {
     useEffect(() => {
         getLocation();
         fetchVenue();
-        // Clear old data when venue changes
         setDirections(null);
         setDistance(null);
         setNearbyVenues([]);
         setVenueSchedule([]);
     }, [venueId]);
 
-    // Persist favorites
     useEffect(() => {
         localStorage.setItem('venue_favorites', JSON.stringify(favorites));
     }, [favorites]);
 
-    // ─── Fetch venue details ──────────────────────────────────
     const fetchVenue = async () => {
         setLoading(true);
         setError(null);
@@ -103,7 +98,6 @@ export default function VenueDetailPage() {
         }
     };
 
-    // ─── Client‑side distance calculation ─────────────────────
     useEffect(() => {
         if (!location || !venue?.latitude || !venue?.longitude) {
             setDistance(null);
@@ -120,17 +114,15 @@ export default function VenueDetailPage() {
         });
     }, [location, venue]);
 
-    // ─── Fetch venue schedule (today's classes) ───────────────
+    // ✅ FIXED: use GeoService.getVenueSchedule, not classesApi
     useEffect(() => {
         if (!venue) return;
         const fetchSchedule = async () => {
             setScheduleLoading(true);
             try {
-                // Assume API endpoint: GET /api/venues/:id/schedule
-                const res = await classesApi.getVenueSchedule(venueId);
-                setVenueSchedule(res.data || []);
+                const res = await GeoService.getVenueSchedule(venueId);
+                setVenueSchedule(Array.isArray(res) ? res : res?.data || []);
             } catch {
-                // gracefully ignore if endpoint not available
                 setVenueSchedule([]);
             } finally {
                 setScheduleLoading(false);
@@ -139,7 +131,6 @@ export default function VenueDetailPage() {
         fetchSchedule();
     }, [venue, venueId]);
 
-    // ─── Fetch nearby venues ──────────────────────────────────
     useEffect(() => {
         if (!venue?.latitude || !venue?.longitude) return;
         const fetchNearby = async () => {
@@ -159,7 +150,6 @@ export default function VenueDetailPage() {
         fetchNearby();
     }, [venue]);
 
-    // ─── Directions ───────────────────────────────────────────
     const handleGetDirections = async () => {
         if (!location) {
             toast.error('Please enable location to get directions');
@@ -178,7 +168,6 @@ export default function VenueDetailPage() {
             );
             const result = data?.data || data;
             setDirections(result);
-            // Update distance from API (more accurate walking route)
             if (result.distance_meters) {
                 setDistance({
                     meters: result.distance_meters,
@@ -198,22 +187,26 @@ export default function VenueDetailPage() {
 
     const openInMaps = () => {
         if (venue?.latitude && venue?.longitude) {
-            window.open(`https://www.google.com/maps/search/?api=1&query=${venue.latitude},${venue.longitude}`, '_blank');
+            window.open(
+                `https://www.google.com/maps/search/?api=1&query=${venue.latitude},${venue.longitude}`,
+                '_blank'
+            );
         }
     };
 
     const openWalkingDirections = () => {
         if (location && venue?.latitude && venue?.longitude) {
-            window.open(`https://www.google.com/maps/dir/?api=1&origin=${location.latitude},${location.longitude}&destination=${venue.latitude},${venue.longitude}&travelmode=walking`, '_blank');
+            window.open(
+                `https://www.google.com/maps/dir/?api=1&origin=${location.latitude},${location.longitude}&destination=${venue.latitude},${venue.longitude}&travelmode=walking`,
+                '_blank'
+            );
         } else {
             openInMaps();
         }
     };
 
-    // ─── Sharing & Copy ───────────────────────────────────────
     const handleCopyLink = () => {
-        const url = window.location.href;
-        navigator.clipboard.writeText(url).then(() => {
+        navigator.clipboard.writeText(window.location.href).then(() => {
             setCopied(true);
             toast.success('Link copied!');
             setTimeout(() => setCopied(false), 2000);
@@ -235,21 +228,19 @@ export default function VenueDetailPage() {
 
     const shareViaEmail = () => {
         const subject = encodeURIComponent(`Campus Venue: ${venue.name}`);
-        const body = encodeURIComponent(`Venue: ${venue.name}\nType: ${VENUE_TYPE_LABELS[venue.venue_type] || 'N/A'}\nLink: ${window.location.href}`);
+        const body = encodeURIComponent(
+            `Venue: ${venue.name}\nType: ${VENUE_TYPE_LABELS[venue.venue_type] || 'N/A'}\nLink: ${window.location.href}`
+        );
         window.location.href = `mailto:?subject=${subject}&body=${body}`;
     };
 
-    // ─── Favorites ────────────────────────────────────────────
     const isFavorite = favorites.includes(venueId);
     const toggleFavorite = () => {
-        setFavorites(prev =>
-            prev.includes(venueId)
-                ? prev.filter(id => id !== venueId)
-                : [...prev, venueId]
+        setFavorites((prev) =>
+            prev.includes(venueId) ? prev.filter((id) => id !== venueId) : [...prev, venueId]
         );
     };
 
-    // ─── Loading state ────────────────────────────────────────
     if (loading) {
         return (
             <div className="min-h-screen py-8 px-4">
@@ -260,7 +251,6 @@ export default function VenueDetailPage() {
         );
     }
 
-    // ─── Error state ──────────────────────────────────────────
     if (error) {
         return (
             <div className="min-h-screen py-8 px-4">
@@ -271,10 +261,16 @@ export default function VenueDetailPage() {
                     <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Failed to Load</h2>
                     <p className="text-red-500 mb-6">{error}</p>
                     <div className="flex gap-3 justify-center">
-                        <button onClick={fetchVenue} className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl flex items-center gap-2">
+                        <button
+                            onClick={fetchVenue}
+                            className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl flex items-center gap-2"
+                        >
                             <FiRefreshCw size={16} /> Try Again
                         </button>
-                        <Link to="/campus-map" className="px-6 py-3 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <Link
+                            to="/campus-map"
+                            className="px-6 py-3 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-50 dark:hover:bg-gray-700"
+                        >
                             <FiArrowLeft size={16} /> Back to Map
                         </Link>
                     </div>
@@ -283,7 +279,6 @@ export default function VenueDetailPage() {
         );
     }
 
-    // ─── Not Found ────────────────────────────────────────────
     if (!venue) {
         return (
             <div className="min-h-screen py-8 px-4">
@@ -293,23 +288,16 @@ export default function VenueDetailPage() {
                     </div>
                     <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Venue Not Found</h2>
                     <p className="text-gray-500 mb-6">This venue doesn't exist or has been removed.</p>
-                    <Link to="/campus-map" className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl inline-flex items-center gap-2">
+                    <Link
+                        to="/campus-map"
+                        className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl inline-flex items-center gap-2"
+                    >
                         <FiMapPin size={16} /> Browse Campus Map
                     </Link>
                 </div>
             </div>
         );
     }
-
-    // ─── Amenities helpers ─────────────────────────────────────
-    const hasAmenities = venue.has_ac || venue.has_projector || venue.has_wifi || venue.is_accessible || venue.capacity;
-    const amenityIcons = [
-        { condition: venue.has_ac, icon: <FiThermometer size={14} />, label: 'Air Conditioned' },
-        { condition: venue.has_projector, icon: <FiMonitor size={14} />, label: 'Projector' },
-        { condition: venue.has_wifi, icon: <FiWifi size={14} />, label: 'WiFi' },
-        { condition: venue.is_accessible, icon: <FiUsers size={14} />, label: 'Wheelchair Accessible' },
-        { condition: venue.capacity, icon: <FiUsers size={14} />, label: `Capacity: ${venue.capacity}` },
-    ].filter(item => item.condition);
 
     return (
         <>
@@ -385,10 +373,6 @@ export default function VenueDetailPage() {
         .vd-nearby-item:hover { background: rgba(99,102,241,0.06); transform: translateY(-1px); }
         .dark .vd-nearby-item { background: rgba(255,255,255,0.03); }
 
-        .vd-amenities { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
-        .vd-amenity { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: rgba(0,0,0,0.03); border-radius: 8px; font-size: 0.72rem; font-weight: 600; color: #64748b; }
-        .dark .vd-amenity { background: rgba(255,255,255,0.04); }
-
         .vd-share-menu { position: absolute; bottom: 100%; right: 0; background: white; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); overflow: hidden; z-index: 10; }
         .dark .vd-share-menu { background: #1e293b; border-color: #334155; }
         .vd-share-item { display: block; width: 100%; padding: 10px 14px; background: none; border: none; font-size: 0.82rem; cursor: pointer; text-align: left; color: #0f172a; }
@@ -398,7 +382,6 @@ export default function VenueDetailPage() {
         `}</style>
 
             <div className="vd-root">
-                {/* Breadcrumb */}
                 <nav className="vd-breadcrumb" aria-label="Breadcrumb">
                     <Link to="/"><FiHome size={13} /> Home</Link>
                     <FiChevronRight size={12} />
@@ -408,27 +391,12 @@ export default function VenueDetailPage() {
                 </nav>
 
                 <div className="vd-card">
-                    {/* Type Badge */}
                     <span className="vd-type-badge">
                         🏫 {VENUE_TYPE_LABELS[venue.venue_type] || venue.venue_type || 'Venue'}
                     </span>
-
-                    {/* Title */}
                     <h1 className="vd-title">{venue.name}</h1>
                     <p className="vd-subtitle">{venue.institution || 'N/A'}</p>
 
-                    {/* Amenities */}
-                    {hasAmenities && (
-                        <div className="vd-amenities">
-                            {amenityIcons.map((item, idx) => (
-                                <span key={idx} className="vd-amenity">
-                                    {item.icon} {item.label}
-                                </span>
-                            ))}
-                        </div>
-                    )}
-
-                    {/* Details Grid */}
                     <div className="vd-grid">
                         {venue.building_code && (
                             <div className="vd-detail">
@@ -456,7 +424,6 @@ export default function VenueDetailPage() {
                         </div>
                     </div>
 
-                    {/* Coordinates */}
                     {venue.latitude && venue.longitude && (
                         <div className="vd-coords">
                             <span className="vd-coords-text">
@@ -468,7 +435,6 @@ export default function VenueDetailPage() {
                         </div>
                     )}
 
-                    {/* Distance from current location (client‑side) */}
                     {distance && !directions && (
                         <div className="vd-distance">
                             <FiTarget size={18} />
@@ -476,15 +442,16 @@ export default function VenueDetailPage() {
                         </div>
                     )}
 
-                    {/* Directions result (if fetched via API) */}
+                    {/* ✅ FIXED: directions now shows the simple distance result from backend */}
                     {directions && (
                         <div className="vd-distance vd-distance-alt">
                             <FiNavigation size={18} />
-                            <span>{directions.distance_display || directions.distance?.text} • {directions.walking_time_minutes} min walk</span>
+                            <span>
+                                {directions.distance_display} • {directions.walking_time_minutes} min walk
+                            </span>
                         </div>
                     )}
 
-                    {/* Primary Actions */}
                     <div className="vd-actions">
                         <button
                             onClick={handleGetDirections}
@@ -492,7 +459,7 @@ export default function VenueDetailPage() {
                             className="vd-btn vd-btn-primary"
                         >
                             {directionsLoading ? (
-                                <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> Getting Directions...</>
+                                <>Loading...</>
                             ) : (
                                 <><FiNavigation size={16} /> Get Walking Directions</>
                             )}
@@ -521,7 +488,6 @@ export default function VenueDetailPage() {
                         </button>
                     </div>
 
-                    {/* Secondary Actions */}
                     <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                         {location && venue.latitude && venue.longitude && (
                             <button onClick={openWalkingDirections} className="vd-btn vd-btn-outline" style={{ flex: 1, justifyContent: 'center' }}>
@@ -534,12 +500,9 @@ export default function VenueDetailPage() {
                     </div>
                 </div>
 
-                {/* Venue Schedule Section */}
                 <div className="vd-card">
                     <div className="vd-section">
-                        <h3 className="vd-section-title">
-                            <FiBook size={18} /> Today's Classes
-                        </h3>
+                        <h3 className="vd-section-title"><FiBook size={18} /> Today's Classes</h3>
                         {scheduleLoading ? (
                             <SkeletonLoader type="list" count={2} />
                         ) : venueSchedule.length > 0 ? (
@@ -547,18 +510,12 @@ export default function VenueDetailPage() {
                                 {(showFullSchedule ? venueSchedule : venueSchedule.slice(0, 3)).map((cls, idx) => (
                                     <div key={idx} className="vd-schedule-item">
                                         <span className="font-semibold" style={{ color: '#0f172a', fontWeight: 700 }}>{cls.unit_name}</span>
-                                        <span style={{ color: '#64748b', fontSize: '0.8rem' }}>
-                                            {cls.start_time} - {cls.end_time}
-                                        </span>
+                                        <span style={{ color: '#64748b', fontSize: '0.8rem' }}>{cls.start_time} - {cls.end_time}</span>
                                         <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>{cls.lecturer || 'N/A'}</span>
                                     </div>
                                 ))}
                                 {venueSchedule.length > 3 && !showFullSchedule && (
-                                    <button
-                                        onClick={() => setShowFullSchedule(true)}
-                                        className="vd-btn vd-btn-outline"
-                                        style={{ padding: '6px 12px', fontSize: '0.75rem' }}
-                                    >
+                                    <button onClick={() => setShowFullSchedule(true)} className="vd-btn vd-btn-outline" style={{ padding: '6px 12px', fontSize: '0.75rem' }}>
                                         View all {venueSchedule.length} classes
                                     </button>
                                 )}
@@ -569,23 +526,16 @@ export default function VenueDetailPage() {
                     </div>
                 </div>
 
-                {/* Nearby Venues Section */}
                 {nearbyVenues.length > 0 && (
                     <div className="vd-card">
                         <div className="vd-section">
-                            <h3 className="vd-section-title">
-                                <FiMapPin size={18} /> Nearby Venues
-                            </h3>
+                            <h3 className="vd-section-title"><FiMapPin size={18} /> Nearby Venues</h3>
                             {nearbyLoading ? (
                                 <SkeletonLoader type="list" count={3} />
                             ) : (
                                 <div className="vd-nearby-grid">
                                     {nearbyVenues.slice(0, 4).map((nv) => (
-                                        <Link
-                                            key={nv.id}
-                                            to={`/venues/${nv.id}`}
-                                            className="vd-nearby-item"
-                                        >
+                                        <Link key={nv.id} to={`/venues/${nv.id}`} className="vd-nearby-item">
                                             <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f172a' }}>{nv.name}</div>
                                             <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 4 }}>
                                                 {nv.distance_display || (nv.distance_meters ? formatDistance(nv.distance_meters) : '')}

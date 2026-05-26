@@ -66,6 +66,8 @@ const ROUTE_TITLES = {
   '/': 'Home',
   '/login': 'Sign In',
   '/signup': 'Create Account',
+  '/forgot-password': 'Forgot Password',
+  '/reset-password': 'Reset Password',
   '/announcements': 'Announcements',
   '/opportunities': 'Opportunities',
   '/found-items': 'Found Items',
@@ -77,6 +79,7 @@ const ROUTE_TITLES = {
   '/profile/edit': 'Edit Profile',
   '/profile/biometrics': 'Biometric Security',
   '/profile/2fa': 'Two-Factor Authentication',
+  '/two-factor-setup': 'Two-Factor Authentication',
   '/sessions': 'Active Sessions',
   '/contact': 'Contact Us',
   '/about': 'About',
@@ -101,15 +104,28 @@ function usePageTitle() {
   useEffect(() => {
     let title = ROUTE_TITLES[pathname];
     if (!title) {
-      if (pathname.startsWith('/announcements/')) title = 'Announcement Details';
-      else if (pathname.startsWith('/opportunities/')) title = 'Opportunity Details';
-      else if (pathname.startsWith('/found-items/')) title = 'Found Item Details';
-      else if (pathname.startsWith('/blog/')) title = 'Blog Post';
-      else if (pathname.startsWith('/venues/')) title = 'Venue Details';
-      else if (pathname.startsWith('/claims/')) title = 'Claim Details';
-      else if (pathname.startsWith('/admin/')) title = 'Admin Panel';
-      else if (pathname.startsWith('/governance/')) title = 'Governance';
-      else title = 'Academe';
+      // Dynamic route matching – order matters (more specific first)
+      if (pathname.startsWith('/found-items/') && pathname.endsWith('/claim')) {
+        title = 'Claim Item';
+      } else if (pathname.startsWith('/found-items/')) {
+        title = 'Found Item Details';
+      } else if (pathname.startsWith('/announcements/')) {
+        title = 'Announcement Details';
+      } else if (pathname.startsWith('/opportunities/')) {
+        title = 'Opportunity Details';
+      } else if (pathname.startsWith('/blog/')) {
+        title = 'Blog Post';
+      } else if (pathname.startsWith('/venues/')) {
+        title = 'Venue Details';
+      } else if (pathname.startsWith('/claims/')) {
+        title = 'Claim Details';
+      } else if (pathname.startsWith('/admin/')) {
+        title = 'Admin Panel';
+      } else if (pathname.startsWith('/governance/')) {
+        title = 'Governance';
+      } else {
+        title = 'Academe';
+      }
     }
     document.title = title ? `${title} | Academe` : 'Academe';
   }, [pathname]);
@@ -122,6 +138,7 @@ function usePageTracking() {
       if (window.gtag) {
         window.gtag('config', import.meta.env.VITE_GA_ID, { page_path: pathname });
       }
+      // Custom event (if needed elsewhere)
       window.dispatchEvent(
         new CustomEvent('page_view', {
           detail: { path: pathname, timestamp: Date.now() },
@@ -153,10 +170,13 @@ function ProtectedRoute({ children, allowedRoles = [] }) {
 export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
-      return localStorage.getItem('sidebar_collapsed') === 'true';
+      const saved = localStorage.getItem('sidebar_collapsed');
+      if (saved !== null) return saved === 'true';
     } catch {
-      return true;
+      // ignore
     }
+    // Default: collapsed on mobile (width < 1024), expanded on desktop
+    return window.innerWidth < 1024;
   });
 
   const { user, loading } = useAuth();
@@ -539,6 +559,11 @@ export default function App() {
                       <TwoFactorSetupPage />
                     </ProtectedRoute>
                   }
+                />
+                {/* Redirect legacy /two-factor-setup to new path */}
+                <Route
+                  path="/two-factor-setup"
+                  element={<Navigate to="/profile/2fa" replace />}
                 />
                 <Route
                   path="/sessions"

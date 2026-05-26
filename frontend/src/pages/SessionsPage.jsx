@@ -20,7 +20,7 @@ const DEVICE_ICONS = {
 };
 
 export default function SessionsPage() {
-    const { user } = useAuth();
+    const { user } = useAuth();                 // from context (may be stale)
     const [sessions, setSessions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -37,7 +37,25 @@ export default function SessionsPage() {
     });
     const [searchQuery, setSearchQuery] = useState('');
     const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+    const [profileLoading, setProfileLoading] = useState(false);
 
+    // Fetch current 2FA status from backend on mount
+    useEffect(() => {
+        (async () => {
+            try {
+                setProfileLoading(true);
+                const response = await accountsApi.getProfile();
+                const profile = response.data || response;
+                setTwoFactorEnabled(profile.two_factor_enabled || false);
+            } catch (err) {
+                toast.error('Could not load security settings');
+            } finally {
+                setProfileLoading(false);
+            }
+        })();
+    }, []);
+
+    // Fetch sessions
     useEffect(() => { fetchSessions(); }, []);
 
     const fetchSessions = async () => {
@@ -57,13 +75,11 @@ export default function SessionsPage() {
 
     const handleRevokeSession = async (sessionId) => {
         setRevokingId(sessionId);
-        // Optimistic removal
         setSessions(prev => prev.filter(s => s.id !== sessionId));
         try {
             await accountsApi.revokeSession(sessionId);
             toast.success('Session revoked');
         } catch (err) {
-            // Revert on failure
             fetchSessions();
             toast.error('Failed to revoke session');
         } finally {
@@ -73,7 +89,6 @@ export default function SessionsPage() {
 
     const handleRevokeAll = async () => {
         setRevokingAll(true);
-        // Optimistic removal of all non-current sessions
         setSessions(prev => prev.filter(s => s.is_current));
         try {
             const result = await accountsApi.revokeAllSessions();
@@ -164,7 +179,7 @@ export default function SessionsPage() {
     const currentSessionCount = sessions.filter(s => s.is_current).length;
     const otherSessionCount = sessions.filter(s => !s.is_current).length;
 
-    if (loading) {
+    if (loading || profileLoading) {
         return (
             <div className="min-h-screen py-8 px-4">
                 <div className="max-w-2xl mx-auto">
@@ -232,7 +247,7 @@ export default function SessionsPage() {
                 </div>
             )}
 
-            {/* 2FA Status Section */}
+            {/* 2FA Status Section – now accurate and linked correctly */}
             <div className="bg-white/85 dark:bg-gray-800/85 backdrop-blur-sm border border-gray-100 dark:border-gray-700 rounded-2xl p-5 mb-6">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
@@ -247,7 +262,7 @@ export default function SessionsPage() {
                         </div>
                     </div>
                     <Link
-                        to="/settings/security"
+                        to="/profile/2fa"
                         className="px-4 py-2 text-sm font-semibold border border-gray-200 dark:border-gray-600 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                     >
                         {twoFactorEnabled ? 'Manage' : 'Enable'}
@@ -255,6 +270,7 @@ export default function SessionsPage() {
                 </div>
             </div>
 
+            {/* Rest of the component (search, list, modals) remains unchanged */}
             {/* Search */}
             {sessions.length > 1 && (
                 <div className="relative mb-6">
@@ -304,16 +320,17 @@ export default function SessionsPage() {
                             <li
                                 key={session.id}
                                 className={`group bg-white/85 dark:bg-gray-800/85 backdrop-blur-sm border rounded-2xl p-5 transition-all duration-200 ${isCurrent
-                                        ? 'border-indigo-200 dark:border-indigo-800 bg-indigo-50/60 dark:bg-indigo-900/20'
-                                        : 'border-gray-100 dark:border-gray-700 hover:border-gray-200 dark:hover:border-gray-600'
+                                    ? 'border-indigo-200 dark:border-indigo-800 bg-indigo-50/60 dark:bg-indigo-900/20'
+                                    : 'border-gray-100 dark:border-gray-700 hover:border-gray-200 dark:hover:border-gray-600'
                                     }`}
                             >
+                                {/* Session content same as original */}
                                 <div className="flex items-center justify-between gap-4">
                                     <div className="flex items-center gap-4 min-w-0 flex-1">
                                         <div
                                             className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${isCurrent
-                                                    ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
-                                                    : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                                                ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
+                                                : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
                                                 }`}
                                             aria-hidden="true"
                                         >
@@ -369,13 +386,12 @@ export default function SessionsPage() {
                                     </div>
 
                                     <div className="flex items-center gap-1">
-                                        {/* Trust toggle */}
                                         {!isCurrent && (
                                             <button
                                                 onClick={() => toggleTrustedDevice(session.id)}
                                                 className={`p-2 rounded-lg text-sm transition-colors ${isTrusted
-                                                        ? 'text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
-                                                        : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-500'
+                                                    ? 'text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
+                                                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-500'
                                                     }`}
                                                 aria-label={isTrusted ? 'Remove from trusted devices' : 'Mark as trusted device'}
                                                 title={isTrusted ? 'Trusted' : 'Trust this device'}
@@ -384,7 +400,6 @@ export default function SessionsPage() {
                                             </button>
                                         )}
 
-                                        {/* Expand details */}
                                         <button
                                             onClick={() => toggleSessionDetails(session.id)}
                                             className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
@@ -394,7 +409,6 @@ export default function SessionsPage() {
                                             {isExpanded ? <FiChevronUp size={16} /> : <FiChevronDown size={16} />}
                                         </button>
 
-                                        {/* Revoke */}
                                         {!isCurrent && (
                                             <button
                                                 onClick={() => handleRevokeSession(session.id)}
@@ -415,7 +429,6 @@ export default function SessionsPage() {
                                     </div>
                                 </div>
 
-                                {/* Expanded details */}
                                 {isExpanded && (
                                     <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 animate-fadeIn">
                                         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">

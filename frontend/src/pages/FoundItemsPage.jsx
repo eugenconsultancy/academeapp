@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { foundItemsApi } from '../api/foundItemsApi';
 import { useAuth } from '../contexts/AuthContext';
-import Card from '../components/ui/Card';
+import { FoundItemImage } from '../components/shared/BlurredImage';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
 import toast from 'react-hot-toast';
 import {
@@ -75,7 +75,6 @@ export default function FoundItemsPage() {
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&display=swap');
         .fi-root { font-family: 'Outfit', sans-serif; max-width: 1000px; margin: 0 auto; padding: 28px 20px 80px; animation: fiIn .4s cubic-bezier(0.16,1,0.3,1) both; }
         @keyframes fiIn { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
-
         .fi-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
         .fi-title h1 { font-size: clamp(1.5rem, 3.5vw, 2rem); font-weight: 900; letter-spacing: -0.04em; color: #0f172a; margin-bottom: 4px; }
         .fi-title p { font-size: 0.83rem; color: #94a3b8; font-weight: 500; }
@@ -87,7 +86,6 @@ export default function FoundItemsPage() {
         .fi-btn-outline { background: transparent; border: 1.5px solid #e2e8f0; color: #64748b; font-size: 0.8rem; padding: 8px 14px; }
         .fi-btn-outline:hover { background: rgba(99,102,241,0.04); border-color: #6366f1; color: #6366f1; }
         .dark .fi-btn-outline { border-color: #334155; color: #94a3b8; }
-
         .fi-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
         .fi-search { flex: 1; min-width: 180px; padding: 10px 14px 10px 38px; border-radius: 14px; border: 1.5px solid #e2e8f0; background: rgba(255,255,255,0.8); font-family: 'Outfit', sans-serif; font-size: 0.84rem; font-weight: 500; color: #0f172a; outline: none; }
         .fi-search:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.08); }
@@ -96,11 +94,9 @@ export default function FoundItemsPage() {
         .fi-search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #94a3b8; }
         .fi-select { padding: 10px 14px; border-radius: 14px; border: 1.5px solid #e2e8f0; background: rgba(255,255,255,0.8); font-family: 'Outfit', sans-serif; font-size: 0.82rem; font-weight: 600; color: #64748b; cursor: pointer; }
         .dark .fi-select { border-color: #334155; background: rgba(15,23,42,0.8); color: #94a3b8; }
-
         .fi-stats { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
         .fi-stat { padding: 6px 14px; border-radius: 99px; font-size: 0.75rem; font-weight: 700; background: rgba(255,255,255,0.75); border: 1px solid rgba(0,0,0,0.05); color: #64748b; }
         .dark .fi-stat { background: rgba(15,23,42,0.75); border-color: rgba(255,255,255,0.05); color: #94a3b8; }
-
         .fi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
         .fi-card { background: rgba(255,255,255,0.85); border: 1px solid rgba(0,0,0,0.05); border-radius: 20px; overflow: hidden; backdrop-filter: blur(16px); box-shadow: 0 1px 3px rgba(0,0,0,0.03), 0 8px 24px rgba(0,0,0,0.06); transition: all 0.22s; animation: fiIn .4s cubic-bezier(0.16,1,0.3,1) both; }
         .fi-card:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(0,0,0,0.1); }
@@ -126,11 +122,9 @@ export default function FoundItemsPage() {
         .fi-card-btn-tip:hover { background: rgba(99,102,241,0.06); }
         .fi-card-btn-view { background: transparent; border: 1.5px solid #e2e8f0; color: #64748b; }
         .fi-card-btn-view:hover { background: rgba(0,0,0,0.03); }
-
         .fi-empty { text-align: center; padding: 64px 24px; }
         .fi-empty-icon { font-size: 3rem; margin-bottom: 16px; opacity: 0.6; }
-
-        /* Modal */
+        /* Modal styles same as before */
         .fi-modal-overlay { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 20px; }
         .fi-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(6px); }
         .fi-modal { position: relative; z-index: 61; width: 100%; max-width: 460px; background: rgba(255,255,255,0.96); border: 1px solid rgba(255,255,255,0.6); border-radius: 24px; backdrop-filter: blur(28px); box-shadow: 0 24px 64px rgba(0,0,0,0.18); animation: fiIn .22s cubic-bezier(0.16,1,0.3,1) both; overflow: hidden; }
@@ -139,7 +133,6 @@ export default function FoundItemsPage() {
         .fi-modal-title { font-size: 1rem; font-weight: 800; color: #0f172a; }
         .dark .fi-modal-title { color: #f8fafc; }
         .fi-modal-close { width: 30px; height: 30px; border-radius: 8px; border: none; background: rgba(0,0,0,0.05); cursor: pointer; display: flex; align-items: center; justify-content: center; color: #6b7280; }
-        .fi-modal-close:hover { background: rgba(239,68,68,0.08); color: #ef4444; }
         .fi-modal-body { padding: 20px 22px; display: flex; flex-direction: column; gap: 12px; }
         .fi-modal-footer { padding: 0 22px 20px; display: flex; gap: 10px; }
         .fi-input { width: 100%; padding: 11px 14px; border-radius: 12px; border: 1.5px solid #e2e8f0; background: rgba(255,255,255,0.9); color: #0f172a; font-family: 'Outfit', sans-serif; font-size: 0.87rem; font-weight: 500; outline: none; resize: none; }
@@ -150,28 +143,18 @@ export default function FoundItemsPage() {
         .fi-btn-submit { flex: 1; padding: 11px; border-radius: 12px; border: none; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; cursor: pointer; font-family: 'Outfit', sans-serif; font-size: 0.84rem; font-weight: 700; }
         .fi-btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
       `}</style>
-
             <div className="fi-root">
-                {/* Header */}
                 <div className="fi-header">
                     <div className="fi-title">
                         <h1>Found Items</h1>
                         <p>Lost something? Browse items found on campus</p>
                     </div>
                     <div className="fi-header-btns">
-                        <button onClick={() => refetch()} className="fi-btn fi-btn-outline">
-                            <FiRefreshCw size={14} /> Refresh
-                        </button>
-                        <Link to="/claims" className="fi-btn fi-btn-outline">
-                            <FiInbox size={14} /> My Claims
-                        </Link>
-                        <Link to="/found-items/post" className="fi-btn fi-btn-primary">
-                            <FiPlus size={15} /> Post Found Item
-                        </Link>
+                        <button onClick={() => refetch()} className="fi-btn fi-btn-outline"><FiRefreshCw size={14} /> Refresh</button>
+                        <Link to="/claims" className="fi-btn fi-btn-outline"><FiInbox size={14} /> My Claims</Link>
+                        <Link to="/found-items/post" className="fi-btn fi-btn-primary"><FiPlus size={15} /> Post Found Item</Link>
                     </div>
                 </div>
-
-                {/* Search & Filters */}
                 <div className="fi-bar">
                     <div className="fi-search-wrap">
                         <FiSearch size={15} className="fi-search-icon" />
@@ -187,35 +170,29 @@ export default function FoundItemsPage() {
                         <option value="claimed">Claimed</option>
                     </select>
                 </div>
-
-                {/* Stats */}
                 <div className="fi-stats">
                     <span className="fi-stat">📦 {items?.length || 0} Total</span>
                     <span className="fi-stat" style={{ color: '#059669' }}>✅ {availableCount} Available</span>
                     <span className="fi-stat" style={{ color: '#d97706' }}>🔒 {claimedCount} Claimed</span>
                 </div>
-
-                {/* Grid */}
                 {isLoading ? (
-                    <div className="fi-grid">
-                        {[1, 2, 3, 4, 5, 6].map(i => <SkeletonLoader key={i} type="card" />)}
-                    </div>
+                    <div className="fi-grid">{Array(6).fill(null).map((_, i) => <SkeletonLoader key={i} type="card" />)}</div>
                 ) : items?.length > 0 ? (
                     <div className="fi-grid">
                         {items.map((item, i) => {
                             const config = CATEGORY_CONFIG[item.category] || CATEGORY_CONFIG.other;
                             return (
                                 <div key={item.id} className="fi-card" style={{ animationDelay: `${i * 60}ms` }}>
-                                    <Link to={`/found-items/${item.id}`} style={{ textDecoration: 'none' }}>
-                                        <div className="fi-card-img">
+                                    <Link to={`/found-items/${item.id}`} className="fi-card-img">
+                                        {item.blurred_image_url ? (
+                                            <FoundItemImage src={item.blurred_image_url} alt={item.title} />
+                                        ) : (
                                             <span style={{ fontSize: '3.5rem' }}>{config.emoji}</span>
-                                        </div>
+                                        )}
                                     </Link>
                                     <div className="fi-card-body">
                                         <div className="fi-card-top">
-                                            <h3 className="fi-card-title">
-                                                <Link to={`/found-items/${item.id}`}>{item.title}</Link>
-                                            </h3>
+                                            <h3 className="fi-card-title"><Link to={`/found-items/${item.id}`}>{item.title}</Link></h3>
                                             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                                                 <span className="fi-badge fi-badge-cat">{item.category}</span>
                                                 {item.is_fee_required && <span className="fi-badge fi-badge-fee">💰 Fee</span>}
@@ -229,17 +206,11 @@ export default function FoundItemsPage() {
                                         <div className="fi-card-actions">
                                             {!item.is_claimed ? (
                                                 <>
-                                                    <Link to={`/found-items/${item.id}/claim`} className="fi-card-btn fi-card-btn-claim">
-                                                        This is Mine
-                                                    </Link>
-                                                    <button onClick={(e) => { e.preventDefault(); handleOpenTip(item.id, item.title); }} className="fi-card-btn fi-card-btn-tip">
-                                                        💡 Tip
-                                                    </button>
+                                                    <Link to={`/found-items/${item.id}/claim`} className="fi-card-btn fi-card-btn-claim">This is Mine</Link>
+                                                    <button onClick={(e) => { e.preventDefault(); handleOpenTip(item.id, item.title); }} className="fi-card-btn fi-card-btn-tip">💡 Tip</button>
                                                 </>
                                             ) : (
-                                                <Link to={`/found-items/${item.id}`} className="fi-card-btn fi-card-btn-view" style={{ flex: 1 }}>
-                                                    <FiEye size={13} /> View Details
-                                                </Link>
+                                                <Link to={`/found-items/${item.id}`} className="fi-card-btn fi-card-btn-view" style={{ flex: 1 }}><FiEye size={13} /> View Details</Link>
                                             )}
                                         </div>
                                     </div>
@@ -251,23 +222,18 @@ export default function FoundItemsPage() {
                     <div className="fi-empty">
                         <div className="fi-empty-icon">📦</div>
                         <h3 style={{ fontWeight: 700, color: '#64748b' }}>No items found</h3>
-                        <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginTop: 4 }}>{search ? 'Try a different search term.' : 'Check back later for new found items.'}</p>
+                        <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginTop: 4 }}>{search ? 'Try a different search term.' : 'Check back later.'}</p>
                     </div>
                 )}
             </div>
-
-            {/* Tip Modal */}
             {tipModal.open && (
                 <div className="fi-modal-overlay">
                     <div className="fi-modal-backdrop" onClick={() => setTipModal({ open: false, itemId: null, itemTitle: '' })} />
                     <div className="fi-modal">
-                        <div className="fi-modal-header">
-                            <span className="fi-modal-title">💡 I Know the Owner</span>
-                            <button className="fi-modal-close" onClick={() => setTipModal({ open: false, itemId: null, itemTitle: '' })}><FiX size={16} /></button>
-                        </div>
+                        <div className="fi-modal-header"><span className="fi-modal-title">💡 I Know the Owner</span><button className="fi-modal-close" onClick={() => setTipModal({ open: false, itemId: null, itemTitle: '' })}><FiX size={16} /></button></div>
                         <div className="fi-modal-body">
                             <p style={{ fontSize: '0.85rem', color: '#64748b' }}>Item: <strong>{tipModal.itemTitle}</strong></p>
-                            <div><label className="fi-label">Your Message *</label><textarea className="fi-input" rows={3} value={tipMessage} onChange={e => setTipMessage(e.target.value)} placeholder="e.g., I think this belongs to John from 3rd year..." /></div>
+                            <div><label className="fi-label">Your Message *</label><textarea className="fi-input" rows={3} value={tipMessage} onChange={e => setTipMessage(e.target.value)} placeholder="e.g., I think this belongs to John..." /></div>
                         </div>
                         <div className="fi-modal-footer">
                             <button className="fi-btn-cancel" onClick={() => setTipModal({ open: false, itemId: null, itemTitle: '' })}>Cancel</button>
