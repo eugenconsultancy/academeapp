@@ -32,7 +32,7 @@ const CACHE_DURATION = 60000; // 1 minute
  * @param {Object} props
  * @param {number} props.maxDistance - Maximum search radius in meters (default 500)
  * @param {number} props.minDistance - Minimum distance filter (default 0)
- * @param {boolean} props.showUpcomingOnly - Show only current/upcoming classes
+ * @param {boolean} props.showUpcomingOnly - THIS ShowS only current/upcoming classes
  * @param {string} props.defaultView - 'list' or 'map' (default 'list')
  * @param {function} props.onClassSelect - Callback when class card is clicked
  */

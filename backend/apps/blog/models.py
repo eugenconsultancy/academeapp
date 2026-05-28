@@ -3,7 +3,6 @@ from django.utils.text import slugify
 from common.models import BaseModel
 
 class BlogCategory(BaseModel):
-    """Categories for blog posts"""
     name = models.CharField(max_length=100, unique=True)
     slug = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
@@ -22,7 +21,6 @@ class BlogCategory(BaseModel):
         super().save(*args, **kwargs)
 
 class BlogPost(BaseModel):
-    """Blog posts created by admin"""
     title = models.CharField(max_length=255)
     slug = models.CharField(max_length=255, unique=True, blank=True)
     content = models.TextField()
@@ -35,9 +33,11 @@ class BlogPost(BaseModel):
     view_count = models.IntegerField(default=0)
     likes_count = models.IntegerField(default=0)
     saves_count = models.IntegerField(default=0)
+    flags_count = models.IntegerField(default=0)          # ← NEW
     is_featured = models.BooleanField(default=False)
     is_published = models.BooleanField(default=False)
     published_at = models.DateTimeField(null=True, blank=True)
+    is_hidden = models.BooleanField(default=False)
     
     class Meta:
         ordering = ['-published_at', '-created_at']
@@ -63,7 +63,6 @@ class BlogPost(BaseModel):
         return [t.strip() for t in self.tags.split(',')] if self.tags else []
 
 class PostLike(BaseModel):
-    """Student likes on posts"""
     post = models.ForeignKey(BlogPost, on_delete=models.CASCADE, related_name='likes')
     user = models.ForeignKey('accounts.User', on_delete=models.CASCADE, related_name='blog_likes')
     
@@ -74,7 +73,6 @@ class PostLike(BaseModel):
         return f"{self.user.full_name} liked {self.post.title}"
 
 class PostSave(BaseModel):
-    """Student bookmarks on posts"""
     post = models.ForeignKey(BlogPost, on_delete=models.CASCADE, related_name='saves')
     user = models.ForeignKey('accounts.User', on_delete=models.CASCADE, related_name='blog_saves')
     
@@ -85,7 +83,6 @@ class PostSave(BaseModel):
         return f"{self.user.full_name} saved {self.post.title}"
 
 class Comment(BaseModel):
-    """Comments on blog posts with nested replies"""
     post = models.ForeignKey(BlogPost, on_delete=models.CASCADE, related_name='comments')
     user = models.ForeignKey('accounts.User', on_delete=models.CASCADE, related_name='blog_comments')
     body = models.TextField()
@@ -97,3 +94,19 @@ class Comment(BaseModel):
 
     def __str__(self):
         return f"Comment by {self.user.full_name} on {self.post.title}"
+
+# ══════════════════════════════════════════════════
+# NEW: Flagging model
+# ══════════════════════════════════════════════════
+class PostFlag(BaseModel):
+    post = models.ForeignKey(BlogPost, on_delete=models.CASCADE, related_name='flags')
+    user = models.ForeignKey('accounts.User', on_delete=models.CASCADE, related_name='blog_flags')
+    reason = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        unique_together = ['post', 'user']
+        verbose_name = 'Post Flag'
+        verbose_name_plural = 'Post Flags'
+
+    def __str__(self):
+        return f"{self.user.full_name} flagged {self.post.title}"

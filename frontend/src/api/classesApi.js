@@ -4,33 +4,22 @@ export const classesApi = {
     // ==========================================
     // TIMETABLE
     // ==========================================
-
-    /** Get current user's timetable */
     getTimetable: () => apiClient.get('/classes/timetable/'),
-
-    /** Create a new timetable entry (class rep only) */
     createTimetableEntry: (data) => apiClient.post('/classes/timetable/', data),
-
-    /** Update an existing timetable entry */
     updateTimetableEntry: (id, data) => apiClient.put(`/classes/timetable/${id}/`, data),
-
-    /** Delete a timetable entry */
     deleteTimetableEntry: (id) => apiClient.delete(`/classes/timetable/${id}/`),
-
-    /** Get timetable for a specific class group */
     getClassTimetable: (classGroupId) =>
         apiClient.get(`/classes/timetable/class/${classGroupId}/`),
 
     // ==========================================
-    // ATTENDANCE
+    // TODAY & REPRESENTED CLASS
     // ==========================================
-
-    /** Get today's classes */
     getTodayClasses: () => apiClient.get('/classes/today/'),
-
-    /** Get the class where the current user is the class rep */
     getRepresentedClass: () => apiClient.get('/classes/my-represented-class/'),
 
+    // ==========================================
+    // SINGLE ATTENDANCE MARK
+    // ==========================================
     markAttendance: (timetableEntryId, attemptedAt, latitude, longitude) =>
         apiClient.post('/classes/mark-attendance/', {
             timetable_entry_id: timetableEntryId,
@@ -39,11 +28,42 @@ export const classesApi = {
             student_lon: longitude ?? null,
         }),
 
-    /** Get attendance records for a specific timetable entry */
+    // ==========================================
+    // ATTENDANCE RECORDS (filters)
+    // ==========================================
+    getAttendanceRecords: (params) =>
+        apiClient.get('/classes/attendance/', { params }),
+
+    // ==========================================
+    // CLASS ATTENDANCE SUMMARY (by class & term)
+    // ==========================================
+    getClassAttendanceSummary: (classId, termId) =>
+        apiClient.get('/classes/attendance/class-summary/', {
+            params: { class_id: classId, term_id: termId },
+        }),
+
+    // ==========================================
+    // ATTENDANCE FOR A SPECIFIC ENTRY
+    // ==========================================
     getAttendance: (entryId) => apiClient.get(`/classes/attendance/${entryId}/`),
 
-    /**
-     * Get weekly attendance summary.
-     */
+    // ==========================================
+    // WEEKLY SUMMARY
+    // ==========================================
     getWeeklySummary: () => apiClient.get('/classes/weekly-summary/'),
+
+    // ==========================================
+    // CHECK‑IN
+    // ==========================================
+    getCheckInHistory: (limit = 20) =>
+        apiClient.get('/classes/attendance/', {
+            params: { limit, ordering: '-marked_at' },
+        }),
+    getCheckInSummary: () =>
+        apiClient.get('/classes/attendance/checkin-summary/'),
+
+    // ==========================================
+    // NEW: LIST ALL CLASS GROUPS (admin only)
+    // ==========================================
+    listClassGroups: () => apiClient.get('/classes/class-groups/'),
 };

@@ -168,7 +168,7 @@ export function useImageBlur(itemId, options = {}) {
     }, [queryClient, effectiveQueryKey, startPolling]);
 
     /**
-     * Reset to initial state
+     * Reset to initial state (responsiveness )
      */
     const reset = useCallback(() => {
         stopPolling();

@@ -13,7 +13,8 @@ class CustomUserAdmin(UserAdmin):
     fieldsets = (
         (None, {'fields': ('phone_number', 'password')}),
         ('Personal info', {'fields': ('full_name', 'email', 'admission_number', 'class_name', 'institution')}),
-        ('Profile', {'fields': ('profile_pic', 'role', 'fcm_token', 'face_embedding')}), # Added face_embedding
+        # Fixed: replaced 'face_embedding' with actual model fields 'biometric_enabled' and 'face_data'
+        ('Profile', {'fields': ('profile_pic', 'role', 'fcm_token', 'biometric_enabled', 'face_data')}),
         ('Activity', {'fields': ('last_activity', 'last_visited_opportunities', 'login_count', 'total_likes_given')}),
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
     )
@@ -28,7 +29,8 @@ class CustomUserAdmin(UserAdmin):
     # Helper method to show status in list view
     @admin.display(boolean=True, description='Biometric Enabled')
     def has_biometric(self, obj):
-        return obj.face_embedding is not None
+        # Fixed: use the actual BooleanField 'biometric_enabled' instead of non-existent 'face_embedding'
+        return obj.biometric_enabled
 
 @admin.register(Badge)
 class BadgeAdmin(admin.ModelAdmin):

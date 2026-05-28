@@ -1,3 +1,5 @@
+// C:\Users\GATARA-BJTU\academe\frontend\src\pages\ClassesPage.jsx
+
 import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
@@ -256,7 +258,19 @@ export default function ClassesPage() {
     });
 
     const isClassRep = user?.role === 'class_rep' || user?.role === 'admin';
-    const isOnline = navigator.onLine;
+
+    // ── ONLINE / OFFLINE STATUS (real‑time reactive) ──
+    const [isOnline, setIsOnline] = useState(navigator.onLine);
+    useEffect(() => {
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
 
     // ── NEARBY CLASSES ──
     const handleFindNearby = async () => {
@@ -337,10 +351,10 @@ export default function ClassesPage() {
     const weeklyPct = weeklySummary?.percentage ?? 0;
 
     const STATS = [
-        { label: "Today's Classes", value: totalClasses, color: '#6366f1', icon: <FiCalendar size={16} style={{ color: '#6366f1' }} /> },
+        { label: "Today's Classes", value: totalClasses, color: '#2c2fce', icon: <FiCalendar size={16} style={{ color: '#6366f1' }} /> },
         { label: 'Attended', value: attendedCount, color: '#10b981', icon: <FiCheckCircle size={16} style={{ color: '#10b981' }} /> },
-        { label: 'Remaining', value: remaining, color: '#f59e0b', icon: <FiClock size={16} style={{ color: '#f59e0b' }} /> },
-        { label: 'Weekly Rate', value: `${weeklyPct}%`, color: '#8b5cf6', icon: <FiTrendingUp size={16} style={{ color: '#8b5cf6' }} /> },
+        { label: 'Remaining', value: remaining, color: '#d38a0c', icon: <FiClock size={16} style={{ color: '#f59e0b' }} /> },
+        { label: 'Weekly Rate', value: `${weeklyPct}%`, color: '#5922db', icon: <FiTrendingUp size={16} style={{ color: '#8b5cf6' }} /> },
     ];
 
     // ── Loading / Error states (placed AFTER all hooks) ──
@@ -438,7 +452,7 @@ export default function ClassesPage() {
                         </div>
 
                         <div className="cp-header-actions">
-                            {/* Online/offline status */}
+                            {/* Online/offline status – now reactive */}
                             <span className={`cp-status-pill ${isOnline ? 'cp-status-online' : 'cp-status-offline'}`}>
                                 {isOnline ? <FiWifi size={13} /> : <FiWifiOff size={13} />}
                                 {isOnline ? 'Online' : 'Offline'}
@@ -535,7 +549,7 @@ export default function ClassesPage() {
                     {/* ── NEARBY CLASSES ── */}
                     {showNearby && nearbyClasses.length > 0 && (
                         <>
-                            <div className="cp-section-head"><FiTarget size={14} style={{ color: '#06b6d4' }} /><span style={{ color: '#06b6d4' }}>Nearby Classes</span></div>
+                            <div className="cp-section-head"><FiTarget size={14} style={{ color: '#279fb4' }} /><span style={{ color: '#06b6d4' }}>Nearby Classes</span></div>
                             <div className="cp-nearby-section">
                                 <div className="cp-nearby-head">
                                     <div className="cp-nearby-title"><FiNavigation size={15} style={{ color: '#06b6d4' }} />{nearbyClasses.length} class{nearbyClasses.length !== 1 ? 'es' : ''} within 500m</div>
@@ -562,7 +576,7 @@ export default function ClassesPage() {
                     <div className="cp-section-head">
                         <FiBookOpen size={14} />
                         {viewTab === 'today' ? 'Schedule' : 'Weekly Timetable'}
-                        <span style={{ marginLeft: 'auto', fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                        <span style={{ marginLeft: 'auto', fontSize: '0.7rem', fontWeight: 700, color: '#a059b6', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                             {viewTab === 'today' ? `${attendedCount}/${totalClasses} attended` : ''}
                         </span>
                         <Link to="/classes/attendance" className="ml-2 text-xs text-indigo-500 hover:underline flex items-center gap-1" title="Attendance Summary">
@@ -623,7 +637,7 @@ export default function ClassesPage() {
                             <div className="cp-section-head"><FiBarChart2 size={14} /> Weekly Summary</div>
                             <div className="cp-weekly">
                                 <div className="cp-weekly-head">
-                                    <div className="cp-weekly-icon"><FiBarChart2 size={20} style={{ color: '#6366f1' }} /></div>
+                                    <div className="cp-weekly-icon"><FiBarChart2 size={20} style={{ color: '#27aa53' }} /></div>
                                     <div><div className="cp-weekly-title">Attendance Overview</div><div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, marginTop: 2 }}>This week's performance</div></div>
                                 </div>
 
@@ -779,7 +793,7 @@ const STYLES = `
 
   .cp-bg {
     position: fixed; inset: 0; z-index: -2; overflow: hidden;
-    background: linear-gradient(155deg, #eef2ff 0%, #f8faff 45%, #f0fdf4 100%);
+    background: linear-gradient(155deg, #dbdfec 0%, #f2e5f3 45%, #f0fdf4 100%);
     transition: background 0.4s;
   }
   .dark .cp-bg {

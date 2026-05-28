@@ -490,3 +490,14 @@ def toggle_2fa(request):
     user.two_factor_enabled = not user.two_factor_enabled
     user.save(update_fields=['two_factor_enabled'])
     return {"two_factor_enabled": user.two_factor_enabled}
+
+
+# ============================================
+# ADMIN: LIST ALL USERS (NEW)
+# ============================================
+@router.get("/users/", auth=JWTAuth())
+def list_all_users(request):
+    """Admin only: return a list of all users (id, full_name, email, role)."""
+    if request.auth.role != 'admin':
+        return []
+    return list(User.objects.all().values('id', 'full_name', 'email', 'role'))

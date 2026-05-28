@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
 
@@ -44,14 +44,54 @@ export default function Card({
   ...props
 }) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  const [mousePosition, setMousePosition] = useState({ x: 0.5, y: 0.5 });
+  const [isHovered, setIsHovered] = useState(false);
+  const cardRef = useRef(null);
+
+  const handleMouseMove = useCallback((e) => {
+    if (!cardRef.current || !hover) return;
+    const rect = cardRef.current.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    setMousePosition({ x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) });
+  }, [hover]);
+
+  const handleMouseEnter = useCallback(() => {
+    setIsHovered(true);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    setIsHovered(false);
+    setMousePosition({ x: 0.5, y: 0.5 });
+  }, []);
 
   const accentGrad = accent ? (accentGradients[accent] || accentGradients.indigo) : null;
   const glowFill = glow && glowColor ? `${glowColor}14` : undefined;
   const glowBorder = glow && glowColor ? `${glowColor}40` : undefined;
   const actualPadding = noPad ? 0 : (padMap[padding] ?? padMap.md);
 
+  // ── Dynamic lighting variables ───────────────────────────────────
+  const lightX = mousePosition.x * 100;
+  const lightY = mousePosition.y * 100;
+  const lightAngle = Math.atan2(mousePosition.y - 0.5, mousePosition.x - 0.5) * (180 / Math.PI);
+  const lightDistance = Math.hypot(mousePosition.x - 0.5, mousePosition.y - 0.5);
+
+  const dynamicStyle = {
+    '--mouse-x': mousePosition.x,
+    '--mouse-y': mousePosition.y,
+    '--light-x': `${lightX}%`,
+    '--light-y': `${lightY}%`,
+    '--light-angle': `${lightAngle}deg`,
+    '--light-distance': lightDistance,
+    '--accent-grad': accentGrad,
+    '--glow-fill': glowFill,
+    '--glow-border': glowBorder,
+    ...style,
+  };
+
   const cardContent = (
     <div
+      ref={cardRef}
       className={[
         'ac-card',
         hover && 'ac-hover',
@@ -61,19 +101,27 @@ export default function Card({
         !bordered && 'ac-no-border',
         elevated && 'ac-elevated',
         selected && 'ac-selected',
+        isHovered && 'ac-hovered',
         className,
       ].filter(Boolean).join(' ')}
-      style={{
-        '--accent-grad': accentGrad,
-        '--glow-fill': glowFill,
-        '--glow-border': glowBorder,
-        ...style,
-      }}
+      style={dynamicStyle}
       onClick={selectable ? onSelect : onClick}
+      onMouseMove={handleMouseMove}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       {...props}
     >
-      {/* Accent bar */}
+      {/* Accent bar (top) */}
       {accent && <div aria-hidden="true" className="ac-accent-bar" />}
+
+      {/* Ambient light overlay (dynamic radial gradient) */}
+      <div className="ac-ambient-light" aria-hidden="true" />
+
+      {/* Reflective overlay (glossy diagonal) */}
+      <div className="ac-reflection" aria-hidden="true" />
+
+      {/* Edge highlight glow */}
+      <div className="ac-edge-highlight" aria-hidden="true" />
 
       {/* Image */}
       {image && (
@@ -154,11 +202,12 @@ export default function Card({
   );
 
   // ═══════════════════════════════════════════════════════════════
-  // RENDER WITH STYLES
+  // RENDER WITH PREMIUM STYLES
   // ═══════════════════════════════════════════════════════════════
   return (
     <>
       <style>{`
+        /* ── Core Card Base ─────────────────────────────────── */
         .ac-card {
           font-family: 'DM Sans', system-ui, sans-serif;
           position: relative;
@@ -167,29 +216,77 @@ export default function Card({
           backdrop-filter: blur(24px) saturate(180%);
           -webkit-backdrop-filter: blur(24px) saturate(180%);
           border: 1px solid rgba(182, 161, 161, 0.7);
-          box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.9);
-          transition: transform 0.28s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.28s ease, border-color 0.28s ease;
+          box-shadow:
+            0 1px 2px rgba(0,0,0,0.04),         /* tight edge */
+            0 4px 16px rgba(0,0,0,0.04),        /* mid ambient */
+            0 8px 32px rgba(0,0,0,0.06),        /* far penumbra */
+            inset 0 1px 0 rgba(255,255,255,0.9), /* top inner highlight */
+            inset 0 -1px 0 rgba(0,0,0,0.04);     /* bottom inner shadow */
+          transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1.2),
+                      box-shadow 0.4s ease,
+                      border-color 0.4s ease;
           word-wrap: break-word;
+          overflow: hidden;
+          isolation: isolate;
         }
         .dark .ac-card {
           background: rgba(15,14,26,0.85);
           border-color: rgba(255,255,255,0.06);
-          box-shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 20px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03);
+          box-shadow:
+            0 1px 2px rgba(0,0,0,0.3),
+            0 4px 20px rgba(0,0,0,0.35),
+            0 8px 40px rgba(0,0,0,0.5),
+            inset 0 1px 0 rgba(255,255,255,0.03),
+            inset 0 -1px 0 rgba(0,0,0,0.2);
         }
-        .ac-card.ac-no-border { border-color: transparent; }
-        .ac-card.ac-elevated { box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 8px 32px rgba(0,0,0,0.08); }
-        .dark .ac-card.ac-elevated { box-shadow: 0 2px 10px rgba(0,0,0,0.4), 0 12px 40px rgba(0,0,0,0.5); }
+
+        /* ── Elevated Depth ────────────────────────────────── */
+        .ac-card.ac-elevated {
+          box-shadow:
+            0 2px 8px rgba(0,0,0,0.06),
+            0 8px 32px rgba(0,0,0,0.08),
+            0 16px 48px rgba(0,0,0,0.04);
+        }
+        .dark .ac-card.ac-elevated {
+          box-shadow:
+            0 2px 10px rgba(0,0,0,0.4),
+            0 12px 40px rgba(0,0,0,0.5),
+            0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        /* ── No Border ─────────────────────────────────────── */
+        .ac-card.ac-no-border {
+          border-color: transparent;
+        }
+
+        /* ── Hover (base transform, overridden by dynamic) ── */
+        .ac-card.ac-hover {
+          transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1.2),
+                      box-shadow 0.4s ease,
+                      border-color 0.4s ease;
+        }
         .ac-card.ac-hover:hover {
           transform: translateY(-3px) scale(1.005);
-          box-shadow: 0 2px 8px rgba(0,0,0,0.05), 0 16px 40px rgba(99,102,241,0.08);
         }
+
+        /* ── Glow (static, enhanced by dynamic) ───────────── */
         .ac-card.ac-glow:hover {
           border-color: var(--glow-border, rgba(99,102,241,0.4));
-          box-shadow: 0 0 0 4px var(--glow-fill, rgba(99,102,241,0.08)), 0 16px 40px rgba(99,102,241,0.12);
+          box-shadow:
+            0 0 0 4px var(--glow-fill, rgba(99,102,241,0.08)),
+            0 16px 40px rgba(99,102,241,0.12);
         }
+
+        /* ── Accent Gradient Bar ───────────────────────────── */
         .ac-card.ac-accent::before {
-          content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3.5px;
-          background: var(--accent-grad); z-index: 2;
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 3.5px;
+          background: var(--accent-grad);
+          z-index: 2;
           border-radius: 18px 18px 0 0;
           background-size: 200% 200%;
           animation: acGradientShift 4s ease-in-out infinite;
@@ -198,18 +295,117 @@ export default function Card({
           0%, 100% { background-position: 0% 50%; }
           50% { background-position: 100% 50%; }
         }
+
+        /* ── Clickable & Selected ──────────────────────────── */
         .ac-card.ac-clickable { cursor: pointer; }
-        .ac-card.ac-selected { border-color: #4144f5; box-shadow: 0 0 0 3px rgba(99,102,241,0.15); }
-        .ac-body { position: relative; z-index: 1; word-break: break-word; }
-        .ac-loading-overlay {
-          position: absolute; inset: 0; z-index: 10;
-          background: rgba(255,255,255,0.6); backdrop-filter: blur(4px);
-          display: flex; align-items: center; justify-content: center;
+        .ac-card.ac-selected {
+          border-color: #4144f5;
+          box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
         }
-        /* Accent bar element */
+
+        /* ── Ambient Light Overlay ─────────────────────────── */
+        .ac-ambient-light {
+          position: absolute;
+          inset: 0;
+          z-index: 1;
+          pointer-events: none;
+          background: radial-gradient(
+            circle at var(--light-x, 50%) var(--light-y, 50%),
+            rgba(255,255,255,0.15) 0%,
+            rgba(255,255,255,0.02) 50%,
+            transparent 70%
+          );
+          opacity: 0;
+          transition: opacity 0.3s ease;
+        }
+        .dark .ac-ambient-light {
+          background: radial-gradient(
+            circle at var(--light-x, 50%) var(--light-y, 50%),
+            rgba(99,102,241,0.15) 0%,
+            rgba(99,102,241,0.05) 50%,
+            transparent 70%
+          );
+        }
+        .ac-card.ac-hovered .ac-ambient-light {
+          opacity: 1;
+        }
+
+        /* ── Reflective Overlay (glossy diagonal) ──────────── */
+        .ac-reflection {
+          position: absolute;
+          inset: 0;
+          z-index: 2;
+          pointer-events: none;
+          background: linear-gradient(
+            calc(var(--light-angle, 135deg) + 45deg),
+            rgba(255,255,255,0.3) 0%,
+            rgba(255,255,255,0.05) 40%,
+            transparent 60%
+          );
+          opacity: 0;
+          transition: opacity 0.3s ease;
+          mix-blend-mode: overlay;
+        }
+        .dark .ac-reflection {
+          background: linear-gradient(
+            calc(var(--light-angle, 135deg) + 45deg),
+            rgba(255,255,255,0.08) 0%,
+            rgba(255,255,255,0.02) 40%,
+            transparent 60%
+          );
+        }
+        .ac-card.ac-hovered .ac-reflection {
+          opacity: 1;
+        }
+
+        /* ── Edge Highlight (dynamic inner glow) ───────────── */
+        .ac-edge-highlight {
+          position: absolute;
+          inset: 0;
+          z-index: 3;
+          pointer-events: none;
+          border-radius: 18px;
+          box-shadow: 
+            inset 1px 1px 0 rgba(255,255,255,0.4),
+            inset -1px -1px 0 rgba(0,0,0,0.05);
+          opacity: 0.6;
+          transition: opacity 0.3s ease;
+        }
+        .dark .ac-edge-highlight {
+          box-shadow: 
+            inset 1px 1px 0 rgba(255,255,255,0.05),
+            inset -1px -1px 0 rgba(0,0,0,0.2);
+        }
+        .ac-card.ac-hovered .ac-edge-highlight {
+          opacity: 0.8;
+        }
+
+        /* ── Body & Loading ─────────────────────────────────── */
+        .ac-body {
+          position: relative;
+          z-index: 4;
+          word-break: break-word;
+        }
+        .ac-loading-overlay {
+          position: absolute;
+          inset: 0;
+          z-index: 10;
+          background: rgba(255,255,255,0.6);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        /* ── Accent bar element (redundant with pseudo? keep both for compatibility) ── */
         .ac-accent-bar {
-          position: absolute; top: 0; left: 0; right: 0; height: 3.5px;
-          background: var(--accent-grad); z-index: 2;
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 3.5px;
+          background: var(--accent-grad);
+          z-index: 2;
           border-radius: 18px 18px 0 0;
           background-size: 200% 200%;
           animation: acGradientShift 4s ease-in-out infinite;
@@ -222,35 +418,15 @@ export default function Card({
 }
 
 // ═══════════════════════════════════════════════════════════════
-// MODAL PORTAL HELPER
-// Use this to render modals outside the Card's overflow context
+// MODAL PORTAL HELPERS (unchanged)
 // ═══════════════════════════════════════════════════════════════
 
-/**
- * Renders content in a React Portal to document.body.
- * Use this for modals, dropdowns, and tooltips that need to break
- * out of parent containers with overflow: hidden or position: relative.
- * 
- * @param {Object} props
- * @param {React.ReactNode} props.children - Content to portal
- * @param {HTMLElement} props.container - Target container (default: document.body)
- */
 export function Portal({ children, container = null }) {
   const target = container || (typeof document !== 'undefined' ? document.body : null);
   if (!target) return children;
   return createPortal(children, target);
 }
 
-/**
- * Modal wrapper that automatically portals to document.body.
- * im using this instead of inline modal markup inside Card components.
- * 
- * @param {Object} props
- * @param {boolean} props.isOpen - Show/hide modal
- * @param {Function} props.onClose - Close handler
- * @param {React.ReactNode} props.children - Modal content
- * @param {string} props.className - Additional overlay classes
- */
 export function CardModal({ isOpen, onClose, children, className = '' }) {
   if (!isOpen) return null;
 

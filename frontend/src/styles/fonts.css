@@ -1,48 +1,22 @@
 /* ══════════════════════════════════════════════════════════
    ACADEME — TYPOGRAPHY SYSTEM
-   Two options implemented — uncomment the one you prefer.
-   Default active: Option A (Modern Tech & Energetic)
+   Display : Bricolage Grotesque (700/800)
+   Body    : DM Sans (400/500/600/700)
+   Mono    : JetBrains Mono
 ══════════════════════════════════════════════════════════ */
 
-/* ──────────────────────────────────────
-   OPTION A (ACTIVE): Modern Tech & Energetic
-   Headings  → Plus Jakarta Sans (800/900, tight tracking)
-   Body      → Inter (400/500/600, high legibility)
-   Mono      → JetBrains Mono
-────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
-
-/*
-   ──────────────────────────────────────
-   OPTION B (COMMENTED): Friendly Premium Editorial
-   Headings  → Bricolage Grotesque (700/800, unique personality)
-   Body      → Plus Jakarta Sans (400/500/600)
-   Mono      → JetBrains Mono
-   ──────────────────────────────────────
-   To activate: uncomment below and comment out Option A above.
-
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
-*/
 
 /* ══════════════════════════════════════
    FONT CSS VARIABLES
-   Switch between A/B by updating these two vars only.
 ══════════════════════════════════════ */
 :root {
-  /* Option A */
-  --font-display: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-body:    'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-mono:    'JetBrains Mono', ui-monospace, monospace;
-
-  /* ── Option B (uncomment to switch) ──
+  /* ── Font families ── */
   --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
-  --font-body:    'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-body:    'DM Sans', ui-sans-serif, system-ui, sans-serif;
   --font-mono:    'JetBrains Mono', ui-monospace, monospace;
-  */
 
   /* ── Typographic Scale ── */
   --text-xs:   0.70rem;   /* 11.2px */
@@ -56,7 +30,7 @@
   --text-4xl:  2.75rem;   /* 44px   */
   --text-5xl:  3.25rem;   /* 52px   */
 
-  /* ── Line Heights (critical — prevents ascender/descender clipping) ── */
+  /* ── Line Heights ── */
   --lh-tight:   1.15;   /* display headings only  */
   --lh-snug:    1.30;   /* subheadings            */
   --lh-normal:  1.55;   /* UI labels, cards       */
@@ -88,7 +62,7 @@
 .font-body    { font-family: var(--font-body); }
 .font-mono    { font-family: var(--font-mono); }
 
-/* Kept for backwards compat with old class names */
+/* Kept for backwards compat */
 .font-inter    { font-family: var(--font-body); }
 .font-roboto   { font-family: var(--font-body); }
 .font-poppins  { font-family: var(--font-display); }
@@ -101,7 +75,6 @@
   font-weight: 800;
   line-height: var(--lh-tight);
   letter-spacing: var(--ls-tighter);
-  /* Critical: never clip descenders */
   overflow: visible;
   padding-bottom: 0.05em;
 }

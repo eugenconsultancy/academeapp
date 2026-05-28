@@ -114,3 +114,88 @@ Not Found: /api/found-items/claims/b04d2695-df13-46dc-b98a-7dedfe3044f3/submit-e
 [16/May/2026 00:53:03] "GET /static/vendor/fontawesome-free/webfonts/fa-regular-400.woff2 HTTP/1.1" 304 0
 the annoucment page is blank completly
 also the profile update for image, upon uploading the image, it doesnt appear on the user interface despite saying successfully updated.
+
+
+
+
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+Internal Server Error: /found-items/items/010d669a-835d-4fdf-9647-46812a071bbb/claim-status/
+[27/May/2026 14:54:55] "GET /found-items/items/010d669a-835d-4fdf-9647-46812a071bbb/claim-status/ HTTP/1.1" 500 1283
+2 validation errors for NinjaResponseSchema
+response.requires_security
+  Field required [type=missing, input_value=<DjangoGetter: {'claim_id..., 'next_step': 'claim'}>, input_type=DjangoGetter]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+response.requires_payment
+  Field required [type=missing, input_value=<DjangoGetter: {'claim_id..., 'next_step': 'claim'}>, input_type=DjangoGetter]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+Traceback (most recent call last):
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 219, in run
+    return self._result_to_response(request, result, temporal_response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 422, in _result_to_response
+    validated_object = response_model.model_validate(
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\pydantic\main.py", line 732, in model_validate
+    return cls.__pydantic_validator__.validate_python(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 2 validation errors for NinjaResponseSchema
+response.requires_security
+  Field required [type=missing, input_value=<DjangoGetter: {'claim_id..., 'next_step': 'claim'}>, input_type=DjangoGetter]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+response.requires_payment
+  Field required [type=missing, input_value=<DjangoGetter: {'claim_id..., 'next_step': 'claim'}>, input_type=DjangoGetter]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+Internal Server Error: /found-items/items/010d669a-835d-4fdf-9647-46812a071bbb/claim-status/
+[27/May/2026 14:54:55] "GET /found-items/items/010d669a-835d-4fdf-9647-46812a071bbb/claim-status/ HTTP/1.1" 500 1283
+
+governance stats needs to be enhance in terms of colors and backgrounds 
+
+
+s/items/8717b760-dcb4-4ea0-9cb2-bbd7fcb45dfa/claim/ HTTP/1.1" 200 0
+[27/May/2026 15:10:31] "POST /found-items/items/8717b760-dcb4-4ea0-9cb2-bbd7fcb45dfa/claim/ HTTP/1.1" 201 511
+[27/May/2026 15:10:41] "OPTIONS /found-items/claims/407fdac5-60cb-4006-af22-a8391f53d5e2/submit-evidence/ HTTP/1.1" 200 0
+Bad Request: /found-items/claims/407fdac5-60cb-4006-af22-a8391f53d5e2/submit-evidence/
+[27/May/2026 15:10:41] "POST /found-items/claims/407fdac5-60cb-4006-af22-a8391f53d5e2/submit-evidence/ HTTP/1.1" 400 65
+Bad Request: /found-items/claims/407fdac5-60cb-4006-af22-a8391f53d5e2/submit-evidence/
+[27/May/2026 15:10:42] "POST /found-items/claims/407fdac5-60cb-4006-af22-a8391f53d5e2/submit-evidence/ HTTP/1.1" 400 65
+[27/May/2026 15:10:44] "HEAD /api/health/ HTTP/1.1" 200 0
+[27/May/2026 15:10:44] "HEAD /api/health/ HTTP/1.1" 200 0
+Bad Request: /found-items/claims/407fdac5-60cb-4006-af22-a8391f53d5e2/submit-evidence/
+[27/May/2026 15:10:46] "POST /found-items/claims/407fdac5-60cb-4006-af22-a8391f53d5e2/submit-evidence/ HTTP/1.1" 400 65
+Bad Request: /found-items/claims/407fdac5-60cb-4006-af22-a8391f53d5e2/submit-evidence/
+[27/May/2026 15:10:47] "POST /found-items/claims/407fdac5-60cb-4006-af22-a8391f53d5e2/submit-evidence/ HTTP/1.1" 400 65
+[27/May/2026 15:10:48] "HEAD /api/health/ HTTP/1.1" 200 0]
+
+
+also the skeleton loader is vertically orintnted occupiying on the central location , so instead i want it occuy the full screen and load animating object or designed to be appealing and intuitive. also the skeleton loader should have appealing designs and looks. 
+
+
+for the navabr as seen, there are missing references to fontselector , also look at its appearance as potrayed in the attached image. it should have its own intutive backgrounds and background button colors ntuive and different for different features. 
+
+for the below C:\Users\GATARA-BJTU\academe\frontend\src\services\attendanceService.js there is reference to academics app in the bacend which i dont have , so the features should be added modified based on an already existing app. 
+
+create content for the bakend .env file(im providing the settings file for insights to guide you in crafting the .env)
+
+since my api file is using the name client.js instead of axios.js, however, in my file
+there is reference as below,using the axios file that dont exist as i have only client.js so should i modify the section or the settings will pick from the client.js despite rference to axios.js as shown below
+: 
+// ═══════════════════════════════════════════════════════════════
+// 2. Refresh-specific instance to avoid circular interceptor triggers
+// ═══════════════════════════════════════════════════════════════
+const refreshApi = axios.create({
+  baseURL: BASE_URL,
+  headers: { 'Content-Type': 'application/json' },
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 3. Main client instance
+// ═══════════════════════════════════════════════════════════════
+const apiClient = axios.create({
+  baseURL: BASE_URL,
+  headers: { 'Content-Type': 'application/json' },
+  timeout: 30000,
+});
+
+
+
+also ths fle is referencing the backend academic app which is not part of my project, rather i have the classes app C:\Users\GATARA-BJTU\academe\frontend\src\hooks\useAttendance.js;; with the models being referenced here. 

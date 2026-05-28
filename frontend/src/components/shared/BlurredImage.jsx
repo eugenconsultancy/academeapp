@@ -41,7 +41,7 @@ import {
  * @param {boolean} props.lazy - Enable lazy loading
  * @param {boolean} props.zoomable - Enable zoom on double click
  */
-export default function BlurredImage({
+export function BlurredImage({
     src,
     alt = '',
     className = '',
@@ -403,6 +403,11 @@ export default function BlurredImage({
         </div>
     );
 }
+
+// ═══════════════════════════════════════════════════════════════
+// DEFAULT EXPORT
+// ═══════════════════════════════════════════════════════════════
+export default BlurredImage;
 
 // ═══════════════════════════════════════════════════════════════
 // PRESET VARIANTS

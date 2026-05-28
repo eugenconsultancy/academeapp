@@ -8,61 +8,22 @@ export default {
   content: [
     './index.html',
     './src/**/*.{js,ts,jsx,tsx}',
-    './src/pages/**/*.{js,jsx,ts,tsx}',      // ✅ Explicit pages inclusion
-    './src/components/**/*.{js,jsx,ts,tsx}',  // ✅ Explicit components inclusion
-    './src/layouts/**/*.{js,jsx,ts,tsx}',     // ✅ Explicit layouts inclusion
-    './src/contexts/**/*.{js,jsx,ts,tsx}',    // ✅ Explicit contexts inclusion
+    './src/pages/**/*.{js,jsx,ts,tsx}',
+    './src/components/**/*.{js,jsx,ts,tsx}',
+    './src/layouts/**/*.{js,jsx,ts,tsx}',
+    './src/contexts/**/*.{js,jsx,ts,tsx}',
   ],
 
   // ═══════════════════════════════════════════════════════
-  // SAFELIST - Complete coverage for dynamic classes
+  // SAFELIST – only dynamic patterns that cannot be auto‑detected
   // ═══════════════════════════════════════════════════════
   safelist: [
-    // ── Explicit color classes (prevents purging) ──
-    'bg-indigo-50', 'bg-indigo-100', 'bg-indigo-200', 'bg-indigo-300',
-    'bg-indigo-400', 'bg-indigo-500', 'bg-indigo-600', 'bg-indigo-700',
-    'bg-indigo-800', 'bg-indigo-900',
-
-    'bg-red-50', 'bg-red-100', 'bg-red-200', 'bg-red-300', 'bg-red-400',
-    'bg-red-500', 'bg-red-600', 'bg-red-700', 'bg-red-800', 'bg-red-900',
-
-    'bg-emerald-50', 'bg-emerald-100', 'bg-emerald-200', 'bg-emerald-300',
-    'bg-emerald-400', 'bg-emerald-500', 'bg-emerald-600', 'bg-emerald-700',
-    'bg-emerald-800', 'bg-emerald-900',
-
-    'bg-amber-50', 'bg-amber-100', 'bg-amber-200', 'bg-amber-300',
-    'bg-amber-400', 'bg-amber-500', 'bg-amber-600', 'bg-amber-700',
-    'bg-amber-800', 'bg-amber-900',
-
-    'bg-blue-50', 'bg-blue-100', 'bg-blue-200', 'bg-blue-300', 'bg-blue-400',
-    'bg-blue-500', 'bg-blue-600', 'bg-blue-700', 'bg-blue-800', 'bg-blue-900',
-
-    'bg-gray-50', 'bg-gray-100', 'bg-gray-200', 'bg-gray-300', 'bg-gray-400',
-    'bg-gray-500', 'bg-gray-600', 'bg-gray-700', 'bg-gray-800', 'bg-gray-900',
-
-    // ── Text colors ──
-    'text-indigo-500', 'text-indigo-600', 'text-indigo-700',
-    'text-red-500', 'text-red-600', 'text-red-700',
-    'text-emerald-500', 'text-emerald-600', 'text-emerald-700',
-    'text-amber-500', 'text-amber-600', 'text-amber-700',
-    'text-blue-500', 'text-blue-600', 'text-blue-700',
-    'text-gray-300', 'text-gray-400', 'text-gray-500', 'text-gray-600',
-    'text-gray-700', 'text-gray-800',
-
-    // ── Border colors ──
-    'border-indigo-200', 'border-indigo-300', 'border-indigo-500',
-    'border-red-200', 'border-red-300', 'border-red-500',
-    'border-emerald-200', 'border-emerald-300', 'border-emerald-500',
-    'border-amber-200', 'border-amber-300', 'border-amber-500',
-    'border-blue-200', 'border-blue-300', 'border-blue-500',
-    'border-gray-200', 'border-gray-300', 'border-gray-500',
-
-    // ── Dynamic patterns (complete coverage) ──
+    // ── Dynamic color classes used by inline style composition ──
     { pattern: /bg-(indigo|red|emerald|amber|blue|gray|slate)-(50|100|200|300|400|500|600|700|800|900)/ },
     { pattern: /text-(indigo|red|emerald|amber|blue|gray|slate)-(300|400|500|600|700|800)/ },
     { pattern: /border-(indigo|red|emerald|amber|blue|gray|slate)-(200|300|500|800)/ },
 
-    // ── Status component classes ──
+    // ── Semantic status components (kept from original) ──
     'status--teal', 'status--amber', 'status--blue', 'status--rose',
     'status--neutral', 'status--indigo',
     'badge--amber', 'badge--teal', 'badge--blue', 'badge--rose', 'badge--neutral',
@@ -98,20 +59,10 @@ export default {
     'shadow', 'shadow-md', 'shadow-lg', 'shadow-xl',
     'transition', 'duration-200', 'duration-300', 'ease-in-out',
     'hover:scale-105', 'hover:shadow-lg', 'hover:-translate-y-1',
-
-    // ── Dark mode variants ──
-    'dark:bg-gray-800', 'dark:bg-gray-900', 'dark:text-gray-100',
-    'dark:text-gray-300', 'dark:border-gray-700',
   ],
 
-  // ═══════════════════════════════════════════════════════
-  // DARK MODE
-  // ═══════════════════════════════════════════════════════
   darkMode: 'class',
 
-  // ═══════════════════════════════════════════════════════
-  // THEME CONFIGURATION
-  // ═══════════════════════════════════════════════════════
   theme: {
     screens: {
       'xs': '475px',
@@ -236,6 +187,21 @@ export default {
           900: '#1a2c5c',
           950: '#0f1a3a',
         },
+        // ── Semantic text colors (light/dark) ──
+        text: {
+          primary: {
+            light: '#0f172a',
+            dark: '#f8fafc',
+          },
+          secondary: {
+            light: '#334155',
+            dark: '#e2e8f0',
+          },
+          muted: {
+            light: '#64748b',
+            dark: '#94a3b8',
+          },
+        },
         surface: {
           light: 'rgba(255, 255, 255, 0.82)',
           dark: 'rgba(15, 14, 26, 0.85)',
@@ -244,9 +210,9 @@ export default {
 
       fontFamily: {
         sans: ['Inter', 'DM Sans', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
-        display: ['Outfit', 'Inter', 'DM Sans', 'sans-serif'],
-        heading: ['Outfit', 'Inter', 'sans-serif'],
-        body: ['Inter', 'DM Sans', 'sans-serif'],
+        display: ['Bricolage Grotesque', 'Outfit', 'Inter', 'DM Sans', 'sans-serif'],
+        heading: ['Bricolage Grotesque', 'Outfit', 'Inter', 'sans-serif'],
+        body: ['DM Sans', 'Inter', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
       },
 
@@ -466,11 +432,8 @@ export default {
     },
   },
 
-  // ═══════════════════════════════════════════════════════
-  // PLUGINS - FIXED: Changed strategy to 'base' for automatic styling
-  // ═══════════════════════════════════════════════════════
   plugins: [
-    tailwindForms({ strategy: 'base' }), // ✅ Changed from 'class' to 'base' for automatic form styling
+    tailwindForms({ strategy: 'base' }),
     tailwindTypography,
     tailwindAspectRatio,
     tailwindContainerQueries,

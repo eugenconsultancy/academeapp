@@ -227,3 +227,21 @@ def get_stats_history(
         "new_users_today": s.new_users_today,
         "active_roles": s.active_roles,
     } for s in stats]
+
+
+# ============================================
+# SYSTEM HEALTH (NEW – Admin only)
+# ============================================
+@router.get("/system-health/", auth=JWTAuth())
+def system_health(request):
+    """Admin only: return system health status."""
+    if request.auth.role != 'admin':
+        return {}
+    # Replace with real data from monitoring tools later
+    return {
+        "pending_offline_sync": 0,
+        "active_alerts": 0,
+        "cpu_usage": 23.5,
+        "memory_usage": "2.3 GB / 8 GB",
+        "alerts": []
+    }

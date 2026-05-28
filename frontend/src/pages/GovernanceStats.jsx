@@ -47,8 +47,8 @@ export default function GovernanceStats() {
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-8 px-4">
             <div className="max-w-5xl mx-auto">
-                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2">Platform Statistics</h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-8">Comprehensive platform metrics and analytics.</p>
+                <h1 className="text-2xl md:text-4x3 font-bold text-gray-900 dark:text-white mb-2">Platform Statistics</h1>
+                <p className="text-sm text-gray-700 dark:text-gray-900 mb-8">Comprehensive platform metrics and analytics for your different parameters.</p>
 
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
                     {statCards.map((card) => (

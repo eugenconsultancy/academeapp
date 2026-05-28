@@ -31,3 +31,4 @@ faker==19.6.0
 ipython==8.15.0
 
 geopy==2.4.1
+bleach==6.0.0

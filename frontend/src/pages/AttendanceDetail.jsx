@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { classesApi } from '../api/classesApi'; // Assuming an endpoint exists
+import { classesApi } from '../api/classesApi';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
 import toast from 'react-hot-toast';
-import { FiArrowLeft, FiUser, FiClock, FiMapPin, FiCheckCircle, FiXCircle } from 'react-icons/fi';
+import { FiArrowLeft, FiUser, FiClock, FiMapPin, FiCheckCircle } from 'react-icons/fi';
 
 export default function AttendanceDetail() {
     const { entryId } = useParams();
@@ -14,7 +14,7 @@ export default function AttendanceDetail() {
     useEffect(() => {
         const fetchAttendance = async () => {
             try {
-                const response = await classesApi.getAttendance(entryId); // must be implemented
+                const response = await classesApi.getAttendance(entryId);
                 setRecords(response.data || response);
             } catch (err) {
                 setError(err.response?.data?.error || 'Failed to load attendance records');
@@ -40,10 +40,8 @@ export default function AttendanceDetail() {
                 <Link to="/classes" className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 mb-6">
                     <FiArrowLeft className="w-4 h-4" /> Back to Classes
                 </Link>
-
                 <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 p-6 md:p-8">
                     <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-6">Attendance Details</h1>
-
                     {records.length > 0 ? (
                         <div className="space-y-3">
                             {records.map((record) => (
@@ -53,15 +51,16 @@ export default function AttendanceDetail() {
                                             <FiUser className="w-5 h-5 text-gray-500 dark:text-gray-300" />
                                         </div>
                                         <div>
-                                            <p className="font-semibold text-gray-900 dark:text-white">{record.student_name || record.student?.full_name}</p>
+                                            <p className="font-semibold text-gray-900 dark:text-white">
+                                                {record.student_name || record.student?.full_name}
+                                            </p>
                                             <p className="text-sm text-gray-500 dark:text-gray-400">{record.date}</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-4">
-                                        <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${record.status === 'PRESENT' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                                            }`}>
-                                            {record.status === 'PRESENT' ? <FiCheckCircle className="w-3 h-3" /> : <FiXCircle className="w-3 h-3" />}
-                                            {record.status}
+                                        {/* All records are present, so show a consistent badge */}
+                                        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                                            <FiCheckCircle className="w-3 h-3" /> Present
                                         </span>
                                         <span className="text-xs text-gray-500 dark:text-gray-400">{record.sync_method}</span>
                                     </div>

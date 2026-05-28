@@ -169,39 +169,32 @@ PLATFORM_FEE_PERCENTAGE = 50
 SEARCH_BACKEND = 'django.db.models.Q'
 
 # File upload limits
-MAX_UPLOAD_SIZE = 5 * 1024 * 1024
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
 
 # ============================================
-#  JAZZMIN - MODULAR SAAS DASHBOARD for my admin panel
+# JAZZMIN – MODERN SAAS DASHBOARD (Top Nav + Contextual Sidebar)
 # ============================================
-
 JAZZMIN_SETTINGS = {
-    # Branding
-    "site_title": "Academe Admin Panel",
+    "site_title": "Academe Admin",
     "site_header": "Academe",
     "site_brand": "Academe",
-    "welcome_sign": "Welcome to Academe Ecosystem",
-    "copyright": "Academe Student Platform for Student Affairs Management",
+    "welcome_sign": "Welcome to Academe",
+    "copyright": "Academe – Student Affairs Platform",
 
-    # Navigation
-    "show_sidebar": True,
+    # Sidebar: we are using a custom contextual sidebar, not the default.
+    "show_sidebar": False,  # hide Jazzmin sidebar completely
     "navigation_expanded": False,
     "hide_apps": [],
     "hide_models": [],
 
-    # Top menu – minimal
-    "topmenu_links": [
-        {"name": "Dashboard", "url": "admin:index", "permissions": ["auth.view_user"]},
-        {"name": "Frontend ↗", "url": "http://localhost:5173", "new_window": True},
-    ],
+    # Top menu (replaced by custom top nav in JS)
+    "topmenu_links": [],
 
-    # User menu
     "usermenu_links": [
         {"name": "Profile", "model": "accounts.User"},
         {"name": "Logout", "url": "admin:logout"},
     ],
 
-    # Icons for diff features and functionalities
     "icons": {
         "accounts.User": "fas fa-user-graduate",
         "accounts.Badge": "fas fa-medal",
@@ -215,7 +208,6 @@ JAZZMIN_SETTINGS = {
     "default_icon_parents": "fas fa-chevron-circle-right",
     "default_icon_children": "fas fa-circle",
 
-    # Behaviour
     "related_modal_active": True,
     "custom_css": "admin/css/custom_admin.css",
     "custom_js": "admin/js/theme_toggle.js",
@@ -224,7 +216,6 @@ JAZZMIN_SETTINGS = {
     "language_chooser": False,
 }
 
-# UI tweaks – base theme (dark layered)
 JAZZMIN_UI_TWEAKS = {
     "navbar_small_text": False,
     "footer_small_text": True,
@@ -233,8 +224,8 @@ JAZZMIN_UI_TWEAKS = {
     "accent": "accent-purple",
     "navbar": "navbar-dark bg-dark",
     "no_navbar_border": True,
-    "navbar_fixed": True,
-    "sidebar_fixed": True,
+    "navbar_fixed": False,       # we handle our own fixed top nav
+    "sidebar_fixed": False,      # we use custom sidebar
     "sidebar": "sidebar-dark-purple",
     "sidebar_nav_flat_style": True,
     "theme": "slate",
@@ -250,18 +241,16 @@ JAZZMIN_UI_TWEAKS = {
     "actions_sticky_top": True,
 }
 
-# ============================================
-# 📊 CUSTOM DASHBOARD for my admin – Restructured Layout
-# ============================================
+# ── DASHBOARD LAYOUT ──────────────────────────
 JAZZMIN_DASHBOARD = {
     "title": "Academe Admin Portal",
     "sections": [
-        # FULL-WIDTH STATS ROW (4 cards)
+        # Quick Stats Row
         {
             "name": "Quick Stats",
             "column": 0,
             "row": 0,
-            "span": 12,   # full width
+            "span": 12,
             "widgets": [
                 {"type": "stat_card", "title": "Total Users", "model": "accounts.User", "count": True, "icon": "fas fa-users", "color": "primary"},
                 {"type": "stat_card", "title": "Found Items", "model": "found_items.FoundItem", "count": True, "icon": "fas fa-box-open", "color": "success"},
@@ -269,12 +258,12 @@ JAZZMIN_DASHBOARD = {
                 {"type": "stat_card", "title": "Open Tickets", "model": "support.SupportTicket", "filters": {"status": "open"}, "icon": "fas fa-ticket-alt", "color": "danger"},
             ],
         },
-        # LOWER AREA – 2 columns (primary workspace + activity sidebar)
+        # Feature Tiles + Activity Feed
         {
-            "name": "Model Quick Access (Feature Tiles)",
-            "column": 0,   # left column (wider)
+            "name": "Model Quick Access",
+            "column": 0,
             "row": 1,
-            "span": 8,     # 2/3 width
+            "span": 8,
             "widgets": [
                 {
                     "type": "model_list",
@@ -286,29 +275,28 @@ JAZZMIN_DASHBOARD = {
                         "classes.ClassGroup",
                         "support.SupportTicket",
                     ],
-                    "columns": 3,               # horizontal grid
+                    "columns": 3,
                     "icon": "fas fa-th",
-                    "style": "tile",            # custom tile rendering (see JS/CSS)
                 },
             ],
         },
         {
             "name": "Recent Activity",
-            "column": 1,   # right column for easy Visibility an orgernization
+            "column": 1,
             "row": 1,
-            "span": 4,     # 1/3 width
+            "span": 4,
             "widgets": [
                 {
                     "type": "recent_actions",
                     "limit": 8,
                     "icon": "fas fa-clock",
                     "scrollable": True,
-                    "height": "400px",
                 },
             ],
         },
     ],
 }
+
 # ============================================
 # 🖼️ ADMIN CUSTOMIZATION
 # ============================================

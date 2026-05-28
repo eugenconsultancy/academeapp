@@ -136,7 +136,7 @@ export default function OpportunitiesPage() {
 
         .opp-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
         .opp-title h1 { font-size: clamp(1.5rem, 3.5vw, 2rem); font-weight: 900; letter-spacing: -0.04em; color: #0f172a; margin-bottom: 4px; }
-        .opp-title p { font-size: 0.83rem; color: #94a3b8; font-weight: 500; }
+        .opp-title p { font-size: 0.83rem; color: #25426b; font-weight: 500; }
         .dark .opp-title h1 { color: #f8fafc; }
         .opp-header-btns { display: flex; gap: 8px; flex-wrap: wrap; }
 
@@ -144,7 +144,7 @@ export default function OpportunitiesPage() {
         .opp-btn-create { background: linear-gradient(135deg, #10b981, #059669); box-shadow: 0 6px 20px rgba(16,185,129,0.28); }
         .opp-btn-create:hover { transform: translateY(-2px); }
         .opp-btn-refresh { background: transparent; border: 1.5px solid #e2e8f0; color: #64748b; padding: 8px 14px; font-size: 0.8rem; }
-        .opp-btn-refresh:hover { background: rgba(99,102,241,0.04); border-color: #6366f1; color: #6366f1; }
+        .opp-btn-refresh:hover { background: rgba(99,102,241,0.04); border-color: #4042c0; color: #6366f1; }
         .dark .opp-btn-refresh { border-color: #334155; color: #94a3b8; }
 
         /* Search bar */
@@ -166,7 +166,7 @@ export default function OpportunitiesPage() {
         .dark .opp-cat-btn.active { background: #6366f1; border-color: #6366f1; }
 
         /* Cards */
-        .opp-card { display: flex; background: rgba(255,255,255,0.85); border: 1px solid rgba(0,0,0,0.05); border-radius: 18px; backdrop-filter: blur(16px); box-shadow: 0 1px 3px rgba(0,0,0,0.03), 0 8px 24px rgba(0,0,0,0.06); margin-bottom: 12px; overflow: hidden; transition: all 0.22s; animation: oppIn .4s cubic-bezier(0.16,1,0.3,1) both; }
+        .opp-card { display: flex; background: #ffffff; border: 1px solid rgba(0,0,0,0.05); border-radius: 18px; backdrop-filter: blur(16px); box-shadow: 0 1px 3px rgba(0,0,0,0.03), 0 8px 24px rgba(0,0,0,0.06); margin-bottom: 12px; overflow: hidden; transition: all 0.22s; animation: oppIn .4s cubic-bezier(0.16,1,0.3,1) both; }
         .opp-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08), 0 16px 40px rgba(0,0,0,0.1); }
         .dark .opp-card { background: rgba(12,16,24,0.85); border-color: rgba(255,255,255,0.05); }
         .opp-stripe { width: 4px; flex-shrink: 0; border-radius: 18px 0 0 18px; }
@@ -175,7 +175,7 @@ export default function OpportunitiesPage() {
         .opp-badges { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
         .opp-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 99px; font-size: 0.68rem; font-weight: 700; }
         .opp-title-link { text-decoration: none; color: inherit; }
-        .opp-title-link h3 { font-size: 1rem; font-weight: 800; color: #0f172a; letter-spacing: -0.02em; margin-bottom: 6px; line-height: 1.3; }
+        .opp-title-link h3 { font-size: 1rem; font-weight: 800; color: #890c99; letter-spacing: -0.02em; margin-bottom: 6px; line-height: 1.3; }
         .opp-title-link:hover h3 { color: #6366f1; }
         .dark .opp-title-link h3 { color: #f8fafc; }
         .dark .opp-title-link:hover h3 { color: #a5b4fc; }

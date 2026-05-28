@@ -5,13 +5,14 @@ import { blogApi } from '../api/blogApi';
 import { useAuth } from '../contexts/AuthContext';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
 import ItemNotFound from '../components/shared/ItemNotFound';
+import DOMPurify from 'dompurify';
 import toast from 'react-hot-toast';
 import {
   FiArrowLeft, FiHeart, FiBookmark, FiShare2,
   FiClock, FiEye, FiUser, FiCalendar, FiTag,
   FiMessageCircle, FiSend, FiCornerDownRight, FiX,
   FiSmile, FiHome, FiBookOpen, FiChevronRight,
-  FiEdit3, FiTrash2, FiArrowUp,
+  FiEdit3, FiTrash2, FiArrowUp, FiFlag,
 } from 'react-icons/fi';
 import EmojiPicker from 'emoji-picker-react';
 
@@ -114,6 +115,20 @@ export default function BlogDetail() {
       navigate('/blog');
     },
     onError: () => toast.error('Failed to delete post'),
+  });
+
+  // ═══════════════════════════════════════
+  // FLAG MUTATION (with error handling)
+  // ═══════════════════════════════════════
+  const flagMutation = useMutation({
+    mutationFn: () => blogApi.flagPost(post.id),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['blog-post', slug] });
+      toast.success(data.flagged ? 'Post flagged' : 'Flag removed');
+    },
+    onError: (error) => {
+      toast.error(error?.response?.data?.error || 'Failed to flag post');
+    },
   });
 
   // Reading progress & back-to-top
@@ -617,10 +632,10 @@ export default function BlogDetail() {
           </div>
         </div>
 
-        {/* Content */}
+        {/* Content – Safe HTML rendering */}
         <div
           className="bd-content"
-          dangerouslySetInnerHTML={{ __html: post.content?.replace(/\n/g, '<br/>') || '' }}
+          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.content) || '' }}
         />
 
         <div className="bd-divider" />
@@ -665,6 +680,23 @@ export default function BlogDetail() {
                 <FiTrash2 size={15} /> {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
               </button>
             </>
+          )}
+
+          {/* ═══════════════════════════════ */}
+          {/* FLAG BUTTON                     */}
+          {/* Shown only to users who are NOT the author/admin */}
+          {/* ═══════════════════════════════ */}
+          {!canEdit && (
+            <button
+              onClick={() => flagMutation.mutate()}
+              disabled={flagMutation.isPending}
+              className="bd-action-btn bd-btn-danger"
+              style={{ color: post.is_flagged ? '#f59e0b' : '#6b7280' }}
+            >
+              <FiFlag size={15} />
+              <span className="bd-action-count">{post.flags_count ?? 0}</span>
+              {post.is_flagged ? 'Flagged' : 'Flag'}
+            </button>
           )}
         </div>
 
@@ -748,9 +780,7 @@ export default function BlogDetail() {
                 comment={comment}
                 onReply={(id) => {
                   setReplyTo(id);
-                  // Smooth scroll to the comment box
                   textareaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  // Auto-focus the textarea after scroll
                   setTimeout(() => textareaRef.current?.focus(), 300);
                 }}
               />

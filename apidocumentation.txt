@@ -1,0 +1,667 @@
+Below is the complete **Academe API Documentation**, covering every critical endpoint across all backend apps.  
+It includes authentication, request/response examples, and notes on permissions.
+
+---
+
+# Academe API Documentation
+
+**Base URL**: `http://localhost:8000/`  
+**Authentication**: JWT Bearer token (except for public endpoints like signup/OTP)  
+**Content-Type**: `application/json` (unless multipart/form-data for file uploads)
+
+---
+
+## 1. Authentication
+
+### 1.1 Signup
+`POST /accounts/signup/`
+
+**Request body**
+```json
+{
+  "phone_number": "0712345678",
+  "admission_number": "ADM123",
+  "full_name": "John Doe",
+  "email": "john@example.com",
+  "class_name": "CS 3A",
+  "institution": "JKUAT"
+}
+```
+
+**Response**
+```json
+{"message": "Registration successful"}
+```
+
+---
+
+### 1.2 Request OTP
+`POST /accounts/request-otp/`
+
+**Request**
+```json
+{"phone_number": "0712345678"}
+```
+
+**Response**
+```json
+{
+  "otp": "123456",
+  "message": "OTP generated successfully"
+}
+```
+> In production, the OTP is sent via SMS and not returned in the response.
+
+---
+
+### 1.3 Verify OTP & Login
+`POST /accounts/verify-otp/`
+
+**Request**
+```json
+{
+  "phone_number": "0712345678",
+  "otp": "123456"
+}
+```
+
+**Response**
+```json
+{
+  "access": "<JWT access token>",
+  "refresh": "<JWT refresh token>",
+  "user": {
+    "id": "uuid",
+    "full_name": "John Doe",
+    "phone_number": "0712345678",
+    "role": "student",
+    ...
+  }
+}
+```
+
+---
+
+### 1.4 Refresh Token
+`POST /accounts/refresh-token/`
+
+**Request**
+```json
+{"refresh": "<refresh token>"}
+```
+
+**Response**
+```json
+{
+  "access": "<new access token>",
+  "refresh": "<new refresh token>"
+}
+```
+
+---
+
+## 2. User Profile
+
+### 2.1 Get Profile
+`GET /accounts/profile/`  
+**Auth**: required
+
+**Response**
+```json
+{
+  "id": "uuid",
+  "full_name": "John Doe",
+  "email": "john@example.com",
+  "role": "student",
+  "institution": "JKUAT",
+  "badges": ["badge1", "badge2"],
+  "two_factor_enabled": false,
+  "biometric_enabled": true,
+  ...
+}
+```
+
+### 2.2 Update Profile
+`PUT /accounts/profile/`  
+**Auth**: required
+
+**Request**
+```json
+{
+  "full_name": "John Updated",
+  "email": "new@example.com",
+  "class_name": "CS 3B"
+}
+```
+
+**Response**
+```json
+{
+  "message": "Profile updated successfully",
+  "full_name": "John Updated",
+  "email": "new@example.com",
+  "class_name": "CS 3B"
+}
+```
+
+### 2.3 Upload Profile Picture
+`POST /accounts/profile/upload-pic/`  
+**Auth**: required  
+**Content-Type**: `multipart/form-data`
+
+**Form fields**
+- `file` – image file
+
+**Response**
+```json
+{
+  "message": "Profile picture uploaded successfully",
+  "profile_pic": "/media/profile_pics/user_123.jpg"
+}
+```
+
+---
+
+## 3. User Management (Admin)
+
+### 3.1 List All Users
+`GET /accounts/users/`  
+**Auth**: admin only
+
+**Response**
+```json
+[
+  {
+    "id": "uuid",
+    "full_name": "John Doe",
+    "email": "john@example.com",
+    "role": "student"
+  },
+  ...
+]
+```
+
+---
+
+### 3.2 Update User Role
+`PUT /accounts/users/{userId}/role/`  
+**Auth**: admin only
+
+**Request**
+```json
+{"role": "class_rep"}
+```
+
+---
+
+### 3.3 Deactivate User
+`POST /accounts/users/{userId}/deactivate/`  
+**Auth**: admin only
+
+**Response**
+```json
+{"message": "User deactivated"}
+```
+
+---
+
+## 4. Classes & Timetable
+
+### 4.1 Get Timetable
+`GET /classes/timetable/`  
+**Auth**: required (returns timetable for user’s class groups)
+
+**Response**
+```json
+[
+  {
+    "id": "uuid",
+    "unit_name": "Microbiology",
+    "day_of_week": 0,
+    "start_time": "08:00:00",
+    "end_time": "10:00:00",
+    "venue": "Lab 201",
+    "lecturer": "Dr. Kimani",
+    "latitude": -1.2345,
+    "longitude": 36.8765
+  }
+]
+```
+
+---
+
+### 4.2 Get Today’s Classes
+`GET /classes/today/`  
+**Auth**: required
+
+**Response** (similar to timetable, with `is_marked`, `can_mark`, `remaining_time`)
+
+---
+
+### 4.3 Mark Attendance
+`POST /classes/mark-attendance/`  
+**Auth**: required
+
+**Request**
+```json
+{
+  "timetable_entry_id": "uuid",
+  "attempted_at": "2026-05-27T10:15:00Z",
+  "student_lat": -1.2345,
+  "student_lon": 36.8765
+}
+```
+
+**Response**
+```json
+{
+  "message": "Attendance marked",
+  "id": "attendance-record-uuid"
+}
+```
+
+---
+
+### 4.4 Weekly Attendance Summary
+`GET /classes/weekly-summary/`  
+**Auth**: required
+
+**Response**
+```json
+{
+  "week_start": "2026-05-25",
+  "week_end": "2026-05-31",
+  "total_classes": 15,
+  "marked_count": 12,
+  "percentage": 80.0,
+  "daily_breakdown": {
+    "Monday": 3, "Tuesday": 2, ...
+  }
+}
+```
+
+---
+
+### 4.5 Manage Timetable (Class Rep / Admin)
+- **Create** `POST /classes/timetable/`  
+- **Update** `PUT /classes/timetable/{entry_id}/`  
+- **Delete** `DELETE /classes/timetable/{entry_id}/`  
+
+**Create request**
+```json
+{
+  "class_group_id": "uuid",
+  "day_of_week": 0,
+  "start_time": "08:00",
+  "end_time": "10:00",
+  "unit_name": "Microbiology",
+  "venue": "Lab 201",
+  "lecturer": "Dr. Kimani",
+  "latitude": -1.2345,
+  "longitude": 36.8765
+}
+```
+
+---
+
+## 5. Attendance Records (Admin)
+
+### 5.1 List Attendance Records (Filtered)
+`GET /classes/attendance/`  
+**Auth**: admin / class rep  
+**Query params**: `class_id`, `student`, `term`, `date_from`, `date_to`, `limit`, `ordering`
+
+**Response**
+```json
+[
+  {
+    "id": "uuid",
+    "student_id": "uuid",
+    "student_name": "John Doe",
+    "timetable_entry_id": "uuid",
+    "unit_name": "Microbiology",
+    "date": "2026-05-27",
+    "marked_at": "2026-05-27T08:05:00Z",
+    "sync_method": "online"
+  }
+]
+```
+
+---
+
+### 5.2 Class Attendance Summary
+`GET /classes/attendance/class-summary/`  
+**Auth**: admin / class rep  
+**Query**: `class_id`, `term_id`
+
+**Response**
+```json
+[
+  {
+    "student_id": "uuid",
+    "student_name": "Jane",
+    "total_classes": 20,
+    "attended": 18,
+    "rate": 90.0
+  }
+]
+```
+
+---
+
+## 6. Found Items & Lost & Found
+
+### 6.1 List All Items
+`GET /found-items/items/`  
+**Auth**: required  
+**Query**: `category`, `search`
+
+**Response**
+```json
+[
+  {
+    "id": "uuid",
+    "title": "Black Laptop",
+    "category": "Electronics",
+    "location_found": "Library",
+    "found_date": "2026-05-20",
+    "status": "active",
+    "is_claimed": false,
+    "posted_by": {"id": "uuid", "full_name": "John"}
+  }
+]
+```
+
+---
+
+### 6.2 Post Found Item
+`POST /found-items/items/`  
+**Auth**: required, `multipart/form-data`  
+**Fields**: `title`, `category`, `description`, `location_found`, `found_date`, `image`, etc.
+
+---
+
+### 6.3 My Items
+`GET /found-items/my-items/`  
+**Auth**: required
+
+**Response**: same structure as list, filtered to the logged-in user.
+
+---
+
+### 6.4 Claim an Item
+`POST /found-items/items/{item_id}/claim/`  
+**Auth**: required  
+Starts or resumes a claim process.
+
+**Response**
+```json
+{
+  "claim_id": "uuid",
+  "status": "pending",
+  "next_step": "security_question"
+}
+```
+
+---
+
+### 6.5 Claim Flow Endpoints (all auth required)
+- **Verify Ownership** `POST /found-items/items/{item_id}/verify-ownership/`  
+- **Answer Security Question** `POST /found-items/claims/{claim_id}/answer-security/`  
+- **Submit Evidence** `POST /found-items/claims/{claim_id}/submit-evidence/` (multipart)  
+- **Initiate Payment** `POST /found-items/claims/{claim_id}/initiate-payment/`  
+- **Check Payment Status** `GET /found-items/claims/{claim_id}/payment-status/`  
+- **Confirm Receipt** `POST /found-items/claims/{claim_id}/confirm-receipt/`  
+
+---
+
+### 6.6 Admin Endpoints (for found items)
+- `GET /found-items/admin/items/` – list all items  
+- `GET /found-items/admin/claims/` – list all claims  
+- `POST /found-items/admin/claims/{claimId}/approve/`  
+- `POST /found-items/admin/claims/{claimId}/reject/`  
+
+---
+
+## 7. Announcements
+
+### 7.1 List Announcements
+`GET /announcements/`  
+**Auth**: required  
+**Query**: `category`, `search`
+
+**Response**
+```json
+[
+  {
+    "id": "uuid",
+    "title": "Exam Timetable",
+    "content": "...",
+    "is_urgent": false,
+    "posted_by": {"id": "uuid", "full_name": "Dr. Akinyi"},
+    "created_at": "2026-05-25T10:00:00Z"
+  }
+]
+```
+
+---
+
+### 7.2 Create Announcement (Admin/Rep)
+`POST /announcements/`  
+**Auth**: admin / class rep / student leader
+
+---
+
+### 7.3 Reports
+- `GET /announcements/reports/` – list all content reports  
+- `PUT /announcements/reports/{id}/resolve/` – resolve a report  
+
+---
+
+## 8. Opportunities
+
+### 8.1 List Opportunities
+`GET /opportunities/`  
+**Auth**: required  
+
+### 8.2 Create/Edit/Delete (Admin)
+- `POST /opportunities/`  
+- `PUT /opportunities/{id}/`  
+- `DELETE /opportunities/{id}/`  
+
+---
+
+## 9. Blog
+
+### 9.1 List Posts
+`GET /blog/posts/`  
+**Auth**: required  
+**Query**: `category`, `search`, `tag`, `featured`, `sort`
+
+---
+
+### 9.2 Single Post
+`GET /blog/posts/{slug}/`  
+**Auth**: required
+
+---
+
+### 9.3 Create / Edit / Delete (Admin)
+- `POST /blog/posts/`  
+- `PUT /blog/posts/{id}/edit/`  
+- `DELETE /blog/posts/{id}/delete/`  
+
+### 9.4 Hide / Show (Admin)
+`PUT /blog/posts/slug/{slug}/hide/`  
+**Auth**: admin  
+Toggles the `is_hidden` flag.
+
+---
+
+### 9.5 User Interactions
+- `POST /blog/posts/{postId}/like/` – toggle like  
+- `POST /blog/posts/{postId}/save/` – toggle save/bookmark  
+- `GET /blog/saved/` – list saved posts  
+
+### 9.6 Comments
+- `GET /blog/posts/{postId}/comments/`  
+- `POST /blog/posts/{postId}/comments/` (optional `parent_id` for replies)  
+
+---
+
+## 10. Support / Help Desk
+
+### 10.1 List Tickets
+`GET /support/`  
+**Auth**: required (user sees own tickets)  
+
+### 10.2 Create Ticket
+`POST /support/`  
+```json
+{
+  "title": "Login Issue",
+  "description": "I cannot login...",
+  "category": "technical"
+}
+```
+
+### 10.3 Respond to Ticket
+`POST /support/{ticket_id}/respond/`  
+```json
+{"message": "Please try clearing your cache"}
+```
+
+---
+
+## 11. Search
+
+### 11.1 Global Search
+`GET /search/?q=keyword`  
+**Auth**: required  
+Combines results from users, announcements, opportunities, found items, and blog posts.
+
+---
+
+## 12. Geo‑Location Services
+
+### 12.1 List Venues
+`GET /geo/venues/?search=Lab&limit=10`  
+
+---
+
+### 12.2 Nearby Venues
+`GET /geo/venues/nearby/?lat=-1.23&lon=36.87&limit=5`  
+
+---
+
+### 12.3 Geocoding & Reverse Geocoding
+- `GET /geo/geocode/?address=Library`  
+- `GET /geo/reverse-geocode/?lat=-1.23&lon=36.87`  
+
+---
+
+### 12.4 Directions
+`GET /geo/directions/?origin_lat=-1.23&origin_lon=36.87&dest_lat=-1.24&dest_lon=36.88&travel_mode=walking`  
+
+---
+
+### 12.5 Nearby Classes
+`GET /geo/classes/nearby/?lat=-1.23&lon=36.87&max_distance=500`  
+
+**Response**
+```json
+[
+  {
+    "entry_id": "uuid",
+    "unit_name": "Microbiology",
+    "venue": "Lab 201",
+    "distance_meters": 120,
+    "walking_time_minutes": 2,
+    "lecturer": "Dr. Kimani"
+  }
+]
+```
+
+---
+
+### 12.6 Location Check‑in (Attendance)
+`POST /geo/check-in/`  
+```json
+{
+  "timetable_entry_id": "uuid",
+  "latitude": -1.2345,
+  "longitude": 36.8765,
+  "accuracy": 10
+}
+```
+
+- `GET /geo/check-in/history/?limit=20`  
+- `GET /geo/check-in/summary/`  
+
+---
+
+## 13. Governance & Admin Audit
+
+### 13.1 Platform Statistics
+`GET /governance/stats/`  
+**Auth**: admin / student leader  
+```json
+{
+  "students_count": 245,
+  "found_items_count": 34,
+  "total_claims": 12,
+  "total_reports": 5,
+  "active_roles": 8,
+  "announcements_count": 56
+}
+```
+
+---
+
+### 13.2 System Health
+`GET /governance/system-health/`  
+**Auth**: admin  
+```json
+{
+  "pending_offline_sync": 0,
+  "active_alerts": 0,
+  "cpu_usage": 23.5,
+  "memory_usage": "2.3 GB / 8 GB",
+  "alerts": []
+}
+```
+
+---
+
+### 13.3 Audit Logs
+- `GET /governance/audit-logs/?action=ROLE_ASSIGNED&limit=20`  
+- `GET /governance/audit-logs/export/?date_from=2026-01-01` (CSV download)  
+- `GET /governance/audit-logs/recent/?limit=10`  
+
+---
+
+### 13.4 Role Management
+- `GET /governance/roles/expiring/?days=7` – roles expiring soon  
+- `GET /governance/roles/history/?user_id=uuid`  
+
+---
+
+## 14. Notifications
+
+### 14.1 List Notifications
+`GET /notifications/`  
+**Auth**: required  
+
+### 14.2 Mark as Read
+`POST /notifications/{id}/read/`  
+
+---
+
+## General Notes
+
+- All endpoints return JSON.  
+- Pagination is not implemented by default (most endpoints return all results), but can be added via `?limit=&offset=` on some.  
+- For file uploads (found items, profile pic, evidence), use `multipart/form-data`.  
+- The base URL for development is `http://localhost:8000/`; the API root is the same (no `/api` prefix).  
+- Use the `Authorization: Bearer <access_token>` header for authenticated requests.  
+- Refresh tokens are obtained at login and can be used at `/accounts/refresh-token/` to get a new access token without re-authentication.  

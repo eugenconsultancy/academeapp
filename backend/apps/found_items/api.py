@@ -120,6 +120,15 @@ def delete_item(request, item_id: UUID):
     return {"message": "Deleted"}
 
 # ══════════════════════════════════════════════════════════════════
+# MY ITEMS (NEW) – items posted by the authenticated user
+# ══════════════════════════════════════════════════════════════════
+@router.get("/my-items/", auth=JWTAuth(), response=List[FoundItemOut])
+def my_items(request):
+    """Return items posted by the currently logged-in user."""
+    items = FoundItem.objects.filter(posted_by=request.auth).order_by('-created_at')
+    return [_item_to_out(i) for i in items]
+
+# ══════════════════════════════════════════════════════════════════
 # OWNERSHIP VERIFICATION (hard gate – does NOT create claim)
 # ══════════════════════════════════════════════════════════════════
 @router.post("/items/{item_id}/verify-ownership/", auth=JWTAuth(), response=VerifyOwnershipOut)

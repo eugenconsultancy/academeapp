@@ -1,21 +1,45 @@
 from typing import List, Optional
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.db.models import Q
 from ninja import Router, Query
 from ninja.errors import HttpError
 from common.jwt_auth import JWTAuth
-from .models import BlogPost, BlogCategory, PostLike, PostSave, Comment
+from .models import BlogPost, BlogCategory, PostLike, PostSave, Comment, PostFlag
 from .schema import BlogPostIn, BlogPostOut, BlogPostListOut, BlogCategoryOut, CommentIn
 from .services import BlogService
+import bleach
 
 router = Router()
+
+ALLOWED_TAGS = [
+    'p', 'br', 'strong', 'em', 'u', 's', 'blockquote',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'ul', 'ol', 'li',
+    'a', 'img', 'video', 'iframe',
+    'pre', 'code', 'span', 'div'
+]
+
+ALLOWED_ATTRIBUTES = {
+    '*': ['class', 'style'],
+    'a': ['href', 'title', 'target'],
+    'img': ['src', 'alt', 'width', 'height'],
+    'video': ['src', 'controls'],
+    'iframe': ['src', 'width', 'height', 'frameborder', 'allowfullscreen']
+}
+
+def sanitize_html(html: str) -> str:
+    return bleach.clean(html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRIBUTES, strip=True)
+
 
 def format_post(post, user=None):
     liked = False
     saved = False
+    flagged = False
     if user:
         liked = PostLike.objects.filter(post=post, user=user).exists()
         saved = PostSave.objects.filter(post=post, user=user).exists()
+        flagged = PostFlag.objects.filter(post=post, user=user).exists()
     return {
         "id": str(post.id),
         "title": post.title,
@@ -42,10 +66,13 @@ def format_post(post, user=None):
         "view_count": post.view_count,
         "likes_count": post.likes_count,
         "saves_count": post.saves_count,
+        "flags_count": post.flags_count,            # ← NEW
         "is_liked": liked,
         "is_saved": saved,
+        "is_flagged": flagged,                      # ← NEW
         "is_featured": post.is_featured,
         "is_published": post.is_published,
+        "is_hidden": post.is_hidden,
         "published_at": post.published_at,
         "created_at": post.created_at,
     }
@@ -69,16 +96,34 @@ def _serialize_comment(comment, user):
 # ============================================
 
 @router.get("/posts/", auth=JWTAuth(), response=List[dict])
-def list_posts(request, category: str = None, search: str = None, tag: str = None, 
+def list_posts(request, category: str = None, search: str = None, tag: str = None,
                featured: bool = False, sort: str = 'latest'):
     posts = BlogService.get_posts(category, search, tag, featured, sort)
+
+    if request.auth and request.auth.role == 'admin':
+        pass
+    elif request.auth:
+        posts = posts.filter(
+            Q(is_published=True) | Q(author=request.auth)
+        )
+    else:
+        posts = posts.filter(is_published=True)
+
     return [format_post(p, request.auth) for p in posts]
+
 
 @router.get("/posts/{slug}/", auth=JWTAuth(), response=dict)
 def get_post(request, slug: str):
-    post = get_object_or_404(BlogPost, slug=slug, is_published=True)
+    post = get_object_or_404(BlogPost, slug=slug)
+
+    if not post.is_published:
+        user = request.auth
+        if not (user and (user == post.author or user.role == 'admin')):
+            raise HttpError(404, "Post not found")
+
     BlogService.increment_view(post)
     return format_post(post, request.auth)
+
 
 @router.get("/featured/", auth=JWTAuth(), response=List[dict])
 def get_featured(request):
@@ -174,7 +219,7 @@ def create_post(request, data: BlogPostIn):
         return {"error": "Only admins can create posts"}
     post = BlogPost.objects.create(
         title=data.title,
-        content=data.content,
+        content=sanitize_html(data.content),
         excerpt=data.excerpt,
         cover_image=data.cover_image,
         author=user,
@@ -195,7 +240,7 @@ def update_post(request, post_id: str, data: BlogPostIn):
         return {"error": "Only admins can edit posts"}
     post = get_object_or_404(BlogPost, id=post_id)
     post.title = data.title
-    post.content = data.content
+    post.content = sanitize_html(data.content)
     post.excerpt = data.excerpt
     post.cover_image = data.cover_image
     post.tags = data.tags
@@ -208,22 +253,66 @@ def update_post(request, post_id: str, data: BlogPostIn):
     post.save()
     return format_post(post, user)
 
-
 @router.delete("/posts/{post_id}/delete/", auth=JWTAuth())
 def delete_post(request, post_id: str):
     user = request.auth
     post = get_object_or_404(BlogPost, id=post_id)
-    # Allow deletion if user is admin OR is the author of the post
     if user.role != 'admin' and post.author != user:
         raise HttpError(403, "You do not have permission to delete this post.")
     post.delete()
     return {"message": "Post deleted successfully"}
 
 # ============================================
-# MY POSTS (NEW)
+# HIDE / UNHIDE (Admin only, uses SLUG)
+# ============================================
+@router.put("/posts/slug/{slug}/hide/", auth=JWTAuth())
+def toggle_hide_by_slug(request, slug: str):
+    """Admin only: toggle hidden status of a blog post by slug."""
+    if request.auth.role != 'admin':
+        raise HttpError(403, "Only admins can hide/unhide posts.")
+    post = get_object_or_404(BlogPost, slug=slug)
+    post.is_hidden = not post.is_hidden
+    post.save(update_fields=['is_hidden'])
+    return {"slug": post.slug, "is_hidden": post.is_hidden}
+
+# ============================================
+# MY POSTS
 # ============================================
 @router.get("/my-posts/", auth=JWTAuth())
 def my_posts(request):
     """List posts created by the currently authenticated user."""
     posts = BlogPost.objects.filter(author=request.auth).order_by('-published_at')
     return [format_post(p, request.auth) for p in posts]
+
+# ═══════════════════════════════════════════════════
+# FLAGGING ENDPOINT (NEW)
+# ═══════════════════════════════════════════════════
+@router.post("/posts/{post_id}/flag/", auth=JWTAuth())
+def toggle_flag(request, post_id: str):
+    post = get_object_or_404(BlogPost, id=post_id)
+    user = request.auth
+
+    # Author cannot flag own post
+    if post.author == user:
+        raise HttpError(400, "You cannot flag your own post.")
+
+    flag, created = PostFlag.objects.get_or_create(post=post, user=user)
+
+    if created:
+        post.flags_count += 1
+    else:
+        flag.delete()
+        post.flags_count = max(0, post.flags_count - 1)
+
+    # If flag count reaches threshold, hide/unlist the post
+    THRESHOLD = 10
+    if post.flags_count >= THRESHOLD:
+        post.is_published = False
+        post.is_hidden = True
+
+    post.save()
+
+    return {
+        "flagged": created,
+        "flags_count": post.flags_count
+    }

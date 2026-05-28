@@ -63,7 +63,7 @@ export function useGeolocation(options = {}) {
   const retryTimeoutRef = useRef(null);
   const locationHistoryRef = useRef([]);
   const permissionListenerRef = useRef(null);      // clean permission listener
-  const retryCountRef = useRef(0);                 // avoid volatile dependency
+  const retryCountRef = useRef(0);                 // avoid s volatile dependency
   const getLocationRef = useRef(null);             // holds the latest getLocation to break circular dependency
 
   // Keep retryCountRef in sync

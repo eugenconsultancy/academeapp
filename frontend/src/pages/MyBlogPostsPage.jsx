@@ -12,11 +12,12 @@ import {
 export default function MyBlogPostsPage() {
     const { user } = useAuth();
     const queryClient = useQueryClient();
+    const [filter, setFilter] = useState('all');   // 'all' | 'published' | 'drafts'
 
     const { data: posts, isLoading } = useQuery({
         queryKey: ['my-blog-posts', user?.id],
         queryFn: async () => {
-            const response = await blogApi.getMyPosts(); // Ensure this API exists
+            const response = await blogApi.getMyPosts();
             return response.data || response;
         },
         enabled: !!user,
@@ -37,6 +38,12 @@ export default function MyBlogPostsPage() {
         }
     };
 
+    const filteredPosts = posts?.filter(p => {
+        if (filter === 'published') return p.is_published;
+        if (filter === 'drafts') return !p.is_published;
+        return true; // all
+    }) || [];
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-8 px-4">
             <div className="max-w-3xl mx-auto">
@@ -50,18 +57,42 @@ export default function MyBlogPostsPage() {
                     </Link>
                 </div>
 
+                {/* ── Filter Tabs ── */}
+                <div className="flex gap-2 mb-6">
+                    {['all', 'published', 'drafts'].map(tab => (
+                        <button
+                            key={tab}
+                            onClick={() => setFilter(tab)}
+                            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${filter === tab
+                                    ? 'bg-indigo-500 text-white'
+                                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                                }`}
+                        >
+                            {tab === 'all' ? 'All' : tab === 'published' ? 'Published' : 'Drafts'}
+                        </button>
+                    ))}
+                </div>
+
                 {isLoading ? (
                     <SkeletonLoader type="list" count={4} />
-                ) : posts?.length ? (
+                ) : filteredPosts.length ? (
                     <div className="space-y-4">
-                        {posts.map((post) => (
+                        {filteredPosts.map((post) => (
                             <div key={post.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 flex justify-between items-center">
                                 <div>
-                                    <Link to={`/blog/${post.slug}`} className="text-lg font-semibold text-gray-900 dark:text-white hover:text-blue-600">
-                                        {post.title}
-                                    </Link>
+                                    <div className="flex items-center gap-2">
+                                        <Link to={`/blog/${post.slug}`} className="text-lg font-semibold text-gray-900 dark:text-white hover:text-blue-600">
+                                            {post.title}
+                                        </Link>
+                                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${post.is_published
+                                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                                : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                                            }`}>
+                                            {post.is_published ? 'Published' : 'Draft'}
+                                        </span>
+                                    </div>
                                     <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
-                                        <span>{new Date(post.published_at).toLocaleDateString()}</span>
+                                        <span>{post.published_at ? new Date(post.published_at).toLocaleDateString() : 'Unpublished'}</span>
                                         <span>{post.reading_time} min read</span>
                                         <span>{post.likes_count || 0} likes</span>
                                     </div>
@@ -88,7 +119,7 @@ export default function MyBlogPostsPage() {
                 ) : (
                     <div className="text-center py-16">
                         <FiBookOpen className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
-                        <p className="text-gray-500 dark:text-gray-400 text-lg">You haven't written any posts yet.</p>
+                        <p className="text-gray-500 dark:text-gray-400 text-lg">No posts found.</p>
                         <Link to="/blog/create" className="inline-flex items-center gap-2 mt-4 text-blue-500 hover:text-blue-600 font-semibold">
                             Write your first post <FiArrowRight className="w-4 h-4" />
                         </Link>

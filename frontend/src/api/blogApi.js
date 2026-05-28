@@ -19,7 +19,7 @@ export const blogApi = {
     return response.data;
   },
 
-  // My posts (NEW)
+  // My posts
   getMyPosts: async () => {
     const response = await apiClient.get('/blog/my-posts/');
     return response.data;
@@ -66,6 +66,12 @@ export const blogApi = {
   },
   createComment: async (postId, data) => {
     const response = await apiClient.post(`/blog/posts/${postId}/comments/`, data);
+    return response.data;
+  },
+
+  // Flagging (NEW)
+  flagPost: async (postId) => {
+    const response = await apiClient.post(`/blog/posts/${postId}/flag/`);
     return response.data;
   },
 };

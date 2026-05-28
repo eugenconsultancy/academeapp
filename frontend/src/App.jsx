@@ -8,9 +8,10 @@ import BottomNav from './components/layout/BottomNav';
 import FAB from './components/layout/FAB';
 import SkeletonLoader from './components/shared/SkeletonLoader';
 import ErrorBoundary from './components/shared/ErrorBoundary';
+// ── No AppLayout needed ──
 
 // ═══════════════════════════════════════════════════════════════
-// LAZY-LOADED PAGES
+// LAZY-LOADED PAGES (unchanged)
 // ═══════════════════════════════════════════════════════════════
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const SignupPage = lazy(() => import('./pages/SignupPage'));
@@ -62,6 +63,12 @@ const SearchResultsPage = lazy(() => import('./pages/SearchResultsPage'));
 const ResourceUploadPage = lazy(() => import('./pages/ResourceUploadPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
+// ═══════════════════════════════════════════════════════════════
+// CONSTANTS (unchanged)
+// ═══════════════════════════════════════════════════════════════
+const MOBILE_BREAKPOINT = 768;
+const SIDEBAR_BREAKPOINT = 1024;
+
 const ROUTE_TITLES = {
   '/': 'Home',
   '/login': 'Sign In',
@@ -91,11 +98,12 @@ const ROUTE_TITLES = {
   '/resources/upload': 'Upload Resource',
 };
 
+// ═══════════════════════════════════════════════════════════════
+// HELPERS (unchanged)
+// ═══════════════════════════════════════════════════════════════
 function ScrollToTop() {
   const { pathname } = useLocation();
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'instant' });
-  }, [pathname]);
+  useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }); }, [pathname]);
   return null;
 }
 
@@ -104,28 +112,16 @@ function usePageTitle() {
   useEffect(() => {
     let title = ROUTE_TITLES[pathname];
     if (!title) {
-      // Dynamic route matching – order matters (more specific first)
-      if (pathname.startsWith('/found-items/') && pathname.endsWith('/claim')) {
-        title = 'Claim Item';
-      } else if (pathname.startsWith('/found-items/')) {
-        title = 'Found Item Details';
-      } else if (pathname.startsWith('/announcements/')) {
-        title = 'Announcement Details';
-      } else if (pathname.startsWith('/opportunities/')) {
-        title = 'Opportunity Details';
-      } else if (pathname.startsWith('/blog/')) {
-        title = 'Blog Post';
-      } else if (pathname.startsWith('/venues/')) {
-        title = 'Venue Details';
-      } else if (pathname.startsWith('/claims/')) {
-        title = 'Claim Details';
-      } else if (pathname.startsWith('/admin/')) {
-        title = 'Admin Panel';
-      } else if (pathname.startsWith('/governance/')) {
-        title = 'Governance';
-      } else {
-        title = 'Academe';
-      }
+      if (pathname.startsWith('/found-items/') && pathname.endsWith('/claim')) title = 'Claim Item';
+      else if (pathname.startsWith('/found-items/')) title = 'Found Item Details';
+      else if (pathname.startsWith('/announcements/')) title = 'Announcement Details';
+      else if (pathname.startsWith('/opportunities/')) title = 'Opportunity Details';
+      else if (pathname.startsWith('/blog/')) title = 'Blog Post';
+      else if (pathname.startsWith('/venues/')) title = 'Venue Details';
+      else if (pathname.startsWith('/claims/')) title = 'Claim Details';
+      else if (pathname.startsWith('/admin/')) title = 'Admin Panel';
+      else if (pathname.startsWith('/governance/')) title = 'Governance';
+      else title = 'Academe';
     }
     document.title = title ? `${title} | Academe` : 'Academe';
   }, [pathname]);
@@ -135,562 +131,240 @@ function usePageTracking() {
   const { pathname } = useLocation();
   useEffect(() => {
     try {
-      if (window.gtag) {
-        window.gtag('config', import.meta.env.VITE_GA_ID, { page_path: pathname });
-      }
-      // Custom event (if needed elsewhere)
-      window.dispatchEvent(
-        new CustomEvent('page_view', {
-          detail: { path: pathname, timestamp: Date.now() },
-        })
-      );
-    } catch {
-      // Analytics not available
-    }
+      if (window.gtag) window.gtag('config', import.meta.env.VITE_GA_ID, { page_path: pathname });
+      window.dispatchEvent(new CustomEvent('page_view', { detail: { path: pathname, timestamp: Date.now() } }));
+    } catch { }
   }, [pathname]);
 }
 
 function ProtectedRoute({ children, allowedRoles = [] }) {
   const { user } = useAuth();
   const location = useLocation();
-
-  if (!user) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
+  if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
   if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
-    // Admin can access everything
     if (user.role === 'admin') return children;
     return <Navigate to="/" replace />;
   }
-
   return children;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// APP
+// ═══════════════════════════════════════════════════════════════
 export default function App() {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < MOBILE_BREAKPOINT);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       const saved = localStorage.getItem('sidebar_collapsed');
       if (saved !== null) return saved === 'true';
-    } catch {
-      // ignore
-    }
-    // Default: collapsed on mobile (width < 1024), expanded on desktop
-    return window.innerWidth < 1024;
+    } catch { }
+    return window.innerWidth < SIDEBAR_BREAKPOINT;
   });
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const { user, loading } = useAuth();
   const { isDark } = useTheme();
   const location = useLocation();
 
-  const isAuthPage = ['/login', '/signup', '/forgot-password', '/reset-password'].includes(
-    location.pathname
-  );
+  const isAuthPage = ['/login', '/signup', '/forgot-password', '/reset-password'].includes(location.pathname);
 
   const handleToggleSidebar = useCallback(() => {
-    setSidebarCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem('sidebar_collapsed', String(next));
-      } catch {
-        // Storage unavailable
-      }
-      return next;
-    });
+    if (isMobile) {
+      setMobileSidebarOpen(prev => !prev);
+    } else {
+      setSidebarCollapsed(prev => {
+        const next = !prev;
+        try { localStorage.setItem('sidebar_collapsed', String(next)); } catch { }
+        return next;
+      });
+    }
+  }, [isMobile]);
+
+  const handleCloseMobileSidebar = useCallback(() => setMobileSidebarOpen(false), []);
+
+  // Effects (unchanged)
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < MOBILE_BREAKPOINT;
+      setIsMobile(mobile);
+      if (!mobile) setMobileSidebarOpen(false);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Keyboard shortcut: Ctrl+B / Cmd+B to toggle sidebar
+  useEffect(() => { setMobileSidebarOpen(false); }, [location.pathname]);
+
+  useEffect(() => {
+    if (mobileSidebarOpen) document.body.style.overflow = 'hidden';
+    else document.body.style.overflow = '';
+    return () => { document.body.style.overflow = ''; };
+  }, [mobileSidebarOpen]);
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
         e.preventDefault();
-        handleToggleSidebar();
+        if (!isMobile) handleToggleSidebar();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleToggleSidebar]);
+  }, [handleToggleSidebar, isMobile]);
 
-  // Dark mode class
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', isDark);
-  }, [isDark]);
+  useEffect(() => { document.documentElement.classList.toggle('dark', isDark); }, [isDark]);
 
-  // Reduced motion support
   useEffect(() => {
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    document.documentElement.classList.toggle('reduce-motion', prefersReducedMotion);
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    document.documentElement.classList.toggle('reduce-motion', mq.matches);
+    const handler = e => document.documentElement.classList.toggle('reduce-motion', e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
   }, []);
 
   usePageTitle();
   usePageTracking();
 
-  // Show loading skeleton while auth is being checked
   if (loading) {
-    return (
-      <SkeletonLoader
-        type="page"
-        brandName="Academe"
-        loadingText="Loading your experience..."
-      />
-    );
+    return <SkeletonLoader type="page" brandName="Academe" loadingText="Loading your experience..." />;
   }
+
+  const showChrome = user && !isAuthPage;
 
   return (
     <div className="app min-h-screen transition-colors duration-300 bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
       <ScrollToTop />
 
-      {/* Skip to main content — accessibility */}
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:bg-indigo-600 focus:text-white focus:rounded-lg focus:shadow-lg"
-      >
+      {/* ════════════════════════════════════════════
+          GLOBAL WATERMARK – faint, non-interactive
+      ════════════════════════════════════════════ */}
+      <div className="watermark-overlay">
+        <span className="watermark-text">ACADEME</span>
+      </div>
+
+      {/* Skip to main content */}
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:bg-indigo-600 focus:text-white focus:rounded-lg focus:shadow-lg">
         Skip to main content
       </a>
 
-      {/* Navbar & Sidebar — only when authenticated and not on auth pages */}
-      {user && !isAuthPage && (
-        <>
-          <Navbar onToggleSidebar={handleToggleSidebar} />
+      {/* ── Navbar ─────────────────────────────────── */}
+      {showChrome && <Navbar onToggleSidebar={handleToggleSidebar} />}
+
+      {/* ── Desktop Sidebar ────────────────────────── */}
+      {showChrome && (
+        <div className="hidden md:block">
           <Sidebar collapsed={sidebarCollapsed} onToggle={handleToggleSidebar} />
+        </div>
+      )}
+
+      {/* ── Mobile Sidebar Overlay ──────────────────── */}
+      {showChrome && isMobile && (
+        <>
+          <div aria-hidden="true" onClick={handleCloseMobileSidebar}
+            className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${mobileSidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`} />
+          <div role="dialog" aria-modal="true" aria-label="Navigation menu"
+            className={`fixed top-0 left-0 h-full z-50 w-[280px] max-w-[85vw] transition-transform duration-300 ease-out ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+            <Sidebar collapsed={false} onToggle={handleCloseMobileSidebar} isMobileOverlay />
+          </div>
         </>
       )}
 
-      <main
-        id="main-content"
-        className={`min-h-screen transition-all duration-300 ${user && !isAuthPage ? 'pt-16 md:pl-16 pb-20 md:pb-8' : ''
-          }`}
-      >
+      {/* ── Main Content ────────────────────────────── */}
+      <main id="main-content"
+        className={`min-h-screen transition-[padding] duration-300 ${showChrome
+            ? [
+              'pt-16',
+              'pb-20 md:pb-8',
+              sidebarCollapsed ? 'md:pl-[66px]' : 'md:pl-[238px]',
+            ].join(' ')
+            : ''
+          }`}>
         <ErrorBoundary>
-          <Suspense
-            fallback={
-              <div className="flex items-center justify-center min-h-[60vh]">
-                <SkeletonLoader type="page" brandName="" loadingText="Loading page..." />
-              </div>
-            }
-          >
+          <Suspense fallback={<div className="flex items-center justify-center min-h-[60vh]"><SkeletonLoader type="page" brandName="" loadingText="Loading page..." /></div>}>
             <div key={location.pathname} className="animate-fadeIn">
               <Routes location={location}>
-                {/* ── Public / Auth Routes ───────────────────── */}
-                <Route
-                  path="/login"
-                  element={
-                    !user ? (
-                      <LoginPage />
-                    ) : (
-                      <Navigate to={location.state?.from || '/'} replace />
-                    )
-                  }
-                />
-                <Route
-                  path="/signup"
-                  element={!user ? <SignupPage /> : <Navigate to="/" replace />}
-                />
+                {/* Auth */}
+                <Route path="/login" element={!user ? <LoginPage /> : <Navigate to={location.state?.from || '/'} replace />} />
+                <Route path="/signup" element={!user ? <SignupPage /> : <Navigate to="/" replace />} />
                 <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-                {/* ── Home ──────────────────────────────────── */}
-                <Route
-                  path="/"
-                  element={
-                    <ProtectedRoute>
-                      <HomePage />
-                    </ProtectedRoute>
-                  }
-                />
+                {/* Home */}
+                <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
 
-                {/* ── Announcements ─────────────────────────── */}
-                <Route
-                  path="/announcements"
-                  element={
-                    <ProtectedRoute>
-                      <AnnouncementsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/announcements/:id"
-                  element={
-                    <ProtectedRoute>
-                      <AnnouncementDetailPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/announcements/requests"
-                  element={
-                    <ProtectedRoute>
-                      <AnnouncementRequestsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/announcements/requests/new"
-                  element={
-                    <ProtectedRoute>
-                      <CreateAnnouncementRequestPage />
-                    </ProtectedRoute>
-                  }
-                />
+                {/* Announcements */}
+                <Route path="/announcements" element={<ProtectedRoute><AnnouncementsPage /></ProtectedRoute>} />
+                <Route path="/announcements/:id" element={<ProtectedRoute><AnnouncementDetailPage /></ProtectedRoute>} />
+                <Route path="/announcements/requests" element={<ProtectedRoute><AnnouncementRequestsPage /></ProtectedRoute>} />
+                <Route path="/announcements/requests/new" element={<ProtectedRoute><CreateAnnouncementRequestPage /></ProtectedRoute>} />
 
-                {/* ── Opportunities ─────────────────────────── */}
-                <Route
-                  path="/opportunities"
-                  element={
-                    <ProtectedRoute>
-                      <OpportunitiesPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/opportunities/new"
-                  element={
-                    <ProtectedRoute>
-                      <CreateOpportunityPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/opportunities/:id"
-                  element={
-                    <ProtectedRoute>
-                      <OpportunityDetailPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/opportunities/:id/edit"
-                  element={
-                    <ProtectedRoute>
-                      <EditOpportunityPage />
-                    </ProtectedRoute>
-                  }
-                />
+                {/* Opportunities */}
+                <Route path="/opportunities" element={<ProtectedRoute><OpportunitiesPage /></ProtectedRoute>} />
+                <Route path="/opportunities/new" element={<ProtectedRoute><CreateOpportunityPage /></ProtectedRoute>} />
+                <Route path="/opportunities/:id" element={<ProtectedRoute><OpportunityDetailPage /></ProtectedRoute>} />
+                <Route path="/opportunities/:id/edit" element={<ProtectedRoute><EditOpportunityPage /></ProtectedRoute>} />
 
-                {/* ── Found Items ───────────────────────────── */}
-                <Route
-                  path="/found-items"
-                  element={
-                    <ProtectedRoute>
-                      <FoundItemsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/found-items/post"
-                  element={
-                    <ProtectedRoute>
-                      <PostFoundItem />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/found-items/my-listings"
-                  element={
-                    <ProtectedRoute>
-                      <MyFoundItemsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/found-items/:id"
-                  element={
-                    <ProtectedRoute>
-                      <FoundItemDetailPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/found-items/:id/claim"
-                  element={
-                    <ProtectedRoute>
-                      <ClaimDetail />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/claims"
-                  element={
-                    <ProtectedRoute>
-                      <ClaimListPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/claims/:claimId"
-                  element={
-                    <ProtectedRoute>
-                      <ClaimDetail />
-                    </ProtectedRoute>
-                  }
-                />
+                {/* Found Items */}
+                <Route path="/found-items" element={<ProtectedRoute><FoundItemsPage /></ProtectedRoute>} />
+                <Route path="/found-items/post" element={<ProtectedRoute><PostFoundItem /></ProtectedRoute>} />
+                <Route path="/found-items/my-listings" element={<ProtectedRoute><MyFoundItemsPage /></ProtectedRoute>} />
+                <Route path="/found-items/:id" element={<ProtectedRoute><FoundItemDetailPage /></ProtectedRoute>} />
+                <Route path="/found-items/:id/claim" element={<ProtectedRoute><ClaimDetail /></ProtectedRoute>} />
+                <Route path="/claims" element={<ProtectedRoute><ClaimListPage /></ProtectedRoute>} />
+                <Route path="/claims/:claimId" element={<ProtectedRoute><ClaimDetail /></ProtectedRoute>} />
 
-                {/* ── Classes ────────────────────────────────── */}
-                <Route
-                  path="/classes"
-                  element={
-                    <ProtectedRoute>
-                      <ClassesPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/classes/attendance"
-                  element={
-                    <ProtectedRoute>
-                      <AttendanceSummary />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/classes/attendance/:entryId"
-                  element={
-                    <ProtectedRoute>
-                      <AttendanceDetail />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/classes/manage"
-                  element={
-                    <ProtectedRoute allowedRoles={['class_rep', 'admin']}>
-                      <ManageTimetablePage />
-                    </ProtectedRoute>
-                  }
-                />
+                {/* Classes */}
+                <Route path="/classes" element={<ProtectedRoute><ClassesPage /></ProtectedRoute>} />
+                <Route path="/classes/attendance" element={<ProtectedRoute><AttendanceSummary /></ProtectedRoute>} />
+                <Route path="/classes/attendance/:entryId" element={<ProtectedRoute><AttendanceDetail /></ProtectedRoute>} />
+                <Route path="/classes/manage" element={<ProtectedRoute allowedRoles={['class_rep', 'admin']}><ManageTimetablePage /></ProtectedRoute>} />
 
-                {/* ── Location / Map ────────────────────────── */}
-                <Route
-                  path="/nearby-classes"
-                  element={
-                    <ProtectedRoute>
-                      <NearbyClassesPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/campus-map"
-                  element={
-                    <ProtectedRoute>
-                      <CampusMapPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/venues/:venueId"
-                  element={
-                    <ProtectedRoute>
-                      <VenueDetailPage />
-                    </ProtectedRoute>
-                  }
-                />
+                {/* Location / Map */}
+                <Route path="/nearby-classes" element={<ProtectedRoute><NearbyClassesPage /></ProtectedRoute>} />
+                <Route path="/campus-map" element={<ProtectedRoute><CampusMapPage /></ProtectedRoute>} />
+                <Route path="/venues/:venueId" element={<ProtectedRoute><VenueDetailPage /></ProtectedRoute>} />
 
-                {/* ── Blog ───────────────────────────────────── */}
-                <Route
-                  path="/blog"
-                  element={
-                    <ProtectedRoute>
-                      <BlogPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/blog/create"
-                  element={
-                    <ProtectedRoute>
-                      <CreateBlog />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/blog/my-posts"
-                  element={
-                    <ProtectedRoute>
-                      <MyBlogPostsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/blog/:slug"
-                  element={
-                    <ProtectedRoute>
-                      <BlogDetail />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/blog/:slug/edit"
-                  element={
-                    <ProtectedRoute>
-                      <EditBlogPage />
-                    </ProtectedRoute>
-                  }
-                />
+                {/* Blog */}
+                <Route path="/blog" element={<ProtectedRoute><BlogPage /></ProtectedRoute>} />
+                <Route path="/blog/create" element={<ProtectedRoute><CreateBlog /></ProtectedRoute>} />
+                <Route path="/blog/my-posts" element={<ProtectedRoute><MyBlogPostsPage /></ProtectedRoute>} />
+                <Route path="/blog/:slug" element={<ProtectedRoute><BlogDetail /></ProtectedRoute>} />
+                <Route path="/blog/:slug/edit" element={<ProtectedRoute><EditBlogPage /></ProtectedRoute>} />
 
-                {/* ── Profile & Account ──────────────────────── */}
-                <Route
-                  path="/profile"
-                  element={
-                    <ProtectedRoute>
-                      <ProfilePage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/profile/edit"
-                  element={
-                    <ProtectedRoute>
-                      <ProfileEditPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/profile/biometrics"
-                  element={
-                    <ProtectedRoute>
-                      <BiometricEnrollmentPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/profile/2fa"
-                  element={
-                    <ProtectedRoute>
-                      <TwoFactorSetupPage />
-                    </ProtectedRoute>
-                  }
-                />
-                {/* Redirect legacy /two-factor-setup to new path */}
-                <Route
-                  path="/two-factor-setup"
-                  element={<Navigate to="/profile/2fa" replace />}
-                />
-                <Route
-                  path="/sessions"
-                  element={
-                    <ProtectedRoute>
-                      <SessionsPage />
-                    </ProtectedRoute>
-                  }
-                />
+                {/* Profile & Account */}
+                <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+                <Route path="/profile/edit" element={<ProtectedRoute><ProfileEditPage /></ProtectedRoute>} />
+                <Route path="/profile/biometrics" element={<ProtectedRoute><BiometricEnrollmentPage /></ProtectedRoute>} />
+                <Route path="/profile/2fa" element={<ProtectedRoute><TwoFactorSetupPage /></ProtectedRoute>} />
+                <Route path="/two-factor-setup" element={<Navigate to="/profile/2fa" replace />} />
+                <Route path="/sessions" element={<ProtectedRoute><SessionsPage /></ProtectedRoute>} />
 
-                {/* ── Notifications ─────────────────────────── */}
-                <Route
-                  path="/notifications"
-                  element={
-                    <ProtectedRoute>
-                      <NotificationsPage />
-                    </ProtectedRoute>
-                  }
-                />
+                {/* Notifications */}
+                <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
 
-                {/* ── Search ────────────────────────────────── */}
-                <Route
-                  path="/search"
-                  element={
-                    <ProtectedRoute>
-                      <SearchResultsPage />
-                    </ProtectedRoute>
-                  }
-                />
+                {/* Search */}
+                <Route path="/search" element={<ProtectedRoute><SearchResultsPage /></ProtectedRoute>} />
 
-                {/* ── Resources ─────────────────────────────── */}
-                <Route
-                  path="/resources/upload"
-                  element={
-                    <ProtectedRoute>
-                      <ResourceUploadPage />
-                    </ProtectedRoute>
-                  }
-                />
+                {/* Resources */}
+                <Route path="/resources/upload" element={<ProtectedRoute><ResourceUploadPage /></ProtectedRoute>} />
 
-                {/* ── Static Pages ────────────────────────────── */}
-                <Route
-                  path="/contact"
-                  element={
-                    <ProtectedRoute>
-                      <ContactPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/about"
-                  element={
-                    <ProtectedRoute>
-                      <AboutPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/privacy"
-                  element={
-                    <ProtectedRoute>
-                      <PrivacyPage />
-                    </ProtectedRoute>
-                  }
-                />
+                {/* Static Pages */}
+                <Route path="/contact" element={<ProtectedRoute><ContactPage /></ProtectedRoute>} />
+                <Route path="/about" element={<ProtectedRoute><AboutPage /></ProtectedRoute>} />
+                <Route path="/privacy" element={<ProtectedRoute><PrivacyPage /></ProtectedRoute>} />
 
-                {/* ── Admin ──────────────────────────────────── */}
-                <Route
-                  path="/admin"
-                  element={
-                    <ProtectedRoute allowedRoles={['admin']}>
-                      <AdminDashboard />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/admin/audit-logs"
-                  element={
-                    <ProtectedRoute allowedRoles={['admin']}>
-                      <AdminAuditLogsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/admin/roles"
-                  element={
-                    <ProtectedRoute allowedRoles={['admin']}>
-                      <AdminRolesPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/admin/reports"
-                  element={
-                    <ProtectedRoute allowedRoles={['admin']}>
-                      <AdminReportsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/admin/stats"
-                  element={
-                    <ProtectedRoute allowedRoles={['admin']}>
-                      <GovernanceStats />
-                    </ProtectedRoute>
-                  }
-                />
+                {/* Admin */}
+                <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
+                <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={['admin']}><AdminAuditLogsPage /></ProtectedRoute>} />
+                <Route path="/admin/roles" element={<ProtectedRoute allowedRoles={['admin']}><AdminRolesPage /></ProtectedRoute>} />
+                <Route path="/admin/reports" element={<ProtectedRoute allowedRoles={['admin']}><AdminReportsPage /></ProtectedRoute>} />
+                <Route path="/admin/stats" element={<ProtectedRoute allowedRoles={['admin']}><GovernanceStats /></ProtectedRoute>} />
 
-                {/* ── Governance ──────────────────────────────── */}
-                <Route
-                  path="/governance"
-                  element={
-                    <ProtectedRoute allowedRoles={['student_leader', 'faculty_rep']}>
-                      <GovernanceDashboard />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/governance/stats"
-                  element={
-                    <ProtectedRoute allowedRoles={['student_leader', 'faculty_rep']}>
-                      <GovernanceStats />
-                    </ProtectedRoute>
-                  }
-                />
+                {/* Governance */}
+                <Route path="/governance" element={<ProtectedRoute allowedRoles={['student_leader', 'faculty_rep']}><GovernanceDashboard /></ProtectedRoute>} />
+                <Route path="/governance/stats" element={<ProtectedRoute allowedRoles={['student_leader', 'faculty_rep']}><GovernanceStats /></ProtectedRoute>} />
 
-                {/* ── 404 Catch-All ──────────────────────────── */}
+                {/* 404 */}
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </div>
@@ -698,50 +372,34 @@ export default function App() {
         </ErrorBoundary>
       </main>
 
-      {/* Bottom Navigation & FAB — mobile only, authenticated */}
-      {user && !isAuthPage && (
+      {/* ── Bottom Nav & FAB ── */}
+      {showChrome && (
         <>
           <BottomNav />
           <FAB />
         </>
       )}
 
-      {/* ── Global Styles ───────────────────────────────── */}
+      {/* ── Global Styles ──────────────────────── */}
       <style>{`
         @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(8px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
-        .animate-fadeIn {
-          animation: fadeIn 0.25s ease-out;
+        .animate-fadeIn { animation: fadeIn 0.25s ease-out; }
+
+        @media (max-width: 767px) {
+          .sb-root { display: none !important; }
+          .mobile-sidebar-drawer .sb-root { display: flex !important; }
         }
 
         @media print {
-          .app {
-            background: white !important;
-          }
-          nav,
-          .sidebar,
-          .bottom-nav,
-          .offline-indicator,
-          .fixed {
-            display: none !important;
-          }
-          main {
-            padding: 0 !important;
-            margin: 0 !important;
-          }
+          .app { background: white !important; }
+          nav, .sidebar, .bottom-nav, .offline-indicator, .fixed { display: none !important; }
+          main { padding: 0 !important; margin: 0 !important; }
         }
 
-        .reduce-motion *,
-        .reduce-motion *::before,
-        .reduce-motion *::after {
+        .reduce-motion *, .reduce-motion *::before, .reduce-motion *::after {
           animation-duration: 0.01ms !important;
           animation-iteration-count: 1 !important;
           transition-duration: 0.01ms !important;

@@ -25,7 +25,15 @@ const DEFAULT_FORM = {
     attendance_radius_meters: 100,
 };
 
-export default function TimetableManager({ classGroupId, classGroupName, onClose, onUnsavedChange }) {
+export default function TimetableManager({
+    classGroupId,
+    classGroupName,
+    onClose,
+    onUnsavedChange,
+    onStatsChange,               // NEW: (total, active) => void
+    externalShowBulk = false,    // NEW: parent‑controlled bulk visibility
+    onToggleBulk                 // NEW: (next: boolean) => void
+}) {
     // ──────────────────────────────
     // 1. MOUNTED TRACKER (memory leak guard)
     // ──────────────────────────────
@@ -45,7 +53,6 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
     const [venueSuggestions, setVenueSuggestions] = useState([]);
     const [showVenueDropdown, setShowVenueDropdown] = useState(false);
     const [conflicts, setConflicts] = useState([]);
-    const [showBulkUpload, setShowBulkUpload] = useState(false);
     const [bulkText, setBulkText] = useState('');
     const [deleteConfirm, setDeleteConfirm] = useState(null);
 
@@ -63,7 +70,15 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
         try {
             const res = await classesApi.getClassTimetable(classGroupId);
             if (isMounted.current) {
-                setEntries(res.data || []);
+                const data = res.data || [];
+                setEntries(data);
+
+                // Report stats to parent
+                if (onStatsChange) {
+                    const total = data.length;
+                    const active = data.filter(e => e.is_active !== false).length;
+                    onStatsChange(total, active);
+                }
             }
         } catch (err) {
             toast.error('Failed to load timetable');
@@ -91,7 +106,6 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
     };
 
     const selectVenue = (venue) => {
-        // Clear any pending blur timeout
         if (venueTimeoutRef.current) clearTimeout(venueTimeoutRef.current);
         setFormData({ ...formData, venue: venue.name });
         setShowVenueDropdown(false);
@@ -103,16 +117,13 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
     const checkConflicts = useCallback((newEntry, excludeId = null) => {
         const conflicts = entries.filter(e => {
             if (excludeId && e.id === excludeId) return false;
-            // Enforce numeric day comparison
             if (Number(e.day_of_week) !== Number(newEntry.day_of_week)) return false;
 
-            // Normalize times to HH:MM (slice to avoid second‑based mismatches)
             const startA = newEntry.start_time.slice(0, 5);
             const endA = newEntry.end_time.slice(0, 5);
             const startB = e.start_time.slice(0, 5);
             const endB = e.end_time.slice(0, 5);
 
-            // Overlap: A starts before B ends AND A ends after B starts
             return startA < endB && endA > startB;
         });
         return conflicts;
@@ -202,7 +213,7 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
                 const parts = line.split(',').map(s => s.trim());
                 if (parts.length < 4) {
                     failCount++;
-                    continue; // Skip malformed lines
+                    continue;
                 }
 
                 const [day, start, end, unit, venue, lecturer] = parts;
@@ -223,13 +234,15 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
                 });
                 successCount++;
             } catch {
-                failCount++; // Network / validation error per line
+                failCount++;
             }
         }
 
         if (successCount > 0) toast.success(`Added ${successCount} entries`);
         if (failCount > 0) toast.error(`Failed to process ${failCount} lines`);
-        setShowBulkUpload(false);
+
+        // Close bulk upload (via parent callback)
+        onToggleBulk?.(false);
         setBulkText('');
         loadTimetable();
     };
@@ -267,9 +280,6 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
 
     return (
         <>
-            {/* ──────────────────────────────
-               5. FIXED CSS – namespace changed to .tm‑*
-               ────────────────────────────── */}
             <style>{`
                 .tm-root { font-family: 'Outfit', sans-serif; }
                 .tm-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
@@ -336,7 +346,7 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
                 .tm-grid-entry { font-size: 0.7rem; padding: 4px 8px; background: rgba(99,102,241,0.06); border-radius: 6px; margin-bottom: 3px; cursor: pointer; }
                 .tm-grid-entry:hover { background: rgba(99,102,241,0.12); }
 
-                /* Confirm dialog (formerly .opp‑*) */
+                /* Confirm dialog */
                 .tm-confirm-overlay { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; padding: 20px; }
                 .tm-confirm-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); }
                 .tm-confirm-card { position: relative; z-index: 81; width: 100%; max-width: 400px; background: rgba(255,255,255,0.96); border: 1px solid rgba(255,255,255,0.6); border-radius: 20px; backdrop-filter: blur(20px); box-shadow: 0 24px 48px rgba(0,0,0,0.18); }
@@ -364,7 +374,7 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
                             {viewMode === 'list' ? <FiEye size={13} /> : <FiEyeOff size={13} />}
                             {viewMode === 'list' ? 'Grid' : 'List'}
                         </button>
-                        <button onClick={() => setShowBulkUpload(!showBulkUpload)} className="tm-btn tm-btn-outline">
+                        <button onClick={() => onToggleBulk?.(!externalShowBulk)} className="tm-btn tm-btn-outline">
                             <FiUpload size={13} /> Bulk
                         </button>
                         <button onClick={loadTimetable} className="tm-btn tm-btn-outline">
@@ -373,8 +383,8 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
                     </div>
                 </div>
 
-                {/* Bulk Upload */}
-                {showBulkUpload && (
+                {/* Bulk Upload – controlled by parent */}
+                {externalShowBulk && (
                     <div className="tm-form">
                         <label>Bulk Upload — Format: Day, Start, End, Unit, Venue, Lecturer (one per line)</label>
                         <textarea
@@ -386,7 +396,7 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
                         />
                         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                             <button onClick={handleBulkUpload} className="tm-btn tm-btn-primary">Upload</button>
-                            <button onClick={() => setShowBulkUpload(false)} className="tm-btn tm-btn-outline">Cancel</button>
+                            <button onClick={() => onToggleBulk?.(false)} className="tm-btn tm-btn-outline">Cancel</button>
                         </div>
                     </div>
                 )}
@@ -420,7 +430,6 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
                                 onChange={e => handleVenueChange(e.target.value)}
                                 onFocus={() => venueSuggestions.length > 0 && setShowVenueDropdown(true)}
                                 onBlur={() => {
-                                    // Set a timeout to allow click on dropdown items; the timeout is cleared in selectVenue
                                     venueTimeoutRef.current = setTimeout(() => {
                                         if (isMounted.current) setShowVenueDropdown(false);
                                     }, 200);
@@ -549,7 +558,7 @@ export default function TimetableManager({ classGroupId, classGroupName, onClose
                 </div>
             </div>
 
-            {/* Delete confirmation dialog – renamed classes to avoid global collisions */}
+            {/* Delete confirmation dialog */}
             {deleteConfirm && (
                 <div className="tm-confirm-overlay">
                     <div className="tm-confirm-backdrop" onClick={() => setDeleteConfirm(null)} />

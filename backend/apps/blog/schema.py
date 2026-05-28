@@ -2,6 +2,7 @@ from ninja import Schema
 from datetime import datetime
 from typing import Optional, List
 
+
 class BlogCategoryOut(Schema):
     id: str
     name: str
@@ -9,6 +10,7 @@ class BlogCategoryOut(Schema):
     description: str = ''
     icon: str = '📝'
     post_count: int = 0
+
 
 class BlogPostIn(Schema):
     title: str
@@ -19,6 +21,7 @@ class BlogPostIn(Schema):
     tags: str = ''
     is_featured: bool = False
     is_published: bool = False
+
 
 class BlogPostOut(Schema):
     id: str
@@ -35,12 +38,16 @@ class BlogPostOut(Schema):
     view_count: int
     likes_count: int
     saves_count: int
+    flags_count: int = 0                  # ← NEW
     is_liked: bool = False
     is_saved: bool = False
+    is_flagged: bool = False             # ← NEW
     is_featured: bool = False
     is_published: bool = False
+    is_hidden: bool = False
     published_at: Optional[datetime] = None
     created_at: datetime
+
 
 class BlogPostListOut(Schema):
     id: str
@@ -55,26 +62,19 @@ class BlogPostListOut(Schema):
     view_count: int
     likes_count: int
     saves_count: int
+    flags_count: int = 0                  # ← NEW
     is_liked: bool = False
     is_saved: bool = False
+    is_flagged: bool = False             # ← NEW
     is_featured: bool = False
+    is_hidden: bool = False
     published_at: Optional[datetime] = None
 
-class CommentIn(Schema):
-    body: str
-    parent_id: Optional[str] = None  # for replies
-
-class CommentOut(Schema):
-    id: str
-    body: str
-    user: dict
-    parent_id: Optional[str] = None
-    created_at: datetime
-    replies: List['CommentOut'] = []
 
 class CommentIn(Schema):
     body: str
     parent_id: Optional[str] = None
+
 
 class CommentOut(Schema):
     id: str

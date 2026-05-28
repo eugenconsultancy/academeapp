@@ -5,7 +5,7 @@ import { visualizer } from 'rollup-plugin-visualizer';
 import viteCompression from 'vite-plugin-compression';
 import path from 'path';
 
-// https://vitejs.dev/config/
+// https://vitejs.dev/config/ fo the app front.end
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const isProduction = mode === 'production';

@@ -257,7 +257,7 @@ export function getWeekNumber(date = new Date()) {
 /**
  * Get academic year string (e.g., "2025-2026")
  * Kenya academic year: January to December
- * Backend: apps/academics/models.py - Term model
+ * (If a Term model is later added to apps/classes, this can align with it)
  */
 export function getAcademicYear(date = new Date()) {
     const d = new Date(date);
@@ -269,9 +269,8 @@ export function getAcademicYear(date = new Date()) {
  * Get current term number based on date
  * Kenya school terms:
  *   Term 1: January - March
- *   Term 2: May - July  
+ *   Term 2: May - July
  *   Term 3: September - November
- * Backend: apps/academics/models.py - Term.name (TERM1, TERM2, TERM3)
  */
 export function getCurrentTerm(date = new Date()) {
     const d = new Date(date);
@@ -285,7 +284,6 @@ export function getCurrentTerm(date = new Date()) {
 
 /**
  * Get term name from term number
- * Backend: apps/academics/models.py - Term.get_name_display()
  */
 export function getTermName(termNumber) {
     const names = { 1: 'Term 1', 2: 'Term 2', 3: 'Term 3' };
@@ -301,7 +299,6 @@ export function isSchoolTerm(date = new Date()) {
 
 /**
  * Check if date is a school day (not weekend or holiday)
- * Backend: Used for attendance validation
  */
 export function isSchoolDay(date = new Date()) {
     const d = new Date(date);
@@ -384,7 +381,7 @@ export function formatDurationLong(minutes) {
 
 /**
  * Check if current time is within attendance marking window
- * Backend: apps/academics/views.py - AttendanceViewSet
+ * (Logic mirrors apps/classes/services.py – AttendanceService)
  * @param {string} startTime - Start time (HH:MM)
  * @param {string} endTime - End time (HH:MM)
  * @returns {boolean} Whether within window
@@ -427,7 +424,7 @@ export function getRemainingTime(endTime) {
 
 /**
  * Generate time slots for timetable
- * Backend: apps/academics/models.py - Timetable model
+ * (Used by frontend timetable editor; no backend dependency)
  * @param {string} startTime - Start time (HH:MM)
  * @param {string} endTime - End time (HH:MM)
  * @param {number} intervalMinutes - Slot duration in minutes
@@ -580,7 +577,7 @@ export function formatCountdown(countdown) {
 
 /**
  * Calculate age from date of birth
- * Backend: apps/accounts/models.py - StudentProfile.date_of_birth
+ * (Used by frontend; backend model is apps/accounts/models.py – StudentProfile if exists)
  */
 export function calculateAge(dob) {
     if (!dob) return null;
@@ -621,7 +618,7 @@ export function fromTimestamp(timestamp) {
 
 /**
  * Convert UTC date to local timezone
- * Backend: Django uses TIME_ZONE = 'Africa/Nairobi'
+ * (Backend Django TIME_ZONE = 'Africa/Nairobi')
  */
 export function toLocalTime(utcDate, timezone = 'Africa/Nairobi') {
     if (!utcDate) return '';

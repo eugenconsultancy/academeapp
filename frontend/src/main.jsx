@@ -16,20 +16,11 @@ import { offlineStorage } from './utils/storage';
 import './styles/globals.css';
 import './styles/themes.css';
 import './styles/fonts.css';
+import './index.css';   // ← add this before other style imports
 
 // ═══════════════════════════════════════════════════════════════
 // TANSTACK QUERY CONFIGURATION WITH INTELLIGENT ERROR FILTERING
 // ═══════════════════════════════════════════════════════════════
-// const queryClient = new QueryClient({
-//   queryCache: new QueryCache({
-//     onError: (error, query) => {
-//       // here we ignore 404 type of errors  exptected or handled erors like weather failing
-//       if (error?.response?.status !== 404 && query.querryKey[0] !== 'weather'){
-//         console.error('[Query Cache Error]:', error.message);
-//       }
-//     }
-//   })
-// })
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error, query) => {
@@ -82,7 +73,7 @@ const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <StrictMode>
     <ErrorBoundary fallback={<div className="p-8 text-center">Something went wrong.</div>}>
-      <HashRouter>
+      <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider>
             <FontProvider>

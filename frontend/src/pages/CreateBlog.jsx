@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { blogApi } from '../api/blogApi';
 import { useAuth } from '../contexts/AuthContext';
 import Card from '../components/ui/Card';
 import toast from 'react-hot-toast';
+import ReactQuill from 'react-quill';                         // ← new import
+import 'react-quill/dist/quill.snow.css';                     // ← Quill theme
 import {
   FiArrowLeft, FiSave, FiEye, FiSend, FiX, FiPlus,
   FiHome, FiBookOpen, FiChevronRight, FiImage,
@@ -14,9 +16,9 @@ import {
 export default function CreateBlog() {
   const navigate = useNavigate();
   const { user } = useAuth();
+
   const [formData, setFormData] = useState({
     title: '',
-    content: '',
     excerpt: '',
     cover_image: '',
     category_id: '',
@@ -24,6 +26,7 @@ export default function CreateBlog() {
     is_featured: false,
     is_published: false,
   });
+  const [content, setContent] = useState('');   // ⬅️ separate state for HTML content
   const [loading, setLoading] = useState(false);
   const [tags, setTags] = useState([]);
   const [tagInput, setTagInput] = useState('');
@@ -37,13 +40,11 @@ export default function CreateBlog() {
     queryFn: blogApi.listCategories,
   });
 
-  // Redirect if not admin
   if (user?.role !== 'admin') {
     navigate('/blog');
     return null;
   }
 
-  // Unsaved changes warning
   useEffect(() => {
     const handleBeforeUnload = (e) => {
       if (hasChanges) {
@@ -55,7 +56,6 @@ export default function CreateBlog() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasChanges]);
 
-  // Update cover preview when URL changes
   useEffect(() => {
     if (formData.cover_image && formData.cover_image.match(/^https?:\/\/.+\.(jpg|jpeg|png|gif|webp)/i)) {
       setCoverPreview(formData.cover_image);
@@ -70,6 +70,7 @@ export default function CreateBlog() {
     setHasChanges(true);
   };
 
+  // ── Tag helpers ────────────────────────────────────
   const addTag = () => {
     const trimmed = tagInput.trim().toLowerCase();
     if (trimmed && !tags.includes(trimmed)) {
@@ -87,20 +88,44 @@ export default function CreateBlog() {
     setFormData({ ...formData, tags: newTags.join(',') });
   };
 
-  // Calculate reading time
-  const wordCount = formData.content.trim().split(/\s+/).filter(Boolean).length;
+  // ── Reading time from HTML content ───────────────
+  const wordCount = content.replace(/<[^>]*>/g, '').trim().split(/\s+/).filter(Boolean).length;
   const readingTime = Math.max(1, Math.ceil(wordCount / 200));
 
+  // ── Quill modules / formats ──────────────────────
+  const quillModules = useMemo(() => ({
+    toolbar: [
+      [{ 'header': '1' }, { 'header': '2' }, { 'font': [] }],
+      [{ size: [] }],
+      ['bold', 'italic', 'underline', 'strike', 'blockquote'],
+      [{ 'list': 'ordered' }, { 'list': 'bullet' }, { 'indent': '-1' }, { 'indent': '+1' }],
+      ['link', 'image', 'video'],
+      ['clean']
+    ],
+    clipboard: { matchVisual: false },
+  }), []);
+
+  const quillFormats = [
+    'header', 'font', 'size',
+    'bold', 'italic', 'underline', 'strike', 'blockquote',
+    'list', 'bullet', 'indent',
+    'link', 'image', 'video'
+  ];
+
+  // ── Submit ────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.title.trim() || !formData.content.trim()) {
+    if (!formData.title.trim() || !content.trim()) {
       toast.error('Title and content are required');
       return;
     }
 
     setLoading(true);
     try {
-      await blogApi.createPost(formData);
+      await blogApi.createPost({
+        ...formData,
+        content: content,            // send HTML string
+      });
       setHasChanges(false);
       toast.success('Blog post created successfully!');
       navigate('/blog');
@@ -118,7 +143,11 @@ export default function CreateBlog() {
     }
     setLoading(true);
     try {
-      await blogApi.createPost({ ...formData, is_published: false });
+      await blogApi.createPost({
+        ...formData,
+        content: content,
+        is_published: false,
+      });
       setHasChanges(false);
       toast.success('Draft saved!');
       navigate('/blog');
@@ -150,8 +179,20 @@ export default function CreateBlog() {
         .cb-input { width: 100%; padding: 12px 16px; border-radius: 12px; border: 1.5px solid #e2e8f0; background: rgba(255,255,255,0.9); font-family: 'Outfit', sans-serif; font-size: 0.9rem; color: #0f172a; outline: none; transition: all 0.15s; }
         .cb-input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.08); }
         .dark .cb-input { background: rgba(15,23,42,0.9); border-color: #334155; color: #f8fafc; }
-        .cb-textarea { resize: vertical; min-height: 250px; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.85rem; line-height: 1.7; }
-        .cb-preview { min-height: 250px; padding: 20px; background: rgba(0,0,0,0.02); border-radius: 12px; font-size: 0.9rem; line-height: 1.8; color: #334155; white-space: pre-wrap; }
+
+        /* ─── Editor wrapper ─── */
+        .cb-editor-wrapper { margin-bottom: 40px; }
+        .cb-editor-wrapper .ql-toolbar { border-top-left-radius: 12px; border-top-right-radius: 12px; border-color: #e2e8f0; }
+        .cb-editor-wrapper .ql-container { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-color: #e2e8f0; min-height: 300px; font-family: 'Outfit', sans-serif; font-size: 0.95rem; }
+        .dark .cb-editor-wrapper .ql-toolbar, .dark .cb-editor-wrapper .ql-container { border-color: #334155; }
+        .dark .ql-editor { color: #f8fafc; }
+        .dark .ql-snow .ql-stroke { stroke: #94a3b8; }
+        .dark .ql-snow .ql-fill { fill: #94a3b8; }
+        .dark .ql-snow .ql-picker { color: #94a3b8; }
+
+        .cb-preview { min-height: 250px; padding: 20px; background: rgba(0,0,0,0.02); border-radius: 12px; font-size: 0.9rem; line-height: 1.8; color: #334155; }
+        .cb-preview h1, .cb-preview h2, .cb-preview h3 { margin-top: 0; }
+        .cb-preview ul, .cb-preview ol { padding-left: 1.5em; }
         .dark .cb-preview { background: rgba(255,255,255,0.03); color: #cbd5e1; }
 
         .cb-btn { display: inline-flex; align-items: center; gap: 6px; padding: 11px 20px; border-radius: 12px; border: none; font-family: 'Outfit', sans-serif; font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: all 0.2s; }
@@ -171,9 +212,6 @@ export default function CreateBlog() {
         .cb-tag { display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 99px; background: rgba(99,102,241,0.08); color: #6366f1; font-size: 0.78rem; font-weight: 600; }
         .cb-tag button { background: none; border: none; cursor: pointer; color: #6366f1; padding: 0; display: flex; }
         .cb-tag button:hover { color: #ef4444; }
-
-        .cb-markdown-help { background: rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.05); border-radius: 12px; padding: 16px; margin-top: 12px; font-size: 0.8rem; color: #64748b; }
-        .dark .cb-markdown-help { background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.05); }
 
         .cb-check-row { display: flex; align-items: center; gap: 8px; }
         .cb-check-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: #6366f1; }
@@ -241,34 +279,24 @@ export default function CreateBlog() {
               <textarea name="excerpt" value={formData.excerpt} onChange={handleChange} rows={2} placeholder="A brief summary of your post..." className="cb-input" style={{ resize: 'none' }} />
             </div>
 
-            {/* Content */}
+            {/* Content – Rich Text Editor */}
             <div className="cb-field">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-                <label className="cb-label" style={{ marginBottom: 0 }}>Content *</label>
-                <button type="button" onClick={() => setShowMarkdownHelp(!showMarkdownHelp)} className="cb-btn cb-btn-ghost" style={{ fontSize: '0.75rem', padding: '4px 10px' }}>
-                  <FiInfo size={12} /> Formatting Help
-                </button>
-              </div>
+              <label className="cb-label">Content *</label>
               {previewMode ? (
-                <div className="cb-preview">{formData.content || 'Nothing to preview yet...'}</div>
+                <div className="cb-preview" dangerouslySetInnerHTML={{ __html: content || '<p>Nothing to preview yet...</p>' }} />
               ) : (
-                <textarea name="content" value={formData.content} onChange={handleChange} rows={14} placeholder="Write your post content here..." className={`cb-input cb-textarea`} required />
+                <div className="cb-editor-wrapper">
+                  <ReactQuill
+                    theme="snow"
+                    value={content}
+                    onChange={setContent}
+                    modules={quillModules}
+                    formats={quillFormats}
+                    placeholder="Write your post content here..."
+                  />
+                </div>
               )}
             </div>
-
-            {/* Markdown Help */}
-            {showMarkdownHelp && (
-              <div className="cb-markdown-help">
-                <p style={{ fontWeight: 700, marginBottom: 8 }}>Formatting Guide:</p>
-                <p><code># Heading 1</code> — Large heading</p>
-                <p><code>## Heading 2</code> — Medium heading</p>
-                <p><code>**bold text**</code> — <strong>Bold</strong></p>
-                <p><code>*italic text*</code> — <em>Italic</em></p>
-                <p><code>- bullet point</code> — List item</p>
-                <p><code>1. numbered item</code> — Numbered list</p>
-                <p><code>[link text](url)</code> — Hyperlink</p>
-              </div>
-            )}
 
             {/* Tags */}
             <div className="cb-field">

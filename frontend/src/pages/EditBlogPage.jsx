@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { blogApi } from '../api/blogApi';
@@ -6,6 +6,8 @@ import { useAuth } from '../contexts/AuthContext';
 import Card from '../components/ui/Card';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
 import toast from 'react-hot-toast';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 import {
     FiArrowLeft, FiSave, FiSend, FiX, FiPlus,
     FiHome, FiBookOpen, FiChevronRight, FiClock, FiType, FiInfo,
@@ -15,14 +17,15 @@ export default function EditBlogPage() {
     const { slug } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
+
     const [formData, setFormData] = useState({
-        title: '', content: '', excerpt: '', cover_image: '',
+        title: '', excerpt: '', cover_image: '',
         category_id: '', tags: '', is_featured: false, is_published: false,
     });
+    const [content, setContent] = useState('');   // HTML content
     const [tags, setTags] = useState([]);
     const [tagInput, setTagInput] = useState('');
     const [saving, setSaving] = useState(false);
-    const [showMarkdownHelp, setShowMarkdownHelp] = useState(false);
 
     const { data: post, isLoading } = useQuery({
         queryKey: ['blog-post', slug],
@@ -48,7 +51,6 @@ export default function EditBlogPage() {
         if (post) {
             setFormData({
                 title: post.title || '',
-                content: post.content || '',
                 excerpt: post.excerpt || '',
                 cover_image: post.cover_image || '',
                 category_id: post.category?.id || '',
@@ -56,6 +58,7 @@ export default function EditBlogPage() {
                 is_featured: post.is_featured || false,
                 is_published: post.is_published || false,
             });
+            setContent(post.content || '');
             if (post.tag_list) setTags(post.tag_list);
         }
     }, [post]);
@@ -88,19 +91,41 @@ export default function EditBlogPage() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!formData.title.trim() || !formData.content.trim()) {
+        if (!formData.title.trim() || !content.trim()) {
             toast.error('Title and content are required');
             return;
         }
         setSaving(true);
         try {
-            await updateMutation.mutateAsync(formData);
-        } catch { /* error handled in mutation */ }
+            await updateMutation.mutateAsync({
+                ...formData,
+                content: content,       // send HTML
+            });
+        } catch { /* mutation handles error */ }
         finally { setSaving(false); }
     };
 
-    const wordCount = formData.content.trim().split(/\s+/).filter(Boolean).length;
+    const wordCount = content.replace(/<[^>]*>/g, '').trim().split(/\s+/).filter(Boolean).length;
     const readingTime = Math.max(1, Math.ceil(wordCount / 200));
+
+    const quillModules = useMemo(() => ({
+        toolbar: [
+            [{ 'header': '1' }, { 'header': '2' }, { 'font': [] }],
+            [{ size: [] }],
+            ['bold', 'italic', 'underline', 'strike', 'blockquote'],
+            [{ 'list': 'ordered' }, { 'list': 'bullet' }, { 'indent': '-1' }, { 'indent': '+1' }],
+            ['link', 'image', 'video'],
+            ['clean']
+        ],
+        clipboard: { matchVisual: false },
+    }), []);
+
+    const quillFormats = [
+        'header', 'font', 'size',
+        'bold', 'italic', 'underline', 'strike', 'blockquote',
+        'list', 'bullet', 'indent',
+        'link', 'image', 'video'
+    ];
 
     if (isLoading) return <SkeletonLoader type="page" />;
 
@@ -119,7 +144,17 @@ export default function EditBlogPage() {
         .eb-input { width: 100%; padding: 12px 16px; border-radius: 12px; border: 1.5px solid #e2e8f0; background: rgba(255,255,255,0.9); font-family: 'Outfit', sans-serif; font-size: 0.9rem; color: #0f172a; outline: none; }
         .eb-input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.08); }
         .dark .eb-input { background: rgba(15,23,42,0.9); border-color: #334155; color: #f8fafc; }
-        .eb-textarea { resize: vertical; min-height: 250px; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; line-height: 1.7; }
+
+        /* Editor */
+        .eb-editor-wrapper { margin-bottom: 40px; }
+        .eb-editor-wrapper .ql-toolbar { border-top-left-radius: 12px; border-top-right-radius: 12px; border-color: #e2e8f0; }
+        .eb-editor-wrapper .ql-container { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-color: #e2e8f0; min-height: 300px; font-family: 'Outfit', sans-serif; font-size: 0.95rem; }
+        .dark .eb-editor-wrapper .ql-toolbar, .dark .eb-editor-wrapper .ql-container { border-color: #334155; }
+        .dark .ql-editor { color: #f8fafc; }
+        .dark .ql-snow .ql-stroke { stroke: #94a3b8; }
+        .dark .ql-snow .ql-fill { fill: #94a3b8; }
+        .dark .ql-snow .ql-picker { color: #94a3b8; }
+
         .eb-btn { display: inline-flex; align-items: center; gap: 6px; padding: 11px 20px; border-radius: 12px; border: none; font-family: 'Outfit', sans-serif; font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: all 0.2s; }
         .eb-btn-primary { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; box-shadow: 0 4px 16px rgba(99,102,241,0.25); }
         .eb-btn-outline { background: transparent; border: 1.5px solid #e2e8f0; color: #64748b; }
@@ -169,10 +204,22 @@ export default function EditBlogPage() {
                             <label className="eb-label">Excerpt</label>
                             <textarea name="excerpt" value={formData.excerpt} onChange={handleChange} rows={2} className="eb-input" style={{ resize: 'none' }} />
                         </div>
+
+                        {/* Rich Text Editor */}
                         <div className="eb-field">
                             <label className="eb-label">Content *</label>
-                            <textarea name="content" value={formData.content} onChange={handleChange} rows={14} className={`eb-input eb-textarea`} required />
+                            <div className="eb-editor-wrapper">
+                                <ReactQuill
+                                    theme="snow"
+                                    value={content}
+                                    onChange={setContent}
+                                    modules={quillModules}
+                                    formats={quillFormats}
+                                    placeholder="Edit your post content..."
+                                />
+                            </div>
                         </div>
+
                         <div className="eb-field">
                             <label className="eb-label">Tags</label>
                             <div style={{ display: 'flex', gap: 8 }}>

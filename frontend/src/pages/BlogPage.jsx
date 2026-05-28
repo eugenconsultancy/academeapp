@@ -9,9 +9,53 @@ import {
   FiBookmark, FiSearch, FiPlus, FiEdit3, FiEye,
   FiShare2, FiUser, FiArrowRight, FiChevronRight,
   FiCalendar, FiRefreshCw, FiAlertCircle,
+  FiFileText, FiFlag,
 } from 'react-icons/fi';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { formatDistanceToNow } from 'date-fns';
+
+/* ─────────── MOCK DATA (DEV ONLY) ─────────── */
+const MOCK_POSTS = [
+  {
+    id: '1', title: 'How to Ace Your Final Exams: A Complete Guide',
+    slug: 'ace-final-exams', excerpt: 'Discover proven study techniques...',
+    reading_time: 8, likes_count: 156, saves_count: 42, view_count: 1200,
+    flags_count: 2, is_flagged: false, is_liked: false, is_saved: false,
+    is_featured: true, created_at: new Date(Date.now() - 86400000).toISOString(),
+    author: { full_name: 'Jane Muthoni' },
+    category: { name: 'Academics', icon: '📚', slug: 'academics' },
+    cover_image: null,
+  },
+  {
+    id: '2', title: 'Best Cafeterias on Campus: A Food Guide',
+    slug: 'campus-food-guide', excerpt: 'Where to find the best chapati...',
+    reading_time: 5, likes_count: 89, saves_count: 23, view_count: 890,
+    flags_count: 1, is_flagged: true, is_liked: true, is_saved: false,
+    is_featured: false, created_at: new Date(Date.now() - 172800000).toISOString(),
+    author: { full_name: 'Kevin Odhiambo' },
+    category: { name: 'Campus Life', icon: '🏫', slug: 'campus-life' },
+    cover_image: null,
+  },
+  {
+    id: '3', title: 'Making Money as a Student: Side Hustles That Work',
+    slug: 'student-side-hustles', excerpt: 'Legit ways to earn extra cash...',
+    reading_time: 6, likes_count: 234, saves_count: 67, view_count: 2100,
+    flags_count: 0, is_flagged: false, is_liked: false, is_saved: true,
+    is_featured: true, created_at: new Date(Date.now() - 259200000).toISOString(),
+    author: { full_name: 'Grace Akinyi' },
+    category: { name: 'Finance', icon: '💰', slug: 'finance' },
+    cover_image: null,
+  },
+];
+
+const MOCK_CATEGORIES = [
+  { name: 'Academics', icon: '📚', slug: 'academics', post_count: 45 },
+  { name: 'Campus Life', icon: '🏫', slug: 'campus-life', post_count: 32 },
+  { name: 'Technology', icon: '💻', slug: 'tech', post_count: 28 },
+  { name: 'Finance', icon: '💰', slug: 'finance', post_count: 15 },
+  { name: 'Health', icon: '💪', slug: 'health', post_count: 12 },
+];
 
 export default function BlogPage() {
   const [category, setCategory] = useState('');
@@ -28,28 +72,11 @@ export default function BlogPage() {
   const [error, setError] = useState(null);
   const containerRef = useRef(null);
 
-  // Fallback mock data for development
-  const MOCK_POSTS = [
-    { id: '1', title: 'How to Ace Your Final Exams: A Complete Guide', slug: 'ace-final-exams', excerpt: 'Discover proven study techniques that top students use to prepare for finals...', reading_time: 8, likes_count: 156, saves_count: 42, view_count: 1200, is_liked: false, is_saved: false, is_featured: true, created_at: new Date(Date.now() - 86400000).toISOString(), author: { full_name: 'Jane Muthoni' }, category: { name: 'Academics', icon: '📚', slug: 'academics' }, cover_image: null },
-    { id: '2', title: 'Best Cafeterias on Campus: A Food Guide', slug: 'campus-food-guide', excerpt: 'Where to find the best chapati, pilau, and samosas on campus...', reading_time: 5, likes_count: 89, saves_count: 23, view_count: 890, is_liked: true, is_saved: false, is_featured: false, created_at: new Date(Date.now() - 172800000).toISOString(), author: { full_name: 'Kevin Odhiambo' }, category: { name: 'Campus Life', icon: '🏫', slug: 'campus-life' }, cover_image: null },
-    { id: '3', title: 'Making Money as a Student: Side Hustles That Work', slug: 'student-side-hustles', excerpt: 'Legit ways to earn extra cash while maintaining your grades...', reading_time: 6, likes_count: 234, saves_count: 67, view_count: 2100, is_liked: false, is_saved: true, is_featured: true, created_at: new Date(Date.now() - 259200000).toISOString(), author: { full_name: 'Grace Akinyi' }, category: { name: 'Finance', icon: '💰', slug: 'finance' }, cover_image: null },
-  ];
-
-  const MOCK_CATEGORIES = [
-    { name: 'Academics', icon: '📚', slug: 'academics', post_count: 45 },
-    { name: 'Campus Life', icon: '🏫', slug: 'campus-life', post_count: 32 },
-    { name: 'Technology', icon: '💻', slug: 'tech', post_count: 28 },
-    { name: 'Finance', icon: '💰', slug: 'finance', post_count: 15 },
-    { name: 'Health', icon: '💪', slug: 'health', post_count: 12 },
-  ];
-
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { isDark } = useTheme();
 
-  // ═════════════════════════════════════════════════════════
-  // LOAD DATA
-  // ═════════════════════════════════════════════════════════
-
+  // ═══════════════ Load data ═══════════════
   useEffect(() => {
     setPage(1);
     setPosts([]);
@@ -72,16 +99,10 @@ export default function BlogPage() {
         page: pageNum,
         limit: 10,
       });
-
       const results = Array.isArray(data) ? data : data?.results || data?.data || [];
       const total = data?.count || data?.total || results.length;
-
-      if (reset) {
-        setPosts(results);
-      } else {
-        setPosts((prev) => [...prev, ...results]);
-      }
-
+      if (reset) setPosts(results);
+      else setPosts(prev => [...prev, ...results]);
       setTotalPosts(total);
       setHasMore(results.length === 10);
     } catch (err) {
@@ -92,12 +113,10 @@ export default function BlogPage() {
         else setPosts(prev => [...prev, ...filtered]);
         setTotalPosts(MOCK_POSTS.length);
         setHasMore(false);
-        setLoading(false);
-        setRefreshing(false);
-        return;
+      } else {
+        setError('Failed to load blog posts. Please try again.');
+        if (reset) setPosts([]);
       }
-      setError('Failed to load blog posts. Please try again.');
-      if (reset) setPosts([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -138,21 +157,12 @@ export default function BlogPage() {
     await loadPosts(nextPage, false);
   };
 
-  // ═════════════════════════════════════════════════════════
-  // ACTIONS
-  // ═════════════════════════════════════════════════════════
-
+  // ═══════════════ Interactions ═══════════════
   const handleLike = async (e, postId) => {
     e.stopPropagation();
     try {
       await blogApi.toggleLike(postId);
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId
-            ? { ...p, is_liked: !p.is_liked, likes_count: p.is_liked ? (p.likes_count || 1) - 1 : (p.likes_count || 0) + 1 }
-            : p
-        )
-      );
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, is_liked: !p.is_liked, likes_count: p.is_liked ? (p.likes_count || 1) - 1 : (p.likes_count || 0) + 1 } : p));
     } catch (error) {
       toast.error('Failed to like post');
       loadPosts(page, true);
@@ -163,14 +173,8 @@ export default function BlogPage() {
     e.stopPropagation();
     try {
       await blogApi.toggleSave(postId);
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId
-            ? { ...p, is_saved: !p.is_saved, saves_count: p.is_saved ? (p.saves_count || 1) - 1 : (p.saves_count || 0) + 1 }
-            : p
-        )
-      );
-      toast.success(posts.find((p) => p.id === postId)?.is_saved ? 'Post unsaved' : 'Post saved!');
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, is_saved: !p.is_saved, saves_count: p.is_saved ? (p.saves_count || 1) - 1 : (p.saves_count || 0) + 1 } : p));
+      toast.success(posts.find(p => p.id === postId)?.is_saved ? 'Post unsaved' : 'Post saved!');
     } catch (error) {
       toast.error('Failed to save post');
     }
@@ -179,12 +183,31 @@ export default function BlogPage() {
   const handleShare = async (e, post) => {
     e.stopPropagation();
     const url = `${window.location.origin}/blog/${post.slug}`;
-    const text = `Check out "${post.title}" on Academe Blog!`;
     if (navigator.share) {
-      await navigator.share({ title: post.title, text, url });
+      await navigator.share({ title: post.title, text: `Check out "${post.title}" on Academe Blog!`, url });
     } else {
       await navigator.clipboard.writeText(url);
       toast.success('Link copied!');
+    }
+  };
+
+  // ═══════════════ FLAG HANDLER ═══════════════
+  const handleFlag = async (e, postId) => {
+    e.stopPropagation();
+    try {
+      const response = await blogApi.flagPost(postId);
+      const { flagged, flags_count } = response;
+      setPosts(prev => prev.map(p => p.id === postId ? {
+        ...p,
+        is_flagged: flagged,
+        flags_count: flags_count,
+      } : p));
+      toast.success(flagged ? 'Post flagged' : 'Flag removed');
+      if (flags_count >= 10) {
+        loadPosts(1, true);  // remove the post after threshold
+      }
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Failed to flag post');
     }
   };
 
@@ -198,33 +221,26 @@ export default function BlogPage() {
     if (!dateStr) return '';
     try {
       return formatDistanceToNow(new Date(dateStr), { addSuffix: true });
-    } catch {
-      return dateStr;
-    }
+    } catch { return dateStr; }
   };
 
-  // Adaptive UI configurations checking theme context
-  const isDarkTheme = document.documentElement.classList.contains('dark');
-
+  // ═══════════════ Glass style (reactive) ═══════════════
   const glassStyle = {
-    background: isDarkTheme ? 'rgba(30, 41, 59, 0.45)' : 'rgba(255, 255, 255, 0.65)',
+    background: isDark ? 'rgba(30, 41, 59, 0.45)' : 'rgba(255, 255, 255, 0.65)',
     backdropFilter: 'blur(16px)',
     WebkitBackdropFilter: 'blur(16px)',
-    borderColor: isDarkTheme ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
     borderWidth: '1px',
     borderStyle: 'solid',
   };
 
-  // ═════════════════════════════════════════════════════════
-  // RENDER
-  // ═════════════════════════════════════════════════════════
-
+  // ═══════════════ RENDER ═══════════════
   return (
     <div
       ref={containerRef}
       className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300 relative overflow-hidden"
     >
-      {/* Structural Backdrop Subtle Visual Interest Elements */}
+      {/* Background blobs */}
       <div className="absolute top-10 left-1/4 w-96 h-96 bg-pink-500/5 dark:bg-pink-500/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-20 right-1/4 w-[30rem] h-[30rem] bg-rose-500/5 dark:bg-rose-500/10 rounded-full blur-[150px] pointer-events-none" />
 
@@ -245,22 +261,16 @@ export default function BlogPage() {
             opacity: 1;
             transform: translateX(0);
         }
-        
-        /* ─── SIDEBAR TRANSITION STYLES ───────────── */
         .blog-sidebar {
           transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
                       opacity 0.3s ease,
                       width 0.3s ease;
         }
-        
-        /* When sidebar is open, ensure proper spacing */
         @media (min-width: 1024px) {
           .blog-main-grid {
             transition: grid-template-columns 0.3s cubic-bezier(0.16, 1, 0.3, 1);
           }
         }
-        
-        /* Responsive sidebar adjustments */
         @media (max-width: 1023px) {
           .blog-sidebar {
             position: relative;
@@ -270,7 +280,7 @@ export default function BlogPage() {
       `}</style>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10 relative z-10">
-        {/* BREADCRUMB */}
+        {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-sm text-gray-500 dark:text-slate-400 mb-6 blog-animate-in">
           <Link to="/" className="hover:text-pink-500 dark:hover:text-pink-400 transition-colors flex items-center gap-1">
             <FiBookOpen size={13} /> Home
@@ -279,7 +289,7 @@ export default function BlogPage() {
           <span className="text-gray-700 dark:text-slate-200 font-medium">Blog</span>
         </nav>
 
-        {/* HERO SECTION */}
+        {/* Hero Section */}
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-pink-600 via-rose-500 to-orange-500 p-6 md:p-10 mb-8 text-white shadow-xl blog-animate-in" style={{ animationDelay: '0.05s' }}>
           <div className="absolute inset-0 opacity-20 pointer-events-none">
             <div className="absolute -top-32 -right-32 w-96 h-96 bg-white rounded-full blur-3xl" />
@@ -312,7 +322,7 @@ export default function BlogPage() {
           </div>
         </div>
 
-        {/* SEARCH & FILTERS */}
+        {/* Search & Filters */}
         <div className="flex flex-col sm:flex-row gap-3 mb-6 blog-animate-in" style={{ animationDelay: '0.1s' }}>
           <form onSubmit={handleSearch} className="flex-1 relative">
             <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-400" size={18} />
@@ -322,9 +332,9 @@ export default function BlogPage() {
           </form>
           <select value={sort} onChange={(e) => setSort(e.target.value)}
             className="px-4 py-3 rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-slate-900/60 text-gray-800 dark:text-white text-sm font-medium cursor-pointer focus:border-pink-500 outline-none">
-            <option value="latest" className="bg-white dark:bg-slate-900 text-gray-900 dark:text-white">📅 Latest</option>
-            <option value="popular" className="bg-white dark:bg-slate-900 text-gray-900 dark:text-white">🔥 Popular</option>
-            <option value="trending" className="bg-white dark:bg-slate-900 text-gray-900 dark:text-white">📈 Trending</option>
+            <option value="latest">📅 Latest</option>
+            <option value="popular">🔥 Popular</option>
+            <option value="trending">📈 Trending</option>
           </select>
           <button onClick={handleRefresh} disabled={refreshing}
             className="px-4 py-3 rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-gray-500 dark:text-slate-300 hover:text-pink-500 dark:hover:text-pink-400 hover:border-pink-300 dark:hover:border-pink-500/30 transition-all disabled:opacity-50" title="Refresh">
@@ -332,7 +342,7 @@ export default function BlogPage() {
           </button>
         </div>
 
-        {/* CATEGORY PILLS */}
+        {/* Category Pills */}
         <div className="flex gap-2 mb-8 flex-wrap blog-animate-in" style={{ animationDelay: '0.15s' }}>
           <button onClick={() => setCategory('')}
             className={`relative px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 border ${!category
@@ -354,9 +364,9 @@ export default function BlogPage() {
           ))}
         </div>
 
-        {/* MAIN GRID with proper sidebar spacing */}
+        {/* Main Grid */}
         <div className="blog-main-grid grid grid-cols-1 lg:grid-cols-3 gap-8 relative">
-          {/* Posts Column - takes 2/3 on desktop */}
+          {/* Posts Column */}
           <div className="lg:col-span-2 min-w-0">
             {error && (
               <div className="mb-6 p-4 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-500/30 backdrop-blur-md rounded-2xl flex items-center gap-3 blog-animate-in">
@@ -428,6 +438,14 @@ export default function BlogPage() {
                             <button onClick={(e) => handleShare(e, post)} className="flex items-center gap-1.5 text-sm text-gray-400 dark:text-slate-400 hover:text-pink-500 transition-colors">
                               <FiShare2 size={16} />
                             </button>
+                            {/* ═══ FLAG BUTTON (hidden for own posts) ═══ */}
+                            {user?.id !== post.author?.id && (
+                              <button onClick={(e) => handleFlag(e, post.id)}
+                                className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${post.is_flagged ? 'text-orange-500' : 'text-gray-400 dark:text-slate-400 hover:text-orange-500'}`}>
+                                <FiFlag size={16} className={post.is_flagged ? 'fill-current' : ''} />
+                                <span>{post.flags_count || 0}</span>
+                              </button>
+                            )}
                           </div>
                           <div className="flex items-center gap-3">
                             <div className="flex items-center gap-2">
@@ -481,22 +499,21 @@ export default function BlogPage() {
             )}
           </div>
 
-          {/* Sidebar - 1/3 on desktop with proper spacing */}
+          {/* Sidebar */}
           <div className="blog-sidebar space-y-6 lg:sticky lg:top-24 lg:self-start">
             {user?.role === 'admin' && (
-              <div className="p-6 rounded-3xl shadow-xl blog-animate-in"
-                style={{
-                  animationDelay: '0.2s',
-                  ...glassStyle,
-                  background: isDarkTheme
-                    ? 'linear-gradient(135deg, rgba(244,63,94,0.06), rgba(30,41,59,0.45))'
-                    : 'linear-gradient(135deg, rgba(244,63,94,0.04), rgba(255,255,255,0.65))'
-                }}>
+              <div className="p-6 rounded-3xl shadow-xl blog-animate-in" style={{
+                animationDelay: '0.2s',
+                ...glassStyle,
+                background: isDark
+                  ? 'linear-gradient(135deg, rgba(244,63,94,0.06), rgba(30,41,59,0.45))'
+                  : 'linear-gradient(135deg, rgba(244,63,94,0.04), rgba(255,255,255,0.65))'
+              }}>
                 <div className="w-12 h-12 bg-gradient-to-br from-pink-500 to-rose-500 rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-pink-500/25 border border-white/10">
                   <FiEdit3 className="text-white" size={22} />
                 </div>
                 <h3 className="font-bold text-gray-900 dark:text-white mb-2">Share Your Knowledge</h3>
-                <p className="text-sm text-gray-500 dark:text-slate-400 mb-5 leading-relaxed">Write a blog post to help fellow students with course tips, marketplace guides, or campus stories.</p>
+                <p className="text-sm text-gray-500 dark:text-slate-400 mb-5">Write a blog post to help fellow students with course tips, marketplace guides, or campus stories.</p>
                 <button onClick={() => navigate('/blog/create')} className="w-full py-3 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl font-semibold text-sm hover:from-pink-600 hover:to-rose-600 transition-all shadow-lg shadow-pink-500/25 hover:scale-105 border border-white/10">
                   Create New Post
                 </button>
@@ -532,6 +549,7 @@ export default function BlogPage() {
               <h3 className="font-bold text-gray-900 dark:text-white mb-4">Quick Links</h3>
               <div className="space-y-2">
                 <Link to="/blog/create" className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-100/50 dark:hover:bg-white/5 text-sm text-gray-700 dark:text-slate-300 transition-all"><FiEdit3 size={16} className="text-pink-500 dark:text-pink-400" />Write a Post</Link>
+                <Link to="/blog/my-posts" className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-100/50 dark:hover:bg-white/5 text-sm text-gray-700 dark:text-slate-300 transition-all"><FiFileText size={16} className="text-pink-500 dark:text-pink-400" />My Posts & Drafts</Link>
                 <Link to="/announcements" className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-100/50 dark:hover:bg-white/5 text-sm text-gray-700 dark:text-slate-300 transition-all"><FiBookOpen size={16} className="text-purple-500 dark:text-purple-400" />Announcements</Link>
                 <Link to="/opportunities" className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-100/50 dark:hover:bg-white/5 text-sm text-gray-700 dark:text-slate-300 transition-all"><FiStar size={16} className="text-amber-500 dark:text-amber-400" />Opportunities</Link>
               </div>

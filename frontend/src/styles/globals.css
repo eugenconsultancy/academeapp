@@ -7,7 +7,7 @@
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
 
 /* ============================================
-   TAILWIND DIRECTIVES (NOW VALID)
+   TAILWIND DIRECTIVES
    ============================================ */
 @tailwind base;
 @tailwind components;
@@ -18,7 +18,7 @@
    DESIGN TOKENS
 ══════════════════════════════════════ */
 :root {
-  /* ── Font stacks (Option A active) ── */
+  /* ── Font stacks ── */
   --font-display: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
   --font-body:    'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-mono:    'JetBrains Mono', ui-monospace, monospace;
@@ -34,23 +34,17 @@
   --text-3xl:  2.25rem;
   --text-4xl:  3rem;
 
-  /* ─────────────────────────────────────
-     CRITICAL FIX: Line heights that give
-     ascenders/descenders breathing room.
-     Never use 1.0 for headings — clips g,p,y
-  ───────────────────────────────────── */
-  --lh-display: 1.12;   /* giant heroes only */
-  --lh-heading: 1.22;   /* h1–h3             */
-  --lh-snug:    1.38;   /* card titles       */
-  --lh-normal:  1.55;   /* UI copy           */
-  --lh-relaxed: 1.72;   /* body paragraphs   */
+  --lh-display: 1.12;
+  --lh-heading: 1.22;
+  --lh-snug:    1.38;
+  --lh-normal:  1.55;
+  --lh-relaxed: 1.72;
 
-  /* ── Letter spacing ── */
-  --ls-display: -0.030em;  /* large display  */
-  --ls-heading: -0.022em;  /* section heads  */
-  --ls-card:    -0.014em;  /* card titles    */
+  --ls-display: -0.030em;
+  --ls-heading: -0.022em;
+  --ls-card:    -0.014em;
   --ls-body:     0em;
-  --ls-caps:     0.08em;   /* ALL-CAPS tags  */
+  --ls-caps:     0.08em;
 
   /* ── Primary palette (indigo) ── */
   --c-primary-50:  #eef2ff;
@@ -77,26 +71,30 @@
   --c-rose:    #f43f5e;
   --c-blue:    #3b82f6;
 
-  /* ── Semantic ── */
   --c-success: #10b981;
   --c-warning: #f59e0b;
   --c-danger:  #ef4444;
   --c-info:    #06b6d4;
 
-  /* ── Light surfaces ── */
+  /* ══════════════════════════════════════
+     LIGHT THEME – HIGH CONTRAST
+  ══════════════════════════════════════ */
   --bg-base:    #f4f5f9;
   --bg-raised:  #ffffff;
   --bg-sunken:  #e9eaf2;
 
-  --text-1: #0f172a;
-  --text-2: #334155;
-  --text-3: #64748b;
-  --text-4: #94a3b8;
+  /* Primary text – nearly black */
+  --text-1: #0a0f1a;          /* ~4% luminance, pure white would be 0 */
+  /* Secondary text – very dark gray */
+  --text-2: #1e293b;          /* slate‑800 */
+  /* Caption / muted – still 4.6:1 on white */
+  --text-3: #475569;          /* slate‑600 */
+  /* Placeholder / most muted – at least 4.5:1 */
+  --text-4: #64748b;          /* slate‑500 (4.6:1 on #fff) */
 
   --border-subtle: rgba(226, 232, 240, 0.9);
   --border-strong: rgba(203, 213, 225, 0.9);
 
-  /* ── Glass ── */
   --glass-bg:       rgba(255, 255, 255, 0.68);
   --glass-bg-solid: rgba(255, 255, 255, 0.90);
   --glass-border:   rgba(255, 255, 255, 0.55);
@@ -104,7 +102,6 @@
     0 1px 2px rgba(15, 23, 42, 0.04),
     0 6px 24px rgba(15, 23, 42, 0.07);
 
-  /* ── Card ── */
   --card-bg:     rgba(255, 255, 255, 0.84);
   --card-border: rgba(255, 255, 255, 0.55);
   --card-shadow:
@@ -112,7 +109,6 @@
     0 8px 28px rgba(0, 0, 0, 0.07),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
 
-  /* ── Radii ── */
   --r-xs:  8px;
   --r-sm:  12px;
   --r-md:  16px;
@@ -120,7 +116,6 @@
   --r-xl:  26px;
   --r-2xl: 32px;
 
-  /* ── Gradients ── */
   --grad-primary:  linear-gradient(135deg, #6366f1 0%, #8b5cf6 60%, #3b82f6 100%);
   --grad-orange:   linear-gradient(135deg, #ea580c 0%, #f97316 50%, #fb923c 100%);
   --grad-hero:     linear-gradient(135deg, #ea580c 0%, #f97316 30%, #fb923c 55%, #7c3aed 100%);
@@ -129,7 +124,6 @@
   --grad-success:  linear-gradient(135deg, #10b981 0%, #059669 100%);
   --grad-danger:   linear-gradient(135deg, #f43f5e 0%, #dc2626 100%);
 
-  /* ── Motion ── */
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
   --t-fast:   0.15s ease;
@@ -137,17 +131,23 @@
   --t-slow:   0.4s ease;
 }
 
-/* ── Dark theme ── */
+/* ══════════════════════════════════════
+   DARK THEME – HIGH CONTRAST
+══════════════════════════════════════ */
 [data-theme="dark"],
 .dark {
-  --bg-base:    #07090f;
-  --bg-raised:  #0d1117;
-  --bg-sunken:  #030508;
+  --bg-base:    #07090f;         /* deepest blue‑black */
+  --bg-raised:  #0d1117;         /* GitHub dark card */
+  --bg-sunken:  #030508;         /* sunk deeper */
 
-  --text-1: #f8fafc;
-  --text-2: #e2e8f0;
-  --text-3: #94a3b8;
-  --text-4: #475569;
+  /* Primary text – pure white */
+  --text-1: #ffffff;            /* max contrast */
+  /* Secondary text – off‑white */
+  --text-2: #e2e8f0;            /* slate‑200 */
+  /* Caption / muted – still very light */
+  --text-3: #cbd5e1;            /* slate‑300 */
+  /* Placeholder / most muted – light enough for dark surfaces */
+  --text-4: #94a3b8;            /* slate‑400 (~7.5:1 on #0d1117) */
 
   --border-subtle: rgba(51, 65, 85, 0.7);
   --border-strong: rgba(71, 85, 105, 0.7);
@@ -168,14 +168,11 @@
 }
 
 /* ══════════════════════════════════════
-   BASE RESET — TYPOGRAPHY NORMALIZATION
-   Key: kill font-stretch artifacts,
-   ensure overflow: visible on all headings
+   BASE RESET
 ══════════════════════════════════════ */
 @layer base {
   *, *::before, *::after {
     box-sizing: border-box;
-    /* FIX: never compress/stretch text */
     font-stretch: normal;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -184,7 +181,6 @@
   html {
     scroll-behavior: smooth;
     -webkit-text-size-adjust: 100%;
-    /* FIX: no global scale transforms */
     transform: none;
   }
 
@@ -194,9 +190,8 @@
     font-size: var(--text-base);
     font-weight: 400;
     line-height: var(--lh-relaxed);
-    /* FIX: no scaleY, no font-stretch */
     font-stretch: normal;
-    color: var(--text-1);
+    color: var(--text-1);                 /* now uses high‑contrast tokens */
     background-color: var(--bg-base);
     background-image:
       radial-gradient(ellipse at 0% 0%, rgba(234, 88, 12, 0.055) 0%, transparent 50%),
@@ -204,20 +199,10 @@
     background-attachment: fixed;
     transition: background-color var(--t-normal), color var(--t-normal);
     text-rendering: optimizeLegibility;
-    /* FIX: guarantee no vertical squeeze */
     -webkit-transform: none;
     transform: none;
   }
 
-  /*
-   * CRITICAL HEADING FIX
-   * Syne/variable-font weights can cause "wide stretch" artifacts.
-   * Plus Jakarta Sans at 800 is clean. We set:
-   *   overflow: visible  → descenders like g,p,y,q are never clipped
-   *   line-height: 1.22  → enough room above/below
-   *   font-stretch: normal → no horizontal distortion
-   *   transform: none    → no scaleY/scaleX accidents
-   */
   h1, h2, h3, h4, h5, h6 {
     margin: 0;
     font-family: var(--font-display);
@@ -226,7 +211,7 @@
     letter-spacing: var(--ls-heading);
     color: var(--text-1);
     line-height: var(--lh-heading);
-    overflow: visible;          /* ← never clip ascenders/descenders */
+    overflow: visible;
     transform: none;
     -webkit-transform: none;
   }
@@ -251,7 +236,6 @@
     color: var(--text-1);
   }
 
-  /* Scrollbar */
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb {
@@ -463,13 +447,6 @@
     flex-wrap: wrap;
   }
 
-  /* ─────────────────────────────────────
-     FIXED page-title:
-     - font-family → display font (Plus Jakarta Sans)
-     - overflow: visible  → no clipping
-     - line-height: 1.22  → breathing room
-     - letter-spacing: -0.025em  → punchy but not distorted
-  ───────────────────────────────────── */
   .page-title {
     font-family: var(--font-display);
     font-size: clamp(1.5rem, 3.5vw, 2rem);
@@ -491,7 +468,6 @@
     line-height: var(--lh-normal);
   }
 
-  /* ── Section label (ALL-CAPS decorative) ── */
   .section-label {
     font-family: var(--font-body);
     font-size: var(--text-xs);
@@ -504,7 +480,6 @@
     line-height: var(--lh-normal);
   }
 
-  /* ── Empty state ── */
   .empty-state {
     display: flex;
     flex-direction: column;
@@ -529,7 +504,6 @@
     line-height: var(--lh-normal);
   }
 
-  /* ── Divider ── */
   .divider {
     height: 1px;
     background: var(--border-subtle);
@@ -587,7 +561,6 @@
   }
   .modal-close:hover { background: rgba(239,68,68,0.08); color: #ef4444; }
 
-  /* ── Text gradient utilities ── */
   .text-gradient {
     background: var(--grad-primary);
     -webkit-background-clip: text;
@@ -607,33 +580,35 @@
     background-clip: text;
   }
 
-  /* ── Blog content specific (ADD THIS) ── */
+  /* ── Blog content specific ── */
   .blog-content {
-    @apply prose prose-lg dark:prose-invert max-w-none;
+    @apply prose prose-lg max-w-none;
     font-family: 'Lora', Georgia, serif;
     line-height: 1.85;
+    color: var(--text-2);
   }
-  
+  .dark .blog-content {
+    @apply prose-invert;
+    color: var(--text-2);
+  }
   .blog-content p {
     margin-bottom: 1.5em;
     color: var(--text-2);
   }
-  
   .blog-content h1, .blog-content h2, .blog-content h3 {
     font-family: var(--font-display);
     font-weight: 800;
     letter-spacing: -0.025em;
     margin-top: 2em;
     margin-bottom: 0.75em;
+    color: var(--text-1);
     overflow: visible;
   }
-  
   .blog-content a {
     color: var(--c-orange-600);
     text-decoration: underline;
     text-underline-offset: 4px;
   }
-  
   .blog-content blockquote {
     border-left: 4px solid var(--c-orange-500);
     margin: 1.5em 0;
@@ -641,23 +616,25 @@
     background: rgba(234, 88, 12, 0.05);
     border-radius: 0 12px 12px 0;
     font-style: italic;
+    color: var(--text-3);
   }
-  
+  .dark .blog-content blockquote {
+    color: var(--text-3);
+  }
   .blog-content code {
     font-family: var(--font-mono);
     background: rgba(234, 88, 12, 0.08);
     padding: 0.2em 0.4em;
     border-radius: 6px;
     font-size: 0.9em;
+    color: var(--c-orange-700);
   }
-  
   .blog-content pre {
     background: var(--bg-sunken);
     padding: 1.2em;
     border-radius: 12px;
     overflow-x: auto;
   }
-  
   .blog-content img {
     border-radius: 16px;
     margin: 1.5em 0;
@@ -698,48 +675,41 @@
 .animate-pulse-glow  { animation: pulse-glow 2.2s ease-in-out infinite; }
 .animate-spin        { animation: spin 0.9s linear infinite; }
 
-/* ── Stagger helpers ── */
 .stagger-1 { animation-delay: 60ms; }
 .stagger-2 { animation-delay: 120ms; }
 .stagger-3 { animation-delay: 180ms; }
 .stagger-4 { animation-delay: 240ms; }
 
-/* Safe-area bottom */
 .pb-safe { padding-bottom: env(safe-area-inset-bottom, 1rem); }
 
 /* ══════════════════════════════════════
-   UTILITIES LAYER (ADD THIS)
+   UTILITIES LAYER
 ══════════════════════════════════════ */
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
-  
   .bg-gradient-primary {
     background: var(--grad-primary);
   }
-  
   .bg-gradient-orange {
     background: var(--grad-orange);
   }
-  
-  /* Animation delays */
   .animation-delay-2000 {
     animation-delay: 2s;
   }
-  
   .animation-delay-4000 {
     animation-delay: 4s;
   }
 }
 
 /* ══════════════════════════════════════
-   PROSE — Blog/long-form (Legacy support)
+   PROSE — Legacy long‑form
 ══════════════════════════════════════ */
 .prose-academe {
   font-family: 'Lora', Georgia, serif;
   font-size: var(--text-md);
-  line-height: var(--lh-loose, 1.85);
+  line-height: 1.85;
   color: var(--text-2);
 }
 .prose-academe p  { margin-bottom: 1.4em; }

@@ -290,7 +290,7 @@ export default function AnnouncementsPage() {
           background-clip: text;
         }
         .ann-title-group p { 
-          font-size: 0.83rem; color: #94a3b8; font-weight: 500; 
+          font-size: 0.83rem; color: #001d46; font-weight: 500; 
         }
         .dark .ann-title-group h1 { 
           background: linear-gradient(135deg, #f8fafc 0%, #cbd5e1 100%);

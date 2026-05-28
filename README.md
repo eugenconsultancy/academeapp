@@ -910,3 +910,174 @@ Below are common Android Studio / Gradle commands you can run to diagnose and fi
 → Use `adb logcat` (filter by your app’s package name) to see the crash stacktrace.
 
 These commands will help you troubleshoot most common issues during development and testing. Use them from the **Android Studio Terminal** (or your system terminal from the `android/` directory) whenever you hit a problem.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+AttributeError at /admin/accounts/user/
+'User' object has no attribute 'face_embedding'
+Request Method:	GET
+Request URL:	http://localhost:8000/admin/accounts/user/
+Django Version:	4.2
+Exception Type:	AttributeError
+Exception Value:	
+'User' object has no attribute 'face_embedding'
+Exception Location:	C:\Users\GATARA-BJTU\academe\backend\apps\accounts\admin.py, line 31, in has_biometric
+Raised during:	django.contrib.admin.options.changelist_view
+Python Executable:	C:\Users\GATARA-BJTU\academe\backend\venv\Scripts\python.exe
+Python Version:	3.11.9
+Python Path:	
+['C:\\Users\\GATARA-BJTU\\academe\\backend',
+ 'C:\\Users\\GATARA-BJTU\\academe\\backend',
+ 'C:\\Program Files\\Python311\\python311.zip',
+ 'C:\\Program Files\\Python311\\DLLs',
+ 'C:\\Program Files\\Python311\\Lib',
+ 'C:\\Program Files\\Python311',
+ 'C:\\Users\\GATARA-BJTU\\academe\\backend\\venv',
+ 'C:\\Users\\GATARA-BJTU\\academe\\backend\\venv\\Lib\\site-packages']
+Server time:	Tue, 26 May 2026 23:21:55 +0300
+Error during template rendering
+In template C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\jazzmin\templates\admin\change_list.html, error at line 87
+
+'User' object has no attribute 'face_embedding'
+77	                                        </div>
+78	                                        <div class="col-12 col-sm-4">
+79	                                            {% block object-tools %}
+80	                                                {% block object-tools-items %}
+81	                                                    {% change_list_object_tools %}
+82	                                                {% endblock %}
+83	                                            {% endblock %}
+84	                                        </div>
+85	                                    </div>
+86	                                    <hr/>
+87	                                    {% result_list cl %}
+88	                                    {% if action_form and actions_on_bottom and cl.show_admin_actions %}
+89	                                        <div class="row">
+90	                                            <div class="col-12">
+91	                                                {% admin_actions %}
+92	                                            </div>
+93	                                        </div>
+94	                                    {% endif %}
+95	                                {% endblock %}
+96	                            </div>
+97	                        </div>
+
+
+
+
+
+
+ADMIN TT ENTRIES HAVE NO SAVE BUTTON . PLEASE MODIFY THAT. ALSO CAMUS VENUES FOR ADMIN NO BUTTON FOR SAVE
+ SO STICTLY CONCISDER THE BELOW:
+
+ THE NAVBAR RESPONSIVENESS TO MOBILE EVIES AS DEPCITED BY THE IMAGES.
+ THE CENTER OF THE PAGE ON MOBILE DEIVICES THE SIDERBAR IS MASKING SOME PAGE CONTENT, SO ENSURE THE PAGE CONTENT IS CENTERED WELL WITHOUT CONFLICTING WITH THE SIDEBAR(AS DEPICTED IN THE IMAGE ATTACHEDS)
+
+
+
+
+
+ FOR THE BELOW HOMEPAGE SECTIONS, I WANT THEM TO HAVE INTUTIVE DESIGNS , INTUTIVE AND APPEALING HOVER EFFECTS, DESIGNED EACH WITH UNQUE BACKGROUND COLOR RELATABLE TO THE FEATURE AND THE COLORS SHOULD BE COMPATIBLE TO BOTH DARK AND LIGHT MODE: Academic Snapshot
+1
+Attended Today
+25% attended
+4
+Classes
+2
+Urgent Notices
+10
+Opportunities
+
+
+Workspace
+My Classes
+Opportunities
+Announcements
+Found Items
+Campus Map
+Nearby
+
+
+
+FOR ANNOUCMENT THE TEXT IS FAINT GRAY MAKING IT APPEAR LIKE THE BACKEGROUND THUSLY AFEFCTING THE USER INTERFACE EXPERINCE.
+
+
+Something went wrong
+The application encountered an unexpected processing error. Try resetting the page state below.
+
+Error: Objects are not valid as a React child (found: object with keys {id, full_name}). If you meant to render a collection of children, use an array instead.
+
+ALSO THE ADMIN DAHSBOARD INTUIVE AND APPEALING COLORS NEEDED AND STYLINGS

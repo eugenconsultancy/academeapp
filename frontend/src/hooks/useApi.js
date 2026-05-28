@@ -21,7 +21,7 @@ export function useSyncMutation(mutationFn, { key, endpoint, method = 'POST' }) 
                     if (isNetworkErr) {
                         isOffline = true; // fallback to offline queue
                     } else {
-                        throw error; // propagate 4xx/5xx to onError
+                        throw error; // propagate 4xx/5xx(exopound more the dff types or errors) to onError
                     }
                 }
             }

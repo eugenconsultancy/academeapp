@@ -1,6 +1,6 @@
 // Navbar.jsx — Campus OS aligned
-// Cleaner, no animated glow blobs, unified amber/indigo color system
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+// Updated: theme now uses ThemeContext, reactive across entire app
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   FiMenu, FiX, FiZap, FiChevronDown,
@@ -10,16 +10,17 @@ import {
   FiSun, FiMoon, FiMonitor, FiSearch, FiType
 } from 'react-icons/fi';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';   // ← NEW import
 
 const navLinks = [
-  { path: '/', label: 'Home', icon: FiHome, color: '#6366f1' },
-  { path: '/announcements', label: 'Announcements', icon: FiBell, color: '#f59e0b' },
-  { path: '/blog', label: 'Blog', icon: FiBookOpen, color: '#6366f1' },
-  { path: '/opportunities', label: 'Opportunities', icon: FiBriefcase, color: '#10b981' },
-  { path: '/found-items', label: 'Found Items', icon: FiPackage, color: '#6366f1' },
-  { path: '/classes', label: 'Classes', icon: FiBook, color: '#6366f1' },
-  { path: '/nearby-classes', label: 'Nearby', icon: FiNavigation, color: '#f59e0b' },
-  { path: '/campus-map', label: 'Map', icon: FiMapPin, color: '#6366f1' },
+  { path: '/', label: 'Home', icon: FiHome, color: '#5356f3', accent: 'indigo' },
+  { path: '/announcements', label: 'Announcements', icon: FiBell, color: '#f59e0b', accent: 'amber' },
+  { path: '/blog', label: 'Blog', icon: FiBookOpen, color: '#8b5cf6', accent: 'purple' },
+  { path: '/opportunities', label: 'Opportunities', icon: FiBriefcase, color: '#10b981', accent: 'green' },
+  { path: '/found-items', label: 'Found Items', icon: FiPackage, color: '#d83af8', accent: 'pink' },
+  { path: '/classes', label: 'Classes', icon: FiBook, color: '#6366f1', accent: 'indigo' },
+  { path: '/nearby-classes', label: 'Nearby', icon: FiNavigation, color: '#f59e0b', accent: 'amber' },
+  { path: '/campus-map', label: 'Map', icon: FiMapPin, color: '#06b6d4', accent: 'cyan' },
 ];
 
 const themes = [
@@ -42,21 +43,23 @@ const suggestions = [
 ];
 
 export default function Navbar({ onToggleSidebar }) {
+  // ── Theme from context (reactive, persisted, app‑wide) ──
+  const { theme, setTheme, isDark } = useTheme();
+
   const [profileOpen, setProfileOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'system');
   const [currentFont, setCurrentFont] = useState(() => localStorage.getItem('font') || 'outfit');
   const [themeOpen, setThemeOpen] = useState(false);
   const [fontOpen, setFontOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState([
     { id: 1, text: 'New announcement posted', time: '5m ago', read: false },
     { id: 2, text: 'Class schedule updated', time: '1h ago', read: false },
     { id: 3, text: 'Found item near library', time: '3h ago', read: true },
   ]);
-  const [notifOpen, setNotifOpen] = useState(false);
 
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -68,18 +71,7 @@ export default function Navbar({ onToggleSidebar }) {
   const isLeader = ['admin', 'student_leader', 'faculty_rep'].includes(user?.role);
   const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
 
-  /* ── Theme sync ── */
-  useEffect(() => {
-    const root = document.documentElement;
-    if (theme === 'system') {
-      root.classList.toggle('dark', window.matchMedia('(prefers-color-scheme: dark)').matches);
-    } else {
-      root.classList.toggle('dark', theme === 'dark');
-    }
-    localStorage.setItem('theme', theme);
-  }, [theme]);
-
-  /* ── Font sync ── */
+  /* ── Font sync (unchanged) ── */
   useEffect(() => {
     const font = fonts.find(f => f.id === currentFont);
     if (font) document.documentElement.style.setProperty('--nav-font', font.fontFamily);
@@ -95,7 +87,7 @@ export default function Navbar({ onToggleSidebar }) {
 
   /* ── Click outside search ── */
   useEffect(() => {
-    const handler = (e) => {
+    const handler = e => {
       if (searchRef.current && !searchRef.current.contains(e.target)) setSearchOpen(false);
     };
     document.addEventListener('mousedown', handler);
@@ -104,22 +96,24 @@ export default function Navbar({ onToggleSidebar }) {
 
   /* ── Keyboard shortcuts ── */
   useEffect(() => {
-    const handler = (e) => {
+    const handler = e => {
       if (e.key === 'Escape') {
-        setProfileOpen(false);
-        setThemeOpen(false);
-        setFontOpen(false);
-        setNotifOpen(false);
-        setSearchOpen(false);
+        setProfileOpen(false); setThemeOpen(false); setFontOpen(false);
+        setNotifOpen(false); setSearchOpen(false); setMobileOpen(false);
       }
-      if (e.key === '/' && !e.target.closest('input, textarea')) {
-        e.preventDefault();
-        setSearchOpen(true);
+      if (e.key === '/' && !e.target.closest('input,textarea')) {
+        e.preventDefault(); setSearchOpen(true);
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, []);
+
+  /* ── Lock body scroll when drawer open ── */
+  useEffect(() => {
+    document.body.style.overflow = mobileOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [mobileOpen]);
 
   const getGreeting = () => {
     const h = new Date().getHours();
@@ -135,11 +129,12 @@ export default function Navbar({ onToggleSidebar }) {
   const markAllRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })));
 
   const closeAll = () => {
-    setProfileOpen(false);
-    setThemeOpen(false);
-    setFontOpen(false);
-    setNotifOpen(false);
+    setProfileOpen(false); setThemeOpen(false);
+    setFontOpen(false); setNotifOpen(false);
   };
+
+  const ThemeIcon = theme === 'dark' ? FiMoon : theme === 'light' ? FiSun : FiMonitor;
+  const currentFontObj = fonts.find(f => f.id === currentFont) || fonts[0];
 
   return (
     <>
@@ -148,9 +143,7 @@ export default function Navbar({ onToggleSidebar }) {
 
         :root { --nav-font: 'Outfit', sans-serif; }
 
-        /* ══════════════════════════════════
-           NAV ROOT
-        ══════════════════════════════════ */
+        /* ═══════ NAV ROOT ═══════ */
         .nav-root {
           font-family: var(--nav-font);
           position: fixed;
@@ -159,634 +152,565 @@ export default function Navbar({ onToggleSidebar }) {
           height: 60px;
           display: flex;
           align-items: center;
-          padding: 0 20px;
-          gap: 14px;
+          padding: 0 12px;
+          gap: 6px;
           transition: background .25s, box-shadow .25s;
         }
         .nav-root.scrolled {
-          background: rgba(255,255,255,.94);
+          background: rgba(255,255,255,0.92);
           backdrop-filter: blur(20px) saturate(180%);
           -webkit-backdrop-filter: blur(20px) saturate(180%);
-          box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 2px 16px rgba(0,0,0,.05);
+          box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 4px 24px rgba(0,0,0,.06);
         }
         .nav-root.flat {
-          background: rgba(255,255,255,.75);
+          background: rgba(245,243,255,0.85);
           backdrop-filter: blur(14px);
           -webkit-backdrop-filter: blur(14px);
-          border-bottom: 1px solid rgba(0,0,0,.05);
+          border-bottom: 1px solid rgba(99,102,241,.08);
         }
         .dark .nav-root.scrolled {
           background: rgba(9,10,20,.94);
-          box-shadow: 0 1px 0 rgba(255,255,255,.04), 0 2px 16px rgba(0,0,0,.3);
+          box-shadow: 0 1px 0 rgba(255,255,255,.04), 0 4px 24px rgba(0,0,0,.3);
         }
         .dark .nav-root.flat {
-          background: rgba(9,10,20,.78);
+          background: rgba(9,10,20,.82);
           border-bottom-color: rgba(255,255,255,.05);
         }
 
-        /* ══════════════════════════════════
-           BRANDING
-        ══════════════════════════════════ */
+        /* ═══════ BRANDING ═══════ */
         .nav-logo {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          text-decoration: none;
-          flex-shrink: 0;
+          display: flex; align-items: center; gap: 9px;
+          text-decoration: none; flex-shrink: 0;
         }
         .nav-logo-mark {
           width: 36px; height: 36px;
-          background: #0F172A;
+          background: linear-gradient(135deg, #0F172A 0%, #1e1b4b 100%);
           border-radius: 10px;
           display: flex; align-items: center; justify-content: center;
           flex-shrink: 0;
-          box-shadow: 0 2px 8px rgba(0,0,0,.18);
-          position: relative;
-          overflow: hidden;
-          transition: transform .2s;
+          box-shadow: 0 2px 10px rgba(83,86,243,.35);
+          position: relative; overflow: hidden;
+          transition: transform .2s, box-shadow .2s;
         }
         .nav-logo-mark::after {
           content: '';
-          position: absolute;
-          inset: 0;
-          background: linear-gradient(135deg, rgba(245,158,11,.3), transparent);
+          position: absolute; inset: 0;
+          background: linear-gradient(135deg, rgba(245,158,11,.35), transparent 60%);
           border-radius: inherit;
         }
-        .nav-logo-mark:hover { transform: scale(1.04); }
+        .nav-logo-mark:hover { transform: scale(1.06); box-shadow: 0 4px 16px rgba(83,86,243,.45); }
         .nav-logo-text {
-          font-size: 1.05rem;
-          font-weight: 800;
-          letter-spacing: -.03em;
-          color: #111827;
+          font-size: 1.05rem; font-weight: 800;
+          letter-spacing: -.035em; color: #0f172a;
           transition: color .2s;
         }
-        .dark .nav-logo-text { color: #f9fafb; }
+        .dark .nav-logo-text { color: #f1f5f9; }
         @media (max-width: 640px) {
           .nav-logo-text { display: none; }
           .nav-logo-mark { width: 34px; height: 34px; border-radius: 9px; }
         }
 
-        /* ══════════════════════════════════
-           DESKTOP NAV LINKS
-        ══════════════════════════════════ */
+        /* ═══════ DESKTOP NAV LINKS ═══════ */
         .nav-links {
-          display: none;
-          align-items: center;
-          gap: 2px;
-          margin-left: 16px;
-          overflow-x: auto;
-          scrollbar-width: none;
+          display: none; align-items: center; gap: 1px;
+          margin-left: 4px; overflow-x: auto; scrollbar-width: none;
         }
         .nav-links::-webkit-scrollbar { display: none; }
         @media (min-width: 768px) { .nav-links { display: flex; } }
 
         .nav-link {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          padding: 7px 13px;
-          border-radius: 9px;
-          font-size: .8rem;
-          font-weight: 600;
-          letter-spacing: -.01em;
-          text-decoration: none;
-          color: #6b7280;
-          transition: color .18s, background .18s;
-          white-space: nowrap;
-          position: relative;
+          display: flex; align-items: center; gap: 5px;
+          padding: 6px 10px; border-radius: 9px;
+          font-size: .75rem; font-weight: 600;
+          letter-spacing: -.01em; text-decoration: none;
+          color: #374151;
+          transition: color .15s, background .15s;
+          white-space: nowrap; position: relative;
         }
-        .nav-link:hover { color: #374151; background: rgba(0,0,0,.04); }
-        .dark .nav-link { color: #9ca3af; }
-        .dark .nav-link:hover { color: #e5e7eb; background: rgba(255,255,255,.06); }
+        .nav-link:hover { background: rgba(99,102,241,.07); color: #4f46e5; }
+        .dark .nav-link { color: #94a3b8; }
+        .dark .nav-link:hover { color: #e2e8f0; background: rgba(255,255,255,.06); }
 
-        .nav-link.active {
-          font-weight: 700;
-          background: rgba(99,102,241,.1);
-          color: #6366f1;
-        }
-        .nav-link.active[data-accent="amber"] { background: rgba(245,158,11,.1); color: #d97706; }
-        .nav-link.active[data-accent="green"]  { background: rgba(16,185,129,.1);  color: #059669; }
-        .dark .nav-link.active { background: rgba(99,102,241,.15); color: #a5b4fc; }
-        .dark .nav-link.active[data-accent="amber"] { background: rgba(245,158,11,.12); color: #fbbf24; }
-        .dark .nav-link.active[data-accent="green"]  { background: rgba(16,185,129,.12);  color: #34d399; }
+        /* Active states per accent colour */
+        .nav-link.active-indigo { background: rgba(99,102,241,.1);  color: #6366f1; font-weight:700; }
+        .nav-link.active-amber  { background: rgba(245,158,11,.1);  color: #d97706; font-weight:700; }
+        .nav-link.active-green  { background: rgba(16,185,129,.1);  color: #059669; font-weight:700; }
+        .nav-link.active-pink   { background: rgba(216,58,248,.1);  color: #c026d3; font-weight:700; }
+        .nav-link.active-purple { background: rgba(139,92,246,.1);  color: #7c3aed; font-weight:700; }
+        .nav-link.active-cyan   { background: rgba(6,182,212,.1);   color: #0891b2; font-weight:700; }
+
+        .dark .nav-link.active-indigo { background: rgba(99,102,241,.18);  color: #a5b4fc; }
+        .dark .nav-link.active-amber  { background: rgba(245,158,11,.15);  color: #fbbf24; }
+        .dark .nav-link.active-green  { background: rgba(16,185,129,.15);  color: #34d399; }
+        .dark .nav-link.active-pink   { background: rgba(216,58,248,.15);  color: #e879f9; }
+        .dark .nav-link.active-purple { background: rgba(139,92,246,.18);  color: #c4b5fd; }
+        .dark .nav-link.active-cyan   { background: rgba(6,182,212,.15);   color: #22d3ee; }
 
         /* Active underbar */
-        .nav-link.active::after {
+        .nav-link[class*="active-"]::after {
           content: '';
-          position: absolute;
-          bottom: 3px;
-          left: 50%;
+          position: absolute; bottom: 3px; left: 50%;
           transform: translateX(-50%);
-          width: 18px;
-          height: 2.5px;
-          border-radius: 99px;
-          background: currentColor;
-          opacity: .6;
+          width: 16px; height: 2px;
+          border-radius: 99px; background: currentColor; opacity: .7;
         }
 
-        /* Greeting */
+        /* ═══════ GREETING ═══════ */
         .nav-greeting {
-          font-size: .75rem;
-          font-weight: 500;
-          color: #9ca3af;
-          white-space: nowrap;
+          font-size: .72rem; font-weight: 600;
+          color: #06b6d4; white-space: nowrap; letter-spacing: -.01em;
         }
-        @media (max-width: 1024px) { .nav-greeting { display: none; } }
-
+        @media (max-width: 1100px) { .nav-greeting { display: none; } }
         .nav-spacer { flex: 1; }
 
-        /* ══════════════════════════════════
-           ICON BUTTONS (search, notif, theme, font)
-        ══════════════════════════════════ */
+        /* ═══════ ACTIONS ROW ═══════ */
+        .nav-actions { display: flex; align-items: center; gap: 4px; }
+
+        /* ── Base icon button ── */
         .nav-icon-btn {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 36px; height: 36px;
+          display: flex; align-items: center; justify-content: center;
+          height: 34px; min-width: 34px;
           border-radius: 10px;
-          border: 1px solid rgba(0,0,0,.07);
-          background: rgba(255,255,255,.6);
+          border: 1.5px solid transparent;
           cursor: pointer;
-          color: #6b7280;
-          transition: background .15s, border-color .15s, color .15s;
+          transition: transform .15s, box-shadow .15s, filter .15s;
           position: relative;
           font-family: var(--nav-font);
-          font-size: .78rem;
-          font-weight: 600;
-          gap: 5px;
-          padding: 0 10px;
+          font-size: .74rem; font-weight: 700;
+          gap: 5px; padding: 0 10px;
           white-space: nowrap;
+          flex-shrink: 0;
         }
-        .nav-icon-btn:hover {
-          background: rgba(255,255,255,.95);
+        .nav-icon-btn.icon-only { padding: 0; width: 34px; }
+        .nav-icon-btn:hover { transform: translateY(-1px); filter: brightness(1.06); }
+        .nav-icon-btn:active { transform: translateY(0); }
+        .nav-icon-btn:focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; }
+
+        /* ── Search button: indigo ── */
+        .nav-btn-search {
+          background: linear-gradient(135deg, rgba(99,102,241,.12), rgba(99,102,241,.06));
           border-color: rgba(99,102,241,.25);
           color: #6366f1;
         }
-        .nav-icon-btn:focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; }
-        .dark .nav-icon-btn {
-          background: rgba(15,23,42,.7);
-          border-color: rgba(255,255,255,.08);
-          color: #9ca3af;
+        .nav-btn-search:hover { background: rgba(99,102,241,.18); box-shadow: 0 3px 12px rgba(99,102,241,.25); }
+        .dark .nav-btn-search { background: rgba(99,102,241,.15); border-color: rgba(99,102,241,.3); color: #a5b4fc; }
+
+        /* ── Notification button: amber ── */
+        .nav-btn-notif {
+          background: linear-gradient(135deg, rgba(245,158,11,.12), rgba(245,158,11,.06));
+          border-color: rgba(245,158,11,.28);
+          color: #d97706;
         }
-        .dark .nav-icon-btn:hover {
-          background: rgba(30,41,59,.9);
-          border-color: rgba(99,102,241,.3);
-          color: #a5b4fc;
+        .nav-btn-notif:hover { background: rgba(245,158,11,.18); box-shadow: 0 3px 12px rgba(245,158,11,.25); }
+        .dark .nav-btn-notif { background: rgba(245,158,11,.15); border-color: rgba(245,158,11,.3); color: #fbbf24; }
+
+        /* ── Theme button: violet ── */
+        .nav-btn-theme {
+          background: linear-gradient(135deg, rgba(139,92,246,.12), rgba(139,92,246,.06));
+          border-color: rgba(139,92,246,.25);
+          color: #7c3aed;
+        }
+        .nav-btn-theme:hover { background: rgba(139,92,246,.18); box-shadow: 0 3px 12px rgba(139,92,246,.22); }
+        .dark .nav-btn-theme { background: rgba(139,92,246,.15); border-color: rgba(139,92,246,.3); color: #c4b5fd; }
+
+        /* ── Font button: teal ── */
+        .nav-btn-font {
+          background: linear-gradient(135deg, rgba(20,184,166,.12), rgba(20,184,166,.06));
+          border-color: rgba(20,184,166,.25);
+          color: #0d9488;
+        }
+        .nav-btn-font:hover { background: rgba(20,184,166,.18); box-shadow: 0 3px 12px rgba(20,184,166,.22); }
+        .dark .nav-btn-font { background: rgba(20,184,166,.15); border-color: rgba(20,184,166,.3); color: #2dd4bf; }
+
+        /* Hide labels on smaller screens */
+        @media (max-width: 960px) {
+          .nav-btn-label { display: none; }
+          .nav-icon-btn:not(.icon-only) { padding: 0; width: 34px; }
         }
 
-        /* Compact icon-only variant */
-        .nav-icon-btn.icon-only { padding: 0; width: 36px; }
+        /* ═══════ NOTIFICATION BADGE ═══════ */
+        .nav-notif-badge {
+          position: absolute; top: 4px; right: 4px;
+          min-width: 15px; height: 15px; padding: 0 3px;
+          border-radius: 99px;
+          background: linear-gradient(135deg, #f59e0b, #ef4444);
+          color: white; font-size: .55rem; font-weight: 800;
+          display: flex; align-items: center; justify-content: center;
+          border: 2px solid white; letter-spacing: 0;
+        }
+        .dark .nav-notif-badge { border-color: #0a0f1e; }
 
-        /* ── Search dropdown ── */
-        .nav-search-container { position: relative; }
-        .nav-search-dropdown {
-          position: absolute;
-          top: calc(100% + 8px);
-          right: 0;
-          width: 300px;
-          background: rgba(255,255,255,.98);
-          backdrop-filter: blur(20px);
+        /* ═══════ DROPDOWNS SHARED ═══════ */
+        .nav-dropdown-wrap { position: relative; }
+        @keyframes navDropIn {
+          from { opacity: 0; transform: translateY(-8px) scale(.97); }
+          to   { opacity: 1; transform: translateY(0)    scale(1);   }
+        }
+        .nav-drop {
+          position: absolute; right: 0; top: calc(100% + 10px);
+          background: rgba(255,255,255,.99);
+          backdrop-filter: blur(24px);
           border: 1px solid rgba(0,0,0,.07);
           border-radius: 16px;
-          box-shadow: 0 8px 28px rgba(0,0,0,.1);
-          padding: 12px;
+          box-shadow: 0 12px 40px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.06);
+          overflow: hidden;
           animation: navDropIn .18s cubic-bezier(.16,1,.3,1);
           z-index: 60;
         }
-        .dark .nav-search-dropdown {
+        .dark .nav-drop {
           background: rgba(9,10,20,.98);
-          border-color: rgba(255,255,255,.07);
+          border-color: rgba(255,255,255,.08);
+          box-shadow: 0 12px 40px rgba(0,0,0,.5);
         }
+        @media (max-width: 640px) {
+          .nav-drop {
+            position: fixed; top: 68px;
+            left: 12px; right: 12px; width: auto;
+          }
+        }
+
+        /* Search dropdown */
+        .nav-search-drop { width: 300px; padding: 12px; }
         .nav-search-input {
-          width: 100%;
-          padding: 9px 13px;
-          border: 1px solid rgba(0,0,0,.09);
+          width: 100%; padding: 9px 13px;
+          border: 1.5px solid rgba(99,102,241,.2);
           border-radius: 10px;
-          font-family: var(--nav-font);
-          font-size: .85rem;
-          background: rgba(0,0,0,.02);
-          outline: none;
-          transition: border-color .15s, box-shadow .15s;
-          color: #111827;
+          font-family: var(--nav-font); font-size: .84rem;
+          background: rgba(99,102,241,.04);
+          outline: none; transition: border-color .15s, box-shadow .15s;
+          color: #111827; box-sizing: border-box;
         }
         .nav-search-input:focus {
           border-color: #6366f1;
           box-shadow: 0 0 0 3px rgba(99,102,241,.1);
         }
         .dark .nav-search-input {
-          background: rgba(255,255,255,.05);
-          border-color: rgba(255,255,255,.1);
-          color: #f3f4f6;
+          background: rgba(99,102,241,.08);
+          border-color: rgba(99,102,241,.2); color: #f1f5f9;
         }
-        .nav-search-suggestion {
-          padding: 8px 12px;
-          border-radius: 8px;
-          cursor: pointer;
-          font-size: .83rem;
-          color: #374151;
-          transition: background .12s;
-          margin-top: 2px;
+        .nav-search-item {
+          padding: 8px 11px; border-radius: 8px;
+          cursor: pointer; font-size: .82rem; color: #374151;
+          transition: background .1s, color .1s; margin-top: 2px;
         }
-        .nav-search-suggestion:hover { background: rgba(99,102,241,.07); color: #6366f1; }
-        .dark .nav-search-suggestion { color: #d1d5db; }
+        .nav-search-item:hover { background: rgba(99,102,241,.08); color: #6366f1; }
+        .dark .nav-search-item { color: #cbd5e1; }
 
-        /* ── Notification badge ── */
-        .nav-notif-badge {
-          position: absolute;
-          top: 5px; right: 5px;
-          min-width: 16px; height: 16px;
-          padding: 0 3px;
-          border-radius: 99px;
-          background: #f59e0b;
-          color: white;
-          font-size: .58rem;
-          font-weight: 800;
-          display: flex; align-items: center; justify-content: center;
-          border: 2px solid white;
-          letter-spacing: 0;
-        }
-        .dark .nav-notif-badge { border-color: #0a0f1e; }
-
-        /* ── Notification dropdown ── */
-        .nav-notif-dropdown {
-          position: absolute;
-          top: calc(100% + 8px);
-          right: 0;
-          width: 300px;
-          background: rgba(255,255,255,.98);
-          backdrop-filter: blur(20px);
-          border: 1px solid rgba(0,0,0,.07);
-          border-radius: 16px;
-          box-shadow: 0 8px 28px rgba(0,0,0,.1);
-          overflow: hidden;
-          animation: navDropIn .18s cubic-bezier(.16,1,.3,1);
-          z-index: 60;
-        }
-        .dark .nav-notif-dropdown {
-          background: rgba(9,10,20,.98);
-          border-color: rgba(255,255,255,.07);
-        }
+        /* Notification dropdown */
+        .nav-notif-drop { width: 300px; }
         .nav-notif-head {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
+          display: flex; justify-content: space-between; align-items: center;
           padding: 13px 16px;
           border-bottom: 1px solid rgba(0,0,0,.05);
-          font-size: .82rem;
-          font-weight: 700;
-          color: #111827;
+          font-size: .82rem; font-weight: 700; color: #0f172a;
         }
-        .dark .nav-notif-head { border-bottom-color: rgba(255,255,255,.05); color: #f9fafb; }
-        .nav-notif-mark {
-          font-size: .72rem;
-          font-weight: 700;
-          color: #6366f1;
-          background: none;
-          border: none;
-          cursor: pointer;
-          font-family: var(--nav-font);
-          transition: color .15s;
+        .dark .nav-notif-head { border-bottom-color: rgba(255,255,255,.06); color: #f1f5f9; }
+        .nav-notif-action {
+          font-size: .7rem; font-weight: 700; color: #6366f1;
+          background: none; border: none; cursor: pointer;
+          font-family: var(--nav-font); transition: color .15s;
         }
-        .nav-notif-mark:hover { color: #4f46e5; }
+        .nav-notif-action:hover { color: #4f46e5; }
         .nav-notif-item {
-          padding: 11px 16px;
-          border-bottom: 1px solid rgba(0,0,0,.04);
-          cursor: pointer;
-          transition: background .12s;
+          padding: 11px 16px; border-bottom: 1px solid rgba(0,0,0,.04);
+          cursor: pointer; transition: background .1s;
         }
+        .nav-notif-item:last-child { border-bottom: none; }
         .nav-notif-item:hover { background: rgba(0,0,0,.02); }
         .dark .nav-notif-item:hover { background: rgba(255,255,255,.03); }
         .nav-notif-item.unread { background: rgba(99,102,241,.04); }
-        .nav-notif-item-text { font-size: .82rem; color: #374151; font-weight: 500; }
-        .dark .nav-notif-item-text { color: #d1d5db; }
-        .nav-notif-item-time { font-size: .68rem; color: #9ca3af; margin-top: 3px; }
+        .dark .nav-notif-item.unread { background: rgba(99,102,241,.07); }
+        .nav-notif-text { font-size: .8rem; color: #334155; font-weight: 500; }
+        .dark .nav-notif-text { color: #cbd5e1; }
+        .nav-notif-time { font-size: .67rem; color: #94a3b8; margin-top: 3px; }
         .nav-notif-footer {
-          padding: 9px 16px;
-          text-align: center;
-          border-top: 1px solid rgba(0,0,0,.04);
+          padding: 9px 16px; text-align: center;
+          border-top: 1px solid rgba(0,0,0,.05);
         }
-        .dark .nav-notif-footer { border-top-color: rgba(255,255,255,.04); }
-        .nav-notif-view-all {
-          font-size: .78rem;
-          font-weight: 700;
-          color: #6366f1;
-          background: none;
-          border: none;
-          cursor: pointer;
-          font-family: var(--nav-font);
-          transition: color .15s;
+        .dark .nav-notif-footer { border-top-color: rgba(255,255,255,.05); }
+        .nav-notif-footer button {
+          font-size: .77rem; font-weight: 700; color: #6366f1;
+          background: none; border: none; cursor: pointer;
+          font-family: var(--nav-font); transition: color .15s;
         }
-        .nav-notif-view-all:hover { color: #4f46e5; }
+        .nav-notif-footer button:hover { color: #4f46e5; }
 
-        /* ── Generic dropdown ── */
-        .nav-dropdown {
-          position: absolute;
-          right: 0;
-          top: calc(100% + 8px);
-          width: 240px;
-          background: rgba(255,255,255,.98);
-          backdrop-filter: blur(20px);
-          border: 1px solid rgba(0,0,0,.07);
-          border-radius: 16px;
-          box-shadow: 0 8px 28px rgba(0,0,0,.1);
-          overflow: hidden;
-          animation: navDropIn .18s cubic-bezier(.16,1,.3,1);
-          z-index: 60;
-        }
-        .dark .nav-dropdown {
-          background: rgba(9,10,20,.98);
-          border-color: rgba(255,255,255,.07);
-          box-shadow: 0 8px 28px rgba(0,0,0,.4);
-        }
-        @keyframes navDropIn {
-          from { opacity: 0; transform: translateY(-6px) scale(.98); }
-          to   { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        .nav-dropdown-body { padding: 6px; }
+        /* Generic option dropdown */
+        .nav-option-drop { width: 200px; padding: 6px; }
         .nav-option-btn {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          width: 100%;
-          padding: 8px 12px;
-          border-radius: 9px;
-          border: none;
-          background: transparent;
-          cursor: pointer;
-          font-family: var(--nav-font);
-          font-size: .82rem;
-          font-weight: 500;
-          color: #374151;
-          transition: background .12s, color .12s;
-          text-align: left;
+          display: flex; align-items: center; gap: 9px;
+          width: 100%; padding: 8px 11px; border-radius: 9px;
+          border: none; background: transparent; cursor: pointer;
+          font-family: var(--nav-font); font-size: .8rem; font-weight: 500;
+          color: #374151; transition: background .1s, color .1s; text-align: left;
         }
         .nav-option-btn:hover { background: rgba(0,0,0,.04); }
-        .nav-option-btn.active { background: rgba(99,102,241,.1); color: #6366f1; font-weight: 700; }
-        .dark .nav-option-btn { color: #d1d5db; }
+        .nav-option-btn.selected { background: rgba(99,102,241,.1); color: #6366f1; font-weight: 700; }
+        .dark .nav-option-btn { color: #cbd5e1; }
         .dark .nav-option-btn:hover { background: rgba(255,255,255,.06); }
-        .dark .nav-option-btn.active { background: rgba(99,102,241,.15); color: #a5b4fc; }
+        .dark .nav-option-btn.selected { background: rgba(99,102,241,.18); color: #a5b4fc; }
 
-        /* ── Actions container ── */
-        .nav-actions { display: flex; align-items: center; gap: 6px; }
+        /* Font-specific preview */
+        .nav-font-preview { font-size: .72rem; opacity: .6; margin-left: auto; }
 
-        /* ══════════════════════════════════
-           PROFILE BUTTON
-        ══════════════════════════════════ */
+        /* ═══════ PROFILE BUTTON ═══════ */
         .nav-profile-btn {
-          display: flex;
-          align-items: center;
-          gap: 9px;
-          padding: 5px 11px 5px 5px;
+          display: flex; align-items: center; gap: 7px;
+          padding: 4px 10px 4px 4px;
           border-radius: 99px;
-          border: 1px solid rgba(0,0,0,.07);
-          background: rgba(255,255,255,.9);
-          cursor: pointer;
-          transition: all .18s;
-          box-shadow: 0 1px 3px rgba(0,0,0,.05);
-          font-family: var(--nav-font);
+          border: 1.5px solid rgba(99,102,241,.2);
+          background: linear-gradient(135deg, rgba(99,102,241,.08), rgba(139,92,246,.05));
+          cursor: pointer; transition: all .18s;
+          box-shadow: 0 1px 4px rgba(99,102,241,.08);
+          font-family: var(--nav-font); flex-shrink: 0;
         }
         .nav-profile-btn:hover {
-          border-color: rgba(99,102,241,.25);
-          background: white;
-          box-shadow: 0 3px 10px rgba(99,102,241,.1);
+          border-color: rgba(99,102,241,.4);
+          background: linear-gradient(135deg, rgba(99,102,241,.14), rgba(139,92,246,.1));
+          box-shadow: 0 4px 14px rgba(99,102,241,.18);
+          transform: translateY(-1px);
         }
         .nav-profile-btn:focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; }
         .dark .nav-profile-btn {
-          background: rgba(15,23,42,.85);
-          border-color: rgba(255,255,255,.08);
-          box-shadow: 0 1px 3px rgba(0,0,0,.2);
-        }
-        .dark .nav-profile-btn:hover {
-          background: rgba(30,41,59,.95);
+          background: linear-gradient(135deg, rgba(99,102,241,.18), rgba(139,92,246,.1));
           border-color: rgba(99,102,241,.3);
         }
-        .nav-avatar {
-          width: 30px; height: 30px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, #0F172A, #6366f1);
-          color: #fff;
-          font-size: .7rem;
-          font-weight: 800;
-          display: flex; align-items: center; justify-content: center;
-          flex-shrink: 0;
-          letter-spacing: .02em;
+        .dark .nav-profile-btn:hover {
+          background: linear-gradient(135deg, rgba(99,102,241,.26), rgba(139,92,246,.18));
+          border-color: rgba(99,102,241,.5);
         }
-        .nav-avatar-wrapper { position: relative; }
+        .nav-avatar {
+          width: 28px; height: 28px; border-radius: 50%;
+          background: linear-gradient(135deg, #0F172A, #6366f1);
+          color: #fff; font-size: .64rem; font-weight: 800;
+          display: flex; align-items: center; justify-content: center;
+          flex-shrink: 0; letter-spacing: .02em;
+        }
+        .nav-avatar-wrap { position: relative; }
         .nav-status-dot {
-          position: absolute;
-          bottom: 0; right: 0;
-          width: 8px; height: 8px;
-          border-radius: 50%;
-          background: #10b981;
-          border: 2px solid white;
+          position: absolute; bottom: 0; right: 0;
+          width: 7px; height: 7px; border-radius: 50%;
+          background: #10b981; border: 2px solid white;
         }
         .dark .nav-status-dot { border-color: #0a0f1e; }
         .nav-profile-name {
-          font-size: .82rem;
-          font-weight: 600;
-          color: #1f2937;
-          letter-spacing: -.01em;
-          max-width: 100px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
+          font-size: .78rem; font-weight: 700; color: #1e293b;
+          letter-spacing: -.01em; max-width: 78px;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
-        .dark .nav-profile-name { color: #f3f4f6; }
-        .nav-chevron { color: #9ca3af; transition: transform .18s; }
+        .dark .nav-profile-name { color: #e2e8f0; }
+        @media (max-width: 480px) {
+          .nav-profile-name { display: none; }
+          .nav-profile-btn { padding: 4px; border-radius: 50%; }
+        }
+        .nav-chevron { color: #94a3b8; transition: transform .18s; flex-shrink: 0; }
         .nav-chevron.open { transform: rotate(180deg); }
+        @media (max-width: 480px) { .nav-chevron { display: none; } }
 
-        /* ── Profile dropdown extras ── */
+        /* ── Profile dropdown ── */
+        .nav-profile-drop { width: 230px; }
         .nav-profile-head {
           padding: 14px 16px;
           border-bottom: 1px solid rgba(0,0,0,.05);
+          background: linear-gradient(135deg, rgba(99,102,241,.05), rgba(139,92,246,.03));
         }
-        .dark .nav-profile-head { border-bottom-color: rgba(255,255,255,.05); }
-        .nav-profile-head-name { font-size: .88rem; font-weight: 700; color: #111827; }
-        .dark .nav-profile-head-name { color: #f9fafb; }
-        .nav-profile-head-role { font-size: .7rem; color: #9ca3af; margin-top: 3px; }
+        .dark .nav-profile-head {
+          border-bottom-color: rgba(255,255,255,.05);
+          background: rgba(99,102,241,.06);
+        }
+        .nav-profile-head-name { font-size: .87rem; font-weight: 800; color: #0f172a; }
+        .dark .nav-profile-head-name { color: #f1f5f9; }
+        .nav-profile-head-role { font-size: .69rem; color: #94a3b8; margin-top: 3px; }
+        .nav-drop-body { padding: 6px; }
         .nav-dd-item {
-          display: flex;
-          align-items: center;
-          gap: 11px;
-          width: 100%;
-          padding: 9px 12px;
-          border-radius: 9px;
-          border: none;
-          background: transparent;
-          cursor: pointer;
-          font-size: .82rem;
-          font-weight: 500;
-          font-family: var(--nav-font);
-          color: #374151;
-          text-align: left;
-          transition: background .12s, color .12s;
+          display: flex; align-items: center; gap: 10px;
+          width: 100%; padding: 8px 10px; border-radius: 9px;
+          border: none; background: transparent; cursor: pointer;
+          font-size: .8rem; font-weight: 500; font-family: var(--nav-font);
+          color: #334155; text-align: left;
+          transition: background .1s, color .1s;
         }
-        .nav-dd-item:hover { background: rgba(0,0,0,.04); color: #111827; }
-        .nav-dd-item:focus-visible { outline: 2px solid #6366f1; outline-offset: -2px; }
-        .dark .nav-dd-item { color: #d1d5db; }
-        .dark .nav-dd-item:hover { background: rgba(255,255,255,.06); color: #f9fafb; }
+        .nav-dd-item:hover { background: rgba(0,0,0,.04); color: #0f172a; }
+        .dark .nav-dd-item { color: #cbd5e1; }
+        .dark .nav-dd-item:hover { background: rgba(255,255,255,.06); color: #f1f5f9; }
+        .nav-dd-item.active { background: rgba(99,102,241,.1); color: #6366f1; font-weight: 700; }
+        .dark .nav-dd-item.active { background: rgba(99,102,241,.18); color: #a5b4fc; }
         .nav-dd-item.danger { color: #dc2626; }
-        .nav-dd-item.danger:hover { background: rgba(239,68,68,.06); }
+        .nav-dd-item.danger:hover { background: rgba(239,68,68,.07); }
         .nav-dd-icon {
-          width: 30px; height: 30px;
-          border-radius: 8px;
+          width: 28px; height: 28px; border-radius: 8px;
           background: rgba(0,0,0,.04);
-          display: flex; align-items: center; justify-content: center;
+          display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        }
+        .dark .nav-dd-icon { background: rgba(255,255,255,.07); }
+        .nav-divider { height: 1px; background: rgba(0,0,0,.05); margin: 5px 10px; }
+        .dark .nav-divider { background: rgba(255,255,255,.06); }
+
+        /* ═══════ SIDEBAR TOGGLE & MOBILE BTN ═══════ */
+        .nav-sidebar-toggle {
+          display: none; align-items: center; justify-content: center;
+          width: 34px; height: 34px; border-radius: 9px;
+          border: 1.5px solid rgba(99,102,241,.15);
+          background: rgba(99,102,241,.06);
+          cursor: pointer; color: #6366f1;
+          transition: background .15s, color .15s, transform .15s;
           flex-shrink: 0;
         }
-        .dark .nav-dd-icon { background: rgba(255,255,255,.06); }
-        .nav-dd-divider { height: 1px; background: rgba(0,0,0,.05); margin: 5px 10px; }
-        .dark .nav-dd-divider { background: rgba(255,255,255,.05); }
-
-        /* ══════════════════════════════════
-           SIDEBAR TOGGLE + MOBILE BTN
-        ══════════════════════════════════ */
-        .nav-sidebar-toggle, .nav-mobile-btn {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 36px; height: 36px;
-          border-radius: 10px;
-          border: none;
-          background: transparent;
-          cursor: pointer;
-          color: #6b7280;
-          transition: background .15s, color .15s;
+        @media (min-width: 768px) { .nav-sidebar-toggle { display: flex; } }
+        .nav-sidebar-toggle:hover {
+          background: rgba(99,102,241,.12);
+          transform: scale(1.05);
         }
-        .nav-sidebar-toggle:hover, .nav-mobile-btn:hover {
-          background: rgba(0,0,0,.05);
-          color: #374151;
-        }
-        .nav-sidebar-toggle:focus-visible,
-        .nav-mobile-btn:focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; }
-        .dark .nav-sidebar-toggle, .dark .nav-mobile-btn { color: #9ca3af; }
-        .dark .nav-sidebar-toggle:hover, .dark .nav-mobile-btn:hover {
-          background: rgba(255,255,255,.07);
-          color: #e5e7eb;
-        }
-        @media (min-width: 768px) {
-          .nav-sidebar-toggle { display: none; }
-          .nav-mobile-btn    { display: none; }
+        .dark .nav-sidebar-toggle {
+          border-color: rgba(99,102,241,.25); color: #a5b4fc;
+          background: rgba(99,102,241,.1);
         }
 
-        /* ══════════════════════════════════
-           MOBILE DRAWER
-        ══════════════════════════════════ */
-        .nav-drawer-overlay {
-          position: fixed; inset: 0;
-          background: rgba(0,0,0,.4);
-          backdrop-filter: blur(4px);
-          z-index: 60;
-          animation: navFadeIn .2s ease;
+        .nav-mobile-btn {
+          display: flex; align-items: center; justify-content: center;
+          width: 34px; height: 34px; border-radius: 9px;
+          border: 1.5px solid rgba(99,102,241,.15);
+          background: rgba(99,102,241,.06);
+          cursor: pointer; color: #6366f1;
+          transition: background .15s, transform .15s;
+          flex-shrink: 0;
+        }
+        @media (min-width: 768px) { .nav-mobile-btn { display: none; } }
+        .nav-mobile-btn:hover { background: rgba(99,102,241,.12); transform: scale(1.05); }
+        .dark .nav-mobile-btn {
+          border-color: rgba(99,102,241,.25); color: #a5b4fc;
+          background: rgba(99,102,241,.1);
+        }
+
+        /* ═══════ OVERLAY ═══════ */
+        .nav-overlay {
+          position: fixed; inset: 0; z-index: 59;
+          background: rgba(0,0,0,.3); backdrop-filter: blur(2px);
+          animation: navFadeIn .15s ease;
         }
         @keyframes navFadeIn { from{opacity:0} to{opacity:1} }
+
+        /* ═══════ MOBILE DRAWER ═══════ */
         .nav-drawer {
-          position: fixed;
-          top: 0; right: 0; bottom: 0;
-          width: 288px;
-          background: rgba(255,255,255,.98);
-          backdrop-filter: blur(24px);
-          z-index: 61;
-          display: flex;
-          flex-direction: column;
+          position: fixed; top: 0; right: 0; bottom: 0;
+          width: min(300px, 88vw);
+          background: rgba(255,255,255,.99);
+          backdrop-filter: blur(24px); z-index: 101;
+          display: flex; flex-direction: column;
           animation: navSlideLeft .22s cubic-bezier(.16,1,.3,1);
           border-left: 1px solid rgba(0,0,0,.06);
+          box-shadow: -8px 0 48px rgba(0,0,0,.14);
         }
         .dark .nav-drawer {
-          background: rgba(9,10,20,.98);
+          background: rgba(9,10,20,.99);
           border-left-color: rgba(255,255,255,.06);
         }
-        @keyframes navSlideLeft { from{transform:translateX(100%)} to{transform:translateX(0)} }
+        @keyframes navSlideLeft {
+          from { transform: translateX(100%); opacity: 0; }
+          to   { transform: translateX(0);    opacity: 1; }
+        }
         .nav-drawer-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 18px 20px;
-          border-bottom: 1px solid rgba(0,0,0,.05);
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 16px 18px; border-bottom: 1px solid rgba(0,0,0,.05);
+          background: linear-gradient(135deg, rgba(99,102,241,.06), rgba(139,92,246,.03));
+          flex-shrink: 0;
         }
-        .dark .nav-drawer-header { border-bottom-color: rgba(255,255,255,.05); }
-        .nav-drawer-title { font-size: .95rem; font-weight: 800; color: #111827; }
-        .dark .nav-drawer-title { color: #f9fafb; }
+        .dark .nav-drawer-header {
+          border-bottom-color: rgba(255,255,255,.05);
+          background: rgba(99,102,241,.08);
+        }
+        .nav-drawer-title {
+          font-size: .95rem; font-weight: 800; color: #0f172a; letter-spacing: -.02em;
+        }
+        .dark .nav-drawer-title { color: #f1f5f9; }
         .nav-drawer-close {
-          width: 32px; height: 32px;
-          border-radius: 9px;
-          border: none;
-          background: rgba(0,0,0,.05);
-          cursor: pointer;
-          display: flex; align-items: center; justify-content: center;
-          color: #6b7280;
-          transition: background .15s, color .15s;
+          width: 32px; height: 32px; border-radius: 9px;
+          border: none; background: rgba(0,0,0,.05);
+          cursor: pointer; display: flex; align-items: center; justify-content: center;
+          color: #64748b; transition: background .15s, color .15s;
         }
-        .nav-drawer-close:hover { background: rgba(239,68,68,.08); color: #dc2626; }
-        .nav-drawer-body { padding: 10px; flex: 1; overflow-y: auto; }
+        .nav-drawer-close:hover { background: rgba(239,68,68,.1); color: #dc2626; }
+        .dark .nav-drawer-close { background: rgba(255,255,255,.07); }
+
+        .nav-drawer-user {
+          padding: 14px 18px; display: flex; align-items: center; gap: 12px;
+          border-bottom: 1px solid rgba(0,0,0,.05); flex-shrink: 0;
+        }
+        .dark .nav-drawer-user { border-bottom-color: rgba(255,255,255,.05); }
+        .nav-drawer-avatar {
+          width: 40px; height: 40px; border-radius: 50%;
+          background: linear-gradient(135deg, #0F172A, #6366f1);
+          color: #fff; font-size: .78rem; font-weight: 800;
+          display: flex; align-items: center; justify-content: center;
+          flex-shrink: 0; position: relative;
+          box-shadow: 0 4px 12px rgba(99,102,241,.35);
+        }
+        .nav-drawer-status {
+          position: absolute; bottom: 0; right: 0;
+          width: 9px; height: 9px; border-radius: 50%;
+          background: #10b981; border: 2px solid white;
+        }
+        .dark .nav-drawer-status { border-color: #0a0f1e; }
+        .nav-drawer-name { font-size: .88rem; font-weight: 700; color: #0f172a; letter-spacing: -.01em; }
+        .dark .nav-drawer-name { color: #f1f5f9; }
+        .nav-drawer-role { font-size: .7rem; color: #94a3b8; margin-top: 2px; }
+
+        .nav-drawer-body { padding: 8px 10px; flex: 1; overflow-y: auto; overscroll-behavior: contain; }
         .nav-drawer-section {
-          font-size: .62rem;
-          font-weight: 800;
-          text-transform: uppercase;
-          letter-spacing: .1em;
-          color: #9ca3af;
-          padding: 10px 10px 5px;
+          font-size: .59rem; font-weight: 800; text-transform: uppercase;
+          letter-spacing: .1em; color: #94a3b8; padding: 10px 10px 4px;
         }
         .nav-drawer-link {
-          display: flex;
-          align-items: center;
-          gap: 13px;
-          padding: 11px 14px;
-          border-radius: 12px;
-          text-decoration: none;
-          font-size: .86rem;
-          font-weight: 600;
-          color: #374151;
-          transition: background .12s, color .12s;
-          margin-bottom: 2px;
-          border: none;
-          background: transparent;
-          cursor: pointer;
-          width: 100%;
-          font-family: var(--nav-font);
-          text-align: left;
+          display: flex; align-items: center; gap: 11px;
+          padding: 9px 11px; border-radius: 10px; text-decoration: none;
+          font-size: .82rem; font-weight: 600; color: #334155;
+          transition: background .1s, color .1s; margin-bottom: 1px;
+          border: none; background: transparent; cursor: pointer;
+          width: 100%; font-family: var(--nav-font); text-align: left;
+          box-sizing: border-box;
         }
-        .nav-drawer-link:hover { background: rgba(99,102,241,.07); color: #6366f1; }
+        .nav-drawer-link:hover { background: rgba(99,102,241,.08); color: #6366f1; }
         .nav-drawer-link.active { background: rgba(99,102,241,.1); color: #6366f1; font-weight: 700; }
-        .nav-drawer-link:focus-visible { outline: 2px solid #6366f1; outline-offset: -2px; }
-        .dark .nav-drawer-link { color: #d1d5db; }
+        .dark .nav-drawer-link { color: #cbd5e1; }
         .dark .nav-drawer-link:hover { background: rgba(99,102,241,.12); color: #a5b4fc; }
-        .dark .nav-drawer-link.active { color: #a5b4fc; }
+        .dark .nav-drawer-link.active { color: #a5b4fc; background: rgba(99,102,241,.14); }
         .nav-drawer-icon {
-          width: 34px; height: 34px;
-          border-radius: 10px;
+          width: 30px; height: 30px; border-radius: 8px;
           background: rgba(0,0,0,.04);
-          display: flex; align-items: center; justify-content: center;
-          flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center; flex-shrink: 0;
         }
         .dark .nav-drawer-icon { background: rgba(255,255,255,.06); }
 
-        /* ── Shortcut kbd ── */
-        .nav-shortcut {
-          font-size: .62rem;
-          color: #9ca3af;
-          padding: 2px 5px;
-          border-radius: 4px;
-          background: rgba(0,0,0,.05);
-          margin-left: 4px;
-          font-family: var(--nav-font);
+        .nav-drawer-footer {
+          padding: 10px 18px 20px;
+          border-top: 1px solid rgba(0,0,0,.05); flex-shrink: 0;
         }
-        .dark .nav-shortcut { background: rgba(255,255,255,.07); }
+        .dark .nav-drawer-footer { border-top-color: rgba(255,255,255,.05); }
+        .nav-drawer-signout {
+          display: flex; align-items: center; gap: 10px;
+          width: 100%; padding: 10px 12px; border-radius: 11px;
+          border: none; background: rgba(239,68,68,.07);
+          cursor: pointer; font-size: .82rem; font-weight: 700;
+          font-family: var(--nav-font); color: #dc2626;
+          text-align: left; transition: background .12s;
+        }
+        .nav-drawer-signout:hover { background: rgba(239,68,68,.14); }
 
-        /* ── Reduced motion ── */
         @media (prefers-reduced-motion: reduce) {
-          *, *::before, *::after {
-            animation-duration: .01ms !important;
-            transition-duration: .01ms !important;
-          }
+          *, *::before, *::after { animation-duration:.01ms!important; transition-duration:.01ms!important; }
         }
       `}</style>
 
       <nav className={`nav-root ${scrolled ? 'scrolled' : 'flat'}`} role="navigation" aria-label="Main navigation">
 
-        {/* Sidebar toggle (desktop) */}
-        <button className="nav-sidebar-toggle" onClick={onToggleSidebar} aria-label="Toggle sidebar">
-          <FiMenu size={18} />
+        {/* Sidebar toggle — desktop only */}
+        <button
+          className="nav-sidebar-toggle"
+          onClick={onToggleSidebar}
+          aria-label="Toggle sidebar"
+          title="Toggle sidebar (Ctrl+B)"
+        >
+          <FiMenu size={17} />
         </button>
 
         {/* Logo */}
@@ -797,22 +721,20 @@ export default function Navbar({ onToggleSidebar }) {
           <span className="nav-logo-text">Academe</span>
         </Link>
 
-        {/* Desktop links */}
+        {/* Desktop nav links */}
         <div className="nav-links" role="menubar">
-          {navLinks.map(({ path, label, icon: Icon, color }) => {
-            const isActive = location.pathname === path || (path !== '/' && location.pathname.startsWith(path));
-            /* Map colours to accent tags for CSS */
-            const accentTag = color === '#f59e0b' ? 'amber' : color === '#10b981' ? 'green' : 'indigo';
+          {navLinks.map(({ path, label, icon: Icon, color, accent }) => {
+            const isActive = location.pathname === path ||
+              (path !== '/' && location.pathname.startsWith(path));
             return (
               <Link
                 key={path}
                 to={path}
-                className={`nav-link${isActive ? ' active' : ''}`}
-                data-accent={accentTag}
+                className={`nav-link${isActive ? ` active-${accent}` : ''}`}
                 role="menuitem"
                 aria-current={isActive ? 'page' : undefined}
               >
-                <Icon size={14} />
+                <Icon size={12} color={isActive ? undefined : color} />
                 {label}
               </Link>
             );
@@ -822,22 +744,24 @@ export default function Navbar({ onToggleSidebar }) {
         <div className="nav-spacer" />
 
         {/* Greeting */}
-        <span className="nav-greeting">{getGreeting()}, {user?.full_name?.split(' ')[0] ?? 'User'}</span>
+        <span className="nav-greeting">
+          {getGreeting()}, {user?.full_name?.split(' ')[0] ?? 'User'}
+        </span>
 
         <div className="nav-actions">
 
-          {/* Search */}
-          <div className="nav-search-container" ref={searchRef}>
+          {/* ── Search ── */}
+          <div className="nav-dropdown-wrap" ref={searchRef}>
             <button
-              className="nav-icon-btn"
+              className="nav-icon-btn icon-only nav-btn-search"
               onClick={() => setSearchOpen(o => !o)}
               aria-label="Search (press /)"
+              title="Search (press /)"
             >
               <FiSearch size={15} />
-              <span className="nav-shortcut">/</span>
             </button>
             {searchOpen && (
-              <div className="nav-search-dropdown">
+              <div className="nav-drop nav-search-drop">
                 <input
                   className="nav-search-input"
                   type="text"
@@ -851,7 +775,7 @@ export default function Navbar({ onToggleSidebar }) {
                     {filteredSuggestions.map(s => (
                       <div
                         key={s}
-                        className="nav-search-suggestion"
+                        className="nav-search-item"
                         onClick={() => {
                           const link = navLinks.find(l => l.label === s);
                           if (link) { navigate(link.path); setSearchOpen(false); setSearchQuery(''); }
@@ -866,23 +790,23 @@ export default function Navbar({ onToggleSidebar }) {
             )}
           </div>
 
-          {/* Notifications */}
-          <div style={{ position: 'relative' }}>
+          {/* ── Notifications ── */}
+          <div className="nav-dropdown-wrap">
             <button
-              className="nav-icon-btn icon-only"
+              className="nav-icon-btn icon-only nav-btn-notif"
               onClick={() => { closeAll(); setNotifOpen(o => !o); }}
               aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
             >
-              <FiBell size={16} />
+              <FiBell size={15} />
               {unreadCount > 0 && <span className="nav-notif-badge">{unreadCount}</span>}
             </button>
             {notifOpen && (
               <>
-                <div className="fixed inset-0 z-50" onClick={() => setNotifOpen(false)} />
-                <div className="nav-notif-dropdown" style={{ zIndex: 61 }}>
+                <div className="nav-overlay" onClick={() => setNotifOpen(false)} />
+                <div className="nav-drop nav-notif-drop">
                   <div className="nav-notif-head">
                     Notifications
-                    <button className="nav-notif-mark" onClick={markAllRead}>Mark all read</button>
+                    <button className="nav-notif-action" onClick={markAllRead}>Mark all read</button>
                   </div>
                   {notifications.map(n => (
                     <div
@@ -890,16 +814,15 @@ export default function Navbar({ onToggleSidebar }) {
                       className={`nav-notif-item${!n.read ? ' unread' : ''}`}
                       onClick={() => {
                         setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
-                        setNotifOpen(false);
-                        navigate('/notifications');
+                        setNotifOpen(false); navigate('/notifications');
                       }}
                     >
-                      <div className="nav-notif-item-text">{n.text}</div>
-                      <div className="nav-notif-item-time">{n.time}</div>
+                      <div className="nav-notif-text">{n.text}</div>
+                      <div className="nav-notif-time">{n.time}</div>
                     </div>
                   ))}
                   <div className="nav-notif-footer">
-                    <button className="nav-notif-view-all" onClick={() => { setNotifOpen(false); navigate('/notifications'); }}>
+                    <button onClick={() => { setNotifOpen(false); navigate('/notifications'); }}>
                       View all notifications
                     </button>
                   </div>
@@ -908,25 +831,26 @@ export default function Navbar({ onToggleSidebar }) {
             )}
           </div>
 
-          {/* Theme toggle */}
-          <div style={{ position: 'relative' }}>
+          {/* ── Theme (desktop) ── */}
+          <div className="nav-dropdown-wrap" style={{ display: 'none' }}
+            ref={el => { if (el) el.style.display = ''; }}>
             <button
-              className="nav-icon-btn"
+              className="nav-icon-btn nav-btn-theme"
               onClick={() => { closeAll(); setThemeOpen(o => !o); }}
               aria-label="Change theme"
             >
-              {theme === 'dark' ? <FiMoon size={14} /> : theme === 'light' ? <FiSun size={14} /> : <FiMonitor size={14} />}
-              <span className="nav-shortcut" style={{ marginLeft: 2 }}>Theme</span>
+              <ThemeIcon size={14} />
+              <span className="nav-btn-label">Theme</span>
             </button>
             {themeOpen && (
               <>
-                <div className="fixed inset-0 z-50" onClick={() => setThemeOpen(false)} />
-                <div className="nav-dropdown" style={{ zIndex: 61 }}>
-                  <div className="nav-dropdown-body">
+                <div className="nav-overlay" onClick={() => setThemeOpen(false)} />
+                <div className="nav-drop nav-option-drop">
+                  <div style={{ padding: 6 }}>
                     {themes.map(t => (
                       <button
                         key={t.id}
-                        className={`nav-option-btn${theme === t.id ? ' active' : ''}`}
+                        className={`nav-option-btn${theme === t.id ? ' selected' : ''}`}
                         onClick={() => { setTheme(t.id); setThemeOpen(false); }}
                       >
                         <t.icon size={14} /> {t.label}
@@ -938,87 +862,111 @@ export default function Navbar({ onToggleSidebar }) {
             )}
           </div>
 
-          {/* Font toggle */}
-          <div style={{ position: 'relative' }}>
+          {/* ── Font selector (desktop) ── */}
+          <div className="nav-dropdown-wrap" style={{ display: 'none' }}
+            ref={el => { if (el) el.style.display = ''; }}>
             <button
-              className="nav-icon-btn"
+              className="nav-icon-btn nav-btn-font"
               onClick={() => { closeAll(); setFontOpen(o => !o); }}
               aria-label="Change font"
             >
               <FiType size={14} />
-              <span className="nav-shortcut" style={{ marginLeft: 2 }}>Font</span>
+              <span className="nav-btn-label">Font</span>
             </button>
             {fontOpen && (
               <>
-                <div className="fixed inset-0 z-50" onClick={() => setFontOpen(false)} />
-                <div className="nav-dropdown" style={{ width: 210, zIndex: 61 }}>
-                  <div className="nav-dropdown-body">
-                    {fonts.map(f => (
-                      <button
-                        key={f.id}
-                        className={`nav-option-btn${currentFont === f.id ? ' active' : ''}`}
-                        onClick={() => { setCurrentFont(f.id); setFontOpen(false); }}
-                        style={{ fontFamily: f.fontFamily }}
-                      >
-                        {f.label}
-                      </button>
-                    ))}
-                  </div>
+                <div className="nav-overlay" onClick={() => setFontOpen(false)} />
+                <div className="nav-drop" style={{ width: 220, padding: 6 }}>
+                  {fonts.map(f => (
+                    <button
+                      key={f.id}
+                      className={`nav-option-btn${currentFont === f.id ? ' selected' : ''}`}
+                      onClick={() => { setCurrentFont(f.id); setFontOpen(false); }}
+                      style={{ fontFamily: f.fontFamily }}
+                    >
+                      <FiType size={13} />
+                      {f.label}
+                      <span className="nav-font-preview"
+                        style={{ fontFamily: f.fontFamily }}>Aa</span>
+                    </button>
+                  ))}
                 </div>
               </>
             )}
           </div>
 
-          {/* Profile */}
-          <div style={{ position: 'relative' }}>
+          {/* ── Profile ── */}
+          <div className="nav-dropdown-wrap">
             <button
               className="nav-profile-btn"
               onClick={() => { closeAll(); setProfileOpen(o => !o); }}
               aria-haspopup="true"
               aria-expanded={profileOpen}
             >
-              <div className="nav-avatar-wrapper">
+              <div className="nav-avatar-wrap">
                 <div className="nav-avatar">{initials}</div>
                 <span className="nav-status-dot" aria-label="Online" />
               </div>
               <span className="nav-profile-name">{user?.full_name?.split(' ')[0] ?? 'User'}</span>
-              <FiChevronDown size={13} className={`nav-chevron${profileOpen ? ' open' : ''}`} />
+              <FiChevronDown size={12} className={`nav-chevron${profileOpen ? ' open' : ''}`} />
             </button>
-
             {profileOpen && (
               <>
-                <div className="fixed inset-0 z-50" onClick={() => setProfileOpen(false)} />
-                <div className="nav-dropdown" style={{ zIndex: 61 }}>
+                <div className="nav-overlay" onClick={() => setProfileOpen(false)} />
+                <div className="nav-drop nav-profile-drop">
                   <div className="nav-profile-head">
                     <p className="nav-profile-head-name">{user?.full_name}</p>
                     <p className="nav-profile-head-role">{user?.class_name ?? 'Student'}</p>
                   </div>
-                  <div className="nav-dropdown-body">
+                  <div className="nav-drop-body">
                     <button className="nav-dd-item" onClick={() => { navigate('/profile'); setProfileOpen(false); }}>
-                      <span className="nav-dd-icon"><FiUser size={14} /></span> Profile
+                      <span className="nav-dd-icon"><FiUser size={13} /></span> Profile
                     </button>
                     <button className="nav-dd-item" onClick={() => { navigate('/sessions'); setProfileOpen(false); }}>
-                      <span className="nav-dd-icon"><FiShield size={14} /></span> Active Sessions
+                      <span className="nav-dd-icon"><FiShield size={13} /></span> Active Sessions
                     </button>
                     <button className="nav-dd-item" onClick={() => { navigate('/contact'); setProfileOpen(false); }}>
-                      <span className="nav-dd-icon"><FiHelpCircle size={14} /></span> Help & Support
+                      <span className="nav-dd-icon"><FiHelpCircle size={13} /></span> Help & Support
                     </button>
+                    <div className="nav-divider" />
+                    {/* Theme in mobile profile dropdown */}
+                    {themes.map(t => (
+                      <button
+                        key={t.id}
+                        className={`nav-dd-item${theme === t.id ? ' active' : ''}`}
+                        onClick={() => { setTheme(t.id); setProfileOpen(false); }}
+                      >
+                        <span className="nav-dd-icon"><t.icon size={13} /></span> {t.label} Theme
+                      </button>
+                    ))}
+                    {/* Font in mobile profile dropdown */}
+                    <div className="nav-divider" />
+                    {fonts.map(f => (
+                      <button
+                        key={f.id}
+                        className={`nav-dd-item${currentFont === f.id ? ' active' : ''}`}
+                        onClick={() => { setCurrentFont(f.id); setProfileOpen(false); }}
+                        style={{ fontFamily: f.fontFamily }}
+                      >
+                        <span className="nav-dd-icon"><FiType size={13} /></span> {f.label}
+                      </button>
+                    ))}
                     {isLeader && (
                       <>
-                        <div className="nav-dd-divider" />
+                        <div className="nav-divider" />
                         <button className="nav-dd-item" onClick={() => { navigate('/governance'); setProfileOpen(false); }}>
-                          <span className="nav-dd-icon"><FiBarChart2 size={14} /></span> Governance
+                          <span className="nav-dd-icon"><FiBarChart2 size={13} /></span> Governance
                         </button>
                       </>
                     )}
                     {isAdmin && (
                       <button className="nav-dd-item" onClick={() => { navigate('/admin'); setProfileOpen(false); }}>
-                        <span className="nav-dd-icon"><FiSettings size={14} /></span> Admin Panel
+                        <span className="nav-dd-icon"><FiSettings size={13} /></span> Admin Panel
                       </button>
                     )}
-                    <div className="nav-dd-divider" />
+                    <div className="nav-divider" />
                     <button className="nav-dd-item danger" onClick={() => { logout(); setProfileOpen(false); }}>
-                      <span className="nav-dd-icon"><FiLogOut size={14} /></span> Sign Out
+                      <span className="nav-dd-icon"><FiLogOut size={13} /></span> Sign Out
                     </button>
                   </div>
                 </div>
@@ -1026,83 +974,106 @@ export default function Navbar({ onToggleSidebar }) {
             )}
           </div>
 
-          {/* Mobile menu */}
-          <button className="nav-mobile-btn" onClick={() => setMobileOpen(true)} aria-label="Open menu">
+          {/* Mobile hamburger */}
+          <button
+            className="nav-mobile-btn"
+            onClick={() => setMobileOpen(true)}
+            aria-label="Open navigation menu"
+          >
             <FiMenu size={18} />
           </button>
         </div>
 
-        {/* Mobile drawer */}
+        {/* ═══════════════════════════════
+            MOBILE DRAWER
+        ═══════════════════════════════ */}
         {mobileOpen && (
           <>
-            <div className="nav-drawer-overlay" onClick={() => setMobileOpen(false)} />
-            <div className="nav-drawer" role="dialog" aria-modal="true" aria-label="Navigation">
+            <div className="nav-overlay" style={{ zIndex: 100 }} onClick={() => setMobileOpen(false)} aria-hidden="true" />
+            <div className="nav-drawer" role="dialog" aria-modal="true" aria-label="Navigation menu">
               <div className="nav-drawer-header">
                 <span className="nav-drawer-title">Navigation</span>
-                <button className="nav-drawer-close" onClick={() => setMobileOpen(false)} aria-label="Close">
+                <button className="nav-drawer-close" onClick={() => setMobileOpen(false)} aria-label="Close navigation">
                   <FiX size={16} />
                 </button>
               </div>
+              <div className="nav-drawer-user">
+                <div className="nav-drawer-avatar">
+                  {initials}
+                  <span className="nav-drawer-status" />
+                </div>
+                <div>
+                  <div className="nav-drawer-name">{user?.full_name ?? 'User'}</div>
+                  <div className="nav-drawer-role">{user?.class_name ?? 'Student'}</div>
+                </div>
+              </div>
               <div className="nav-drawer-body">
-                <p className="nav-drawer-section">Main Pages</p>
-                {navLinks.map(({ path, label, icon: Icon }) => (
-                  <Link
-                    key={path}
-                    to={path}
-                    onClick={() => setMobileOpen(false)}
-                    className={`nav-drawer-link${location.pathname === path || (path !== '/' && location.pathname.startsWith(path)) ? ' active' : ''}`}
-                  >
-                    <span className="nav-drawer-icon"><Icon size={15} /></span>
-                    {label}
-                  </Link>
-                ))}
+                <p className="nav-drawer-section">Pages</p>
+                {navLinks.map(({ path, label, icon: Icon }) => {
+                  const isActive = location.pathname === path ||
+                    (path !== '/' && location.pathname.startsWith(path));
+                  return (
+                    <Link
+                      key={path} to={path}
+                      onClick={() => setMobileOpen(false)}
+                      className={`nav-drawer-link${isActive ? ' active' : ''}`}
+                    >
+                      <span className="nav-drawer-icon"><Icon size={14} /></span>
+                      {label}
+                    </Link>
+                  );
+                })}
 
                 {isLeader && (
                   <>
-                    <p className="nav-drawer-section" style={{ marginTop: 14 }}>Governance</p>
-                    <Link
-                      to="/governance"
-                      onClick={() => setMobileOpen(false)}
-                      className={`nav-drawer-link${location.pathname.startsWith('/governance') ? ' active' : ''}`}
-                    >
-                      <span className="nav-drawer-icon"><FiBarChart2 size={15} /></span>
-                      Governance
+                    <p className="nav-drawer-section" style={{ marginTop: 12 }}>Governance</p>
+                    <Link to="/governance" onClick={() => setMobileOpen(false)}
+                      className={`nav-drawer-link${location.pathname.startsWith('/governance') ? ' active' : ''}`}>
+                      <span className="nav-drawer-icon"><FiBarChart2 size={14} /></span> Governance
                     </Link>
                     {isAdmin && (
-                      <Link
-                        to="/admin"
-                        onClick={() => setMobileOpen(false)}
-                        className={`nav-drawer-link${location.pathname.startsWith('/admin') ? ' active' : ''}`}
-                      >
-                        <span className="nav-drawer-icon"><FiSettings size={15} /></span>
-                        Admin Panel
+                      <Link to="/admin" onClick={() => setMobileOpen(false)}
+                        className={`nav-drawer-link${location.pathname.startsWith('/admin') ? ' active' : ''}`}>
+                        <span className="nav-drawer-icon"><FiSettings size={14} /></span> Admin Panel
                       </Link>
                     )}
                   </>
                 )}
 
-                <p className="nav-drawer-section" style={{ marginTop: 14 }}>Preferences</p>
+                <p className="nav-drawer-section" style={{ marginTop: 12 }}>Theme</p>
                 {themes.map(t => (
-                  <button
-                    key={t.id}
+                  <button key={t.id}
                     className={`nav-drawer-link${theme === t.id ? ' active' : ''}`}
-                    onClick={() => setTheme(t.id)}
-                  >
-                    <span className="nav-drawer-icon"><t.icon size={15} /></span>
-                    {t.label} Theme
+                    onClick={() => setTheme(t.id)}>
+                    <span className="nav-drawer-icon"><t.icon size={14} /></span> {t.label} Theme
                   </button>
                 ))}
+
+                <p className="nav-drawer-section" style={{ marginTop: 12 }}>Font</p>
                 {fonts.map(f => (
-                  <button
-                    key={f.id}
+                  <button key={f.id}
                     className={`nav-drawer-link${currentFont === f.id ? ' active' : ''}`}
                     onClick={() => setCurrentFont(f.id)}
-                    style={{ fontFamily: f.fontFamily }}
-                  >
-                    <span className="nav-drawer-icon"><FiType size={15} /></span>
-                    {f.label} Font
+                    style={{ fontFamily: f.fontFamily }}>
+                    <span className="nav-drawer-icon"><FiType size={14} /></span> {f.label}
                   </button>
                 ))}
+
+                <p className="nav-drawer-section" style={{ marginTop: 12 }}>Account</p>
+                <Link to="/profile" onClick={() => setMobileOpen(false)} className="nav-drawer-link">
+                  <span className="nav-drawer-icon"><FiUser size={14} /></span> Profile
+                </Link>
+                <Link to="/sessions" onClick={() => setMobileOpen(false)} className="nav-drawer-link">
+                  <span className="nav-drawer-icon"><FiShield size={14} /></span> Active Sessions
+                </Link>
+                <Link to="/contact" onClick={() => setMobileOpen(false)} className="nav-drawer-link">
+                  <span className="nav-drawer-icon"><FiHelpCircle size={14} /></span> Help & Support
+                </Link>
+              </div>
+              <div className="nav-drawer-footer">
+                <button className="nav-drawer-signout" onClick={() => { logout(); setMobileOpen(false); }}>
+                  <FiLogOut size={14} /> Sign Out
+                </button>
               </div>
             </div>
           </>

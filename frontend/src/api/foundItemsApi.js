@@ -1,7 +1,7 @@
 import apiClient from './client';
 
 export const foundItemsApi = {
-  // Items
+  // ── Public Items ────────────────────────────────
   listItems: (params) => apiClient.get('/found-items/items/', { params }),
   getItem: (id) => apiClient.get(`/found-items/items/${id}/`),
   createItem: (formData) =>
@@ -10,10 +10,13 @@ export const foundItemsApi = {
     }),
   deleteItem: (id) => apiClient.delete(`/found-items/items/${id}/`),
 
-  // Ownership
+  // ── My Items (items posted by the logged‑in user) ─
+  getMyItems: () => apiClient.get('/found-items/my-items/'),   // ← NEW
+
+  // ── Ownership ────────────────────────────────────
   verifyOwnership: (itemId) => apiClient.post(`/found-items/items/${itemId}/verify-ownership/`),
 
-  // Claim flow
+  // ── Claim Flow ───────────────────────────────────
   getClaimStatus: (itemId) => apiClient.get(`/found-items/items/${itemId}/claim-status/`),
   claimItem: (itemId) => apiClient.post(`/found-items/items/${itemId}/claim/`),
   getClaim: (claimId) => apiClient.get(`/found-items/claims/${claimId}/`),
@@ -28,15 +31,15 @@ export const foundItemsApi = {
   confirmReceipt: (claimId) => apiClient.post(`/found-items/claims/${claimId}/confirm-receipt/`),
   cancelClaim: (claimId) => apiClient.post(`/found-items/claims/${claimId}/cancel/`),
 
-  // Tips & Reports
+  // ── Tips & Reports ──────────────────────────────
   sendTip: (itemId, message) => apiClient.post(`/found-items/items/${itemId}/tip/`, { message }),
   reportItem: (itemId, reason) =>
     apiClient.post(`/found-items/items/${itemId}/report/`, { reason }),
 
-  // User claims list
+  // ── User Claims ──────────────────────────────────
   listClaims: () => apiClient.get('/found-items/claims/'),
 
-  // Admin
+  // ── Admin ────────────────────────────────────────
   adminItems: () => apiClient.get('/found-items/admin/items/'),
   adminClaims: () => apiClient.get('/found-items/admin/claims/'),
   approveClaim: (claimId) => apiClient.post(`/found-items/admin/claims/${claimId}/approve/`),
