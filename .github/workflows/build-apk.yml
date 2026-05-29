@@ -1,3 +1,5 @@
+/ use the below on github and ensure to delete after pasted to github
+
 name: Build Android APK
 
 on:
