@@ -1,22 +1,26 @@
-Below is the complete **Academe API Documentation**, covering every critical endpoint across all backend apps.  
-It includes authentication, request/response examples, and notes on permissions.
-
----
-
-# Academe API Documentation
+# Academe API Documentation – Final Complete Version
 
 **Base URL**: `http://localhost:8000/`  
-**Authentication**: JWT Bearer token (except for public endpoints like signup/OTP)  
-**Content-Type**: `application/json` (unless multipart/form-data for file uploads)
+**Authentication**: JWT Bearer token (except for signup/OTP endpoints)  
+**Content-Type**: `application/json` (unless `multipart/form-data` is noted)
 
 ---
 
-## 1. Authentication
+## 🔐 Authentication
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/accounts/signup/` | POST | none | Register a new user |
+| `/accounts/request-otp/` | POST | none | Request OTP for login/password reset |
+| `/accounts/verify-otp/` | POST | none | Verify OTP and receive JWT tokens |
+| `/accounts/refresh-token/` | POST | none | Refresh access token using refresh token |
+| `/accounts/forgot-password/` | POST | none | Request OTP for password reset |
+| `/accounts/reset-password/` | POST | none | Reset password with OTP |
+| `/accounts/change-password/` | POST | required | Change password (authenticated) |
 
 ### 1.1 Signup
-`POST /accounts/signup/`
 
-**Request body**
+**Request**
 ```json
 {
   "phone_number": "0712345678",
@@ -28,15 +32,12 @@ It includes authentication, request/response examples, and notes on permissions.
 }
 ```
 
-**Response**
+**Response** `201`
 ```json
 {"message": "Registration successful"}
 ```
 
----
-
 ### 1.2 Request OTP
-`POST /accounts/request-otp/`
 
 **Request**
 ```json
@@ -45,45 +46,43 @@ It includes authentication, request/response examples, and notes on permissions.
 
 **Response**
 ```json
-{
-  "otp": "123456",
-  "message": "OTP generated successfully"
-}
+{"otp": "123456", "message": "OTP generated successfully"}
 ```
-> In production, the OTP is sent via SMS and not returned in the response.
-
----
+> In production the OTP is sent via SMS and not returned in the response.
 
 ### 1.3 Verify OTP & Login
-`POST /accounts/verify-otp/`
 
 **Request**
 ```json
-{
-  "phone_number": "0712345678",
-  "otp": "123456"
-}
+{"phone_number": "0712345678", "otp": "123456"}
 ```
 
-**Response**
+**Response** `200`
 ```json
 {
   "access": "<JWT access token>",
   "refresh": "<JWT refresh token>",
   "user": {
     "id": "uuid",
-    "full_name": "John Doe",
     "phone_number": "0712345678",
+    "admission_number": "ADM123",
+    "full_name": "John Doe",
+    "email": "john@example.com",
+    "class_name": "CS 3A",
+    "institution": "JKUAT",
+    "profile_pic": "",
     "role": "student",
-    ...
+    "badges": [],
+    "is_online": true,
+    "login_count": 1,
+    "two_factor_enabled": false,
+    "biometric_enabled": false,
+    "last_login": "2026-05-31T10:00:00Z"
   }
 }
 ```
 
----
-
 ### 1.4 Refresh Token
-`POST /accounts/refresh-token/`
 
 **Request**
 ```json
@@ -92,38 +91,88 @@ It includes authentication, request/response examples, and notes on permissions.
 
 **Response**
 ```json
+{"access": "<new access token>", "refresh": "<new refresh token>"}
+```
+
+### 1.5 Forgot Password (Request OTP)
+
+**Request**
+```json
+{"phone_number": "0712345678"}
+```
+
+**Response**
+```json
+{"otp": "123456", "message": "OTP sent to your phone"}
+```
+
+### 1.6 Reset Password
+
+**Request**
+```json
 {
-  "access": "<new access token>",
-  "refresh": "<new refresh token>"
+  "phone_number": "0712345678",
+  "otp": "123456",
+  "new_password": "newSecure123!"
 }
+```
+
+**Response**
+```json
+{"message": "Password reset successful. Please log in with your new password."}
+```
+
+### 1.7 Change Password (Authenticated)
+
+**Request**
+```json
+{
+  "old_password": "oldPass",
+  "new_password": "newStrongPass123!"
+}
+```
+
+**Response**
+```json
+{"message": "Password changed successfully"}
 ```
 
 ---
 
-## 2. User Profile
+## 👤 User Profile
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/accounts/profile/` | GET | required | Get current user profile |
+| `/accounts/profile/` | PUT | required | Update profile (full_name, email, class_name) |
+| `/accounts/profile/upload-pic/` | POST | required | Upload profile picture (multipart) |
+| `/accounts/delete-account/` | POST | required | Soft delete own account |
+| `/accounts/export-data/` | POST | required | Request data export (json/csv) |
 
 ### 2.1 Get Profile
-`GET /accounts/profile/`  
-**Auth**: required
 
 **Response**
 ```json
 {
   "id": "uuid",
+  "phone_number": "0712345678",
+  "admission_number": "ADM123",
   "full_name": "John Doe",
   "email": "john@example.com",
-  "role": "student",
+  "class_name": "CS 3A",
   "institution": "JKUAT",
-  "badges": ["badge1", "badge2"],
+  "profile_pic": "/media/profile_pics/...",
+  "role": "student",
+  "badges": ["login_bronze"],
+  "is_online": true,
+  "login_count": 42,
   "two_factor_enabled": false,
   "biometric_enabled": true,
-  ...
+  "last_login": "2026-05-31T09:00:00Z"
 }
 ```
 
 ### 2.2 Update Profile
-`PUT /accounts/profile/`  
-**Auth**: required
 
 **Request**
 ```json
@@ -145,28 +194,45 @@ It includes authentication, request/response examples, and notes on permissions.
 ```
 
 ### 2.3 Upload Profile Picture
-`POST /accounts/profile/upload-pic/`  
-**Auth**: required  
-**Content-Type**: `multipart/form-data`
 
-**Form fields**
-- `file` – image file
+**Content-Type**: `multipart/form-data`  
+**Field**: `file` (image)
 
 **Response**
 ```json
 {
   "message": "Profile picture uploaded successfully",
-  "profile_pic": "/media/profile_pics/user_123.jpg"
+  "profile_pic": "/media/profile_pics/user_abc.jpg"
 }
+```
+
+### 2.4 Delete Account (soft delete)
+
+**Response**
+```json
+{"message": "Account deactivated"}
+```
+
+### 2.5 Export Data
+
+**Query**: `format=json|csv` (default json)  
+
+**Response**
+```json
+{"export_id": "uuid", "status": "pending", "download_url": null}
 ```
 
 ---
 
-## 3. User Management (Admin)
+## 🔧 Admin User Management
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/accounts/users/` | GET | admin | List all users |
+| `/accounts/users/{userId}/role/` | PUT | admin | Change user role |
+| `/accounts/users/{userId}/deactivate/` | POST | admin | Deactivate user |
 
 ### 3.1 List All Users
-`GET /accounts/users/`  
-**Auth**: admin only
 
 **Response**
 ```json
@@ -176,40 +242,47 @@ It includes authentication, request/response examples, and notes on permissions.
     "full_name": "John Doe",
     "email": "john@example.com",
     "role": "student"
-  },
-  ...
+  }
 ]
 ```
 
----
-
 ### 3.2 Update User Role
-`PUT /accounts/users/{userId}/role/`  
-**Auth**: admin only
 
 **Request**
 ```json
 {"role": "class_rep"}
 ```
 
----
+**Response**
+```json
+{"message": "User role updated from student to class_rep"}
+```
 
 ### 3.3 Deactivate User
-`POST /accounts/users/{userId}/deactivate/`  
-**Auth**: admin only
 
 **Response**
 ```json
-{"message": "User deactivated"}
+{"message": "User John Doe has been deactivated."}
 ```
 
 ---
 
-## 4. Classes & Timetable
+## 📚 Classes & Timetable
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/classes/timetable/` | GET | required | Get timetable for user’s groups |
+| `/classes/today/` | GET | required | Today’s classes with check‑in status |
+| `/classes/mark-attendance/` | POST | required | Mark attendance with location |
+| `/classes/weekly-summary/` | GET | required | Attendance summary for week |
+| `/classes/attendance/` | GET | admin/class rep | Filtered attendance records |
+| `/classes/attendance/class-summary/` | GET | admin/class rep | Per‑student class summary |
+| `/classes/timetable/` | POST | class_rep/admin | Create timetable entry |
+| `/classes/timetable/{entry_id}/` | PUT/DELETE | class_rep/admin | Update/delete entry |
 
 ### 4.1 Get Timetable
-`GET /classes/timetable/`  
-**Auth**: required (returns timetable for user’s class groups)
+
+**Query**: `day_of_week` (0‑6), `class_group_id`
 
 **Response**
 ```json
@@ -228,25 +301,13 @@ It includes authentication, request/response examples, and notes on permissions.
 ]
 ```
 
----
-
-### 4.2 Get Today’s Classes
-`GET /classes/today/`  
-**Auth**: required
-
-**Response** (similar to timetable, with `is_marked`, `can_mark`, `remaining_time`)
-
----
-
-### 4.3 Mark Attendance
-`POST /classes/mark-attendance/`  
-**Auth**: required
+### 4.2 Mark Attendance
 
 **Request**
 ```json
 {
   "timetable_entry_id": "uuid",
-  "attempted_at": "2026-05-27T10:15:00Z",
+  "attempted_at": "2026-05-31T10:15:00Z",
   "student_lat": -1.2345,
   "student_lon": 36.8765
 }
@@ -254,17 +315,12 @@ It includes authentication, request/response examples, and notes on permissions.
 
 **Response**
 ```json
-{
-  "message": "Attendance marked",
-  "id": "attendance-record-uuid"
-}
+{"message": "Attendance marked", "id": "attendance-record-uuid"}
 ```
 
----
+### 4.3 Weekly Summary
 
-### 4.4 Weekly Attendance Summary
-`GET /classes/weekly-summary/`  
-**Auth**: required
+**Query**: `week_start` (YYYY-MM-DD)  
 
 **Response**
 ```json
@@ -274,20 +330,31 @@ It includes authentication, request/response examples, and notes on permissions.
   "total_classes": 15,
   "marked_count": 12,
   "percentage": 80.0,
-  "daily_breakdown": {
-    "Monday": 3, "Tuesday": 2, ...
-  }
+  "daily_breakdown": {"Monday": 3, "Tuesday": 2}
 }
 ```
 
----
+### 4.4 List Attendance Records
 
-### 4.5 Manage Timetable (Class Rep / Admin)
-- **Create** `POST /classes/timetable/`  
-- **Update** `PUT /classes/timetable/{entry_id}/`  
-- **Delete** `DELETE /classes/timetable/{entry_id}/`  
+**Query**: `student`, `class`, `term`, `date_from`, `date_to`, `limit`, `ordering`
 
-**Create request**
+**Response**
+```json
+[
+  {
+    "id": "uuid",
+    "student_name": "John Doe",
+    "unit_name": "Microbiology",
+    "date": "2026-05-27",
+    "marked_at": "2026-05-27T08:05:00Z",
+    "sync_method": "online"
+  }
+]
+```
+
+### 4.5 Create Timetable Entry
+
+**Request**
 ```json
 {
   "class_group_id": "uuid",
@@ -302,290 +369,248 @@ It includes authentication, request/response examples, and notes on permissions.
 }
 ```
 
----
-
-## 5. Attendance Records (Admin)
-
-### 5.1 List Attendance Records (Filtered)
-`GET /classes/attendance/`  
-**Auth**: admin / class rep  
-**Query params**: `class_id`, `student`, `term`, `date_from`, `date_to`, `limit`, `ordering`
-
-**Response**
-```json
-[
-  {
-    "id": "uuid",
-    "student_id": "uuid",
-    "student_name": "John Doe",
-    "timetable_entry_id": "uuid",
-    "unit_name": "Microbiology",
-    "date": "2026-05-27",
-    "marked_at": "2026-05-27T08:05:00Z",
-    "sync_method": "online"
-  }
-]
-```
+**Response** `201` – same as GET object.
 
 ---
 
-### 5.2 Class Attendance Summary
-`GET /classes/attendance/class-summary/`  
-**Auth**: admin / class rep  
-**Query**: `class_id`, `term_id`
+## 🔍 Found Items & Lost & Found
 
-**Response**
-```json
-[
-  {
-    "student_id": "uuid",
-    "student_name": "Jane",
-    "total_classes": 20,
-    "attended": 18,
-    "rate": 90.0
-  }
-]
-```
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/found-items/items/` | GET | required | List active items (filter by category, search) |
+| `/found-items/items/` | POST | required | Create found item (multipart) |
+| `/found-items/my-items/` | GET | required | Items posted by current user |
+| `/found-items/items/{item_id}/` | GET/DELETE | required | Get or delete item |
+| `/found-items/items/{item_id}/verify-ownership/` | POST | required | Verify admission number match |
+| `/found-items/items/{item_id}/claim/` | POST | required | Start or resume claim |
+| `/found-items/claims/{claim_id}/` | GET | required | Claim details |
+| `/found-items/claims/{claim_id}/answer-security/` | POST | required | Answer security question |
+| `/found-items/claims/{claim_id}/submit-evidence/` | POST | required | Upload evidence (multipart) |
+| `/found-items/claims/{claim_id}/initiate-payment/` | POST | required | Start M‑Pesa STK push (if fee) |
+| `/found-items/claims/{claim_id}/payment-status/` | GET | required | Poll payment status |
+| `/found-items/claims/{claim_id}/confirm-receipt/` | POST | required | Confirm item received (completes claim) |
+| `/found-items/claims/{claim_id}/cancel/` | POST | required | Cancel claim |
+| `/found-items/items/{item_id}/tip/` | POST | required | Send tip about item |
+| `/found-items/items/{item_id}/report/` | POST | required | Report item |
+| `/found-items/claims/` | GET | required | List user’s claims |
+| `/found-items/admin/items/` | GET | admin | All items |
+| `/found-items/admin/claims/` | GET | admin | All claims |
+| `/found-items/admin/claims/{claimId}/approve/` | POST | admin | Approve claim |
+| `/found-items/admin/claims/{claimId}/reject/` | POST | admin | Reject claim |
 
----
+### 6.1 List Items
 
-## 6. Found Items & Lost & Found
-
-### 6.1 List All Items
-`GET /found-items/items/`  
-**Auth**: required  
 **Query**: `category`, `search`
 
-**Response**
+**Response** (redacted)
 ```json
-[
-  {
-    "id": "uuid",
-    "title": "Black Laptop",
-    "category": "Electronics",
-    "location_found": "Library",
-    "found_date": "2026-05-20",
-    "status": "active",
-    "is_claimed": false,
-    "posted_by": {"id": "uuid", "full_name": "John"}
-  }
-]
+[{
+  "id": "uuid",
+  "title": "Black Laptop",
+  "category": "gadget",
+  "location_found": "Library",
+  "found_date": "2026-05-20T14:30:00Z",
+  "status": "active",
+  "is_claimed": false,
+  "blurred_image_url": "https://...",
+  "posted_by": {"id": "uuid", "full_name": "John"}
+}]
 ```
 
----
-
-### 6.2 Post Found Item
-`POST /found-items/items/`  
-**Auth**: required, `multipart/form-data`  
-**Fields**: `title`, `category`, `description`, `location_found`, `found_date`, `image`, etc.
-
----
-
-### 6.3 My Items
-`GET /found-items/my-items/`  
-**Auth**: required
-
-**Response**: same structure as list, filtered to the logged-in user.
-
----
-
-### 6.4 Claim an Item
-`POST /found-items/items/{item_id}/claim/`  
-**Auth**: required  
-Starts or resumes a claim process.
+### 6.2 Claim Item
 
 **Response**
 ```json
 {
-  "claim_id": "uuid",
+  "id": "claim-uuid",
+  "item_id": "item-uuid",
   "status": "pending",
-  "next_step": "security_question"
+  "requires_security": true,
+  "security_question": "What is your pet’s name?"
 }
 ```
 
 ---
 
-### 6.5 Claim Flow Endpoints (all auth required)
-- **Verify Ownership** `POST /found-items/items/{item_id}/verify-ownership/`  
-- **Answer Security Question** `POST /found-items/claims/{claim_id}/answer-security/`  
-- **Submit Evidence** `POST /found-items/claims/{claim_id}/submit-evidence/` (multipart)  
-- **Initiate Payment** `POST /found-items/claims/{claim_id}/initiate-payment/`  
-- **Check Payment Status** `GET /found-items/claims/{claim_id}/payment-status/`  
-- **Confirm Receipt** `POST /found-items/claims/{claim_id}/confirm-receipt/`  
+## 📢 Announcements
 
----
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/announcements/` | GET | required | List visible announcements (limit, search) |
+| `/announcements/` | POST | admin/rep | Create announcement |
+| `/announcements/{announcement_id}/` | GET/PUT/DELETE | required (update/delete only author/admin) | Manage announcement |
+| `/announcements/{announcement_id}/report/` | POST | required | Report announcement |
+| `/announcements/feed/` | GET | required | Cached feed (first 20) |
+| `/announcements/requests/` | POST | any student | Request announcement |
+| `/announcements/requests/` | GET | admin/rep | List requests (filter by status) |
+| `/announcements/requests/{request_id}/approve/` | POST | admin/rep | Approve request (creates announcement) |
+| `/announcements/requests/{request_id}/reject/` | POST | admin/rep | Reject request |
+| `/announcements/reports/` | GET | admin | List reports |
+| `/announcements/reports/{report_id}/resolve/` | PUT | admin | Resolve report |
 
-### 6.6 Admin Endpoints (for found items)
-- `GET /found-items/admin/items/` – list all items  
-- `GET /found-items/admin/claims/` – list all claims  
-- `POST /found-items/admin/claims/{claimId}/approve/`  
-- `POST /found-items/admin/claims/{claimId}/reject/`  
+### 7.1 Create Announcement
 
----
-
-## 7. Announcements
-
-### 7.1 List Announcements
-`GET /announcements/`  
-**Auth**: required  
-**Query**: `category`, `search`
-
-**Response**
+**Request**
 ```json
-[
-  {
-    "id": "uuid",
-    "title": "Exam Timetable",
-    "content": "...",
-    "is_urgent": false,
-    "posted_by": {"id": "uuid", "full_name": "Dr. Akinyi"},
-    "created_at": "2026-05-25T10:00:00Z"
-  }
-]
+{
+  "title": "Exam Timetable",
+  "content": "<p>Final exams start on 1st June</p>",
+  "target": "entire_institution",
+  "is_urgent": true,
+  "expires_at": "2026-06-30T23:59:59Z"
+}
+```
+
+**Response** `201`
+```json
+{"id": "uuid", "message": "Announcement created"}
 ```
 
 ---
 
-### 7.2 Create Announcement (Admin/Rep)
-`POST /announcements/`  
-**Auth**: admin / class rep / student leader
+## 💼 Opportunities
 
----
-
-### 7.3 Reports
-- `GET /announcements/reports/` – list all content reports  
-- `PUT /announcements/reports/{id}/resolve/` – resolve a report  
-
----
-
-## 8. Opportunities
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/opportunities/` | GET | required | List opportunities (category, search) |
+| `/opportunities/` | POST | admin | Create opportunity |
+| `/opportunities/{id}/` | GET/PUT/DELETE | required (edit/delete admin) | Manage opportunity |
+| `/opportunities/{id}/like/` | POST | required | Toggle like |
+| `/opportunities/{id}/report/` | POST | required | Report opportunity |
 
 ### 8.1 List Opportunities
-`GET /opportunities/`  
-**Auth**: required  
 
-### 8.2 Create/Edit/Delete (Admin)
-- `POST /opportunities/`  
-- `PUT /opportunities/{id}/`  
-- `DELETE /opportunities/{id}/`  
+**Response**
+```json
+[{
+  "id": "uuid",
+  "title": "Summer Internship",
+  "description": "<p>Join Google...</p>",
+  "category": "internship",
+  "likes_count": 12,
+  "is_liked": false,
+  "expires_at": "2026-07-31T23:59:59Z"
+}]
+```
 
----
+### 8.2 Create Opportunity
 
-## 9. Blog
-
-### 9.1 List Posts
-`GET /blog/posts/`  
-**Auth**: required  
-**Query**: `category`, `search`, `tag`, `featured`, `sort`
-
----
-
-### 9.2 Single Post
-`GET /blog/posts/{slug}/`  
-**Auth**: required
-
----
-
-### 9.3 Create / Edit / Delete (Admin)
-- `POST /blog/posts/`  
-- `PUT /blog/posts/{id}/edit/`  
-- `DELETE /blog/posts/{id}/delete/`  
-
-### 9.4 Hide / Show (Admin)
-`PUT /blog/posts/slug/{slug}/hide/`  
-**Auth**: admin  
-Toggles the `is_hidden` flag.
-
----
-
-### 9.5 User Interactions
-- `POST /blog/posts/{postId}/like/` – toggle like  
-- `POST /blog/posts/{postId}/save/` – toggle save/bookmark  
-- `GET /blog/saved/` – list saved posts  
-
-### 9.6 Comments
-- `GET /blog/posts/{postId}/comments/`  
-- `POST /blog/posts/{postId}/comments/` (optional `parent_id` for replies)  
-
----
-
-## 10. Support / Help Desk
-
-### 10.1 List Tickets
-`GET /support/`  
-**Auth**: required (user sees own tickets)  
-
-### 10.2 Create Ticket
-`POST /support/`  
+**Request**
 ```json
 {
-  "title": "Login Issue",
-  "description": "I cannot login...",
+  "title": "Summer Internship",
+  "description": "<p>... long description ...</p>",
+  "category": "internship",
+  "link": "https://apply.com",
+  "expires_in_days": 120
+}
+```
+
+---
+
+## 📝 Blog
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/blog/posts/` | GET | required | List posts (search, category, featured, sort) |
+| `/blog/posts/` | POST | admin | Create blog post |
+| `/blog/posts/{slug}/` | GET | required | Single post |
+| `/blog/posts/{id}/edit/` | PUT | admin | Update post |
+| `/blog/posts/{id}/delete/` | DELETE | admin | Delete post |
+| `/blog/posts/slug/{slug}/hide/` | PUT | admin | Toggle hidden status |
+| `/blog/posts/{postId}/like/` | POST | required | Toggle like |
+| `/blog/posts/{postId}/save/` | POST | required | Toggle save |
+| `/blog/saved/` | GET | required | List saved posts |
+| `/blog/posts/{postId}/comments/` | GET/POST | required | List/add comments |
+| `/blog/comments/{commentId}/` | PUT/DELETE | author/admin | Update/delete comment |
+
+### 9.1 Create Blog Post
+
+**Request** (multipart/form-data optional)
+```json
+{
+  "title": "Study Tips",
+  "content": "<p>Rich HTML content...</p>",
+  "excerpt": "Short summary",
+  "featured_image": file,
+  "category": "academic-tips",
+  "tags": ["exam", "tips"]
+}
+```
+
+**Response**
+```json
+{
+  "id": "uuid",
+  "slug": "study-tips",
+  "message": "Post created"
+}
+```
+
+---
+
+## 🆘 Support Tickets
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/support/` | GET | required | List user’s tickets |
+| `/support/` | POST | required | Create ticket |
+| `/support/{ticket_id}/respond/` | POST | agent | Respond to ticket |
+
+**Create ticket request**
+```json
+{
+  "title": "Cannot log in",
+  "description": "I receive an invalid OTP error",
   "category": "technical"
 }
 ```
 
-### 10.3 Respond to Ticket
-`POST /support/{ticket_id}/respond/`  
-```json
-{"message": "Please try clearing your cache"}
-```
+---
+
+## 🔎 Global Search
+
+**Endpoint**: `GET /search/?q=keyword`
+
+Returns combined results from:
+- Users (name, admission number)
+- Announcements (title, content)
+- Opportunities (title, description)
+- Found items (title, description)
+- Blog posts (title, content)
 
 ---
 
-## 11. Search
+## 📍 Geo‑Location Services
 
-### 11.1 Global Search
-`GET /search/?q=keyword`  
-**Auth**: required  
-Combines results from users, announcements, opportunities, found items, and blog posts.
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/geo/venues/` | GET | required | List venues (search) |
+| `/geo/venues/nearby/` | GET | required | Venues near lat/lon |
+| `/geo/geocode/` | GET | required | Address → coordinates |
+| `/geo/reverse-geocode/` | GET | required | Coordinates → address |
+| `/geo/directions/` | GET | required | Walking directions between two points |
+| `/geo/classes/nearby/` | GET | required | Upcoming classes near user |
+| `/geo/check-in/` | POST | required | Location‑based attendance check‑in |
 
----
+### 12.1 Nearby Classes
 
-## 12. Geo‑Location Services
-
-### 12.1 List Venues
-`GET /geo/venues/?search=Lab&limit=10`  
-
----
-
-### 12.2 Nearby Venues
-`GET /geo/venues/nearby/?lat=-1.23&lon=36.87&limit=5`  
-
----
-
-### 12.3 Geocoding & Reverse Geocoding
-- `GET /geo/geocode/?address=Library`  
-- `GET /geo/reverse-geocode/?lat=-1.23&lon=36.87`  
-
----
-
-### 12.4 Directions
-`GET /geo/directions/?origin_lat=-1.23&origin_lon=36.87&dest_lat=-1.24&dest_lon=36.88&travel_mode=walking`  
-
----
-
-### 12.5 Nearby Classes
-`GET /geo/classes/nearby/?lat=-1.23&lon=36.87&max_distance=500`  
+**Query**: `lat`, `lon`, `max_distance` (meters)  
 
 **Response**
 ```json
-[
-  {
-    "entry_id": "uuid",
-    "unit_name": "Microbiology",
-    "venue": "Lab 201",
-    "distance_meters": 120,
-    "walking_time_minutes": 2,
-    "lecturer": "Dr. Kimani"
-  }
-]
+[{
+  "entry_id": "uuid",
+  "unit_name": "Microbiology",
+  "venue": "Lab 201",
+  "distance_meters": 120,
+  "walking_time_minutes": 2
+}]
 ```
 
----
+### 12.2 Check‑in
 
-### 12.6 Location Check‑in (Attendance)
-`POST /geo/check-in/`  
+**Request**
 ```json
 {
   "timetable_entry_id": "uuid",
@@ -595,16 +620,24 @@ Combines results from users, announcements, opportunities, found items, and blog
 }
 ```
 
-- `GET /geo/check-in/history/?limit=20`  
-- `GET /geo/check-in/summary/`  
-
 ---
 
-## 13. Governance & Admin Audit
+## 🏛️ Governance & Audit
 
-### 13.1 Platform Statistics
-`GET /governance/stats/`  
-**Auth**: admin / student leader  
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/governance/stats/` | GET | admin/student_leader | Platform statistics |
+| `/governance/system-health/` | GET | admin | System health metrics |
+| `/governance/audit-logs/` | GET | admin | List audit logs (filter by action, severity, user, date) |
+| `/governance/audit-logs/export/` | GET | admin | CSV export |
+| `/governance/audit-logs/recent/` | GET | admin/student_leader | Last 10 logs (dashboard) |
+| `/governance/audit-logs/{log_id}/` | GET | admin | Full audit log entry |
+| `/governance/roles/expiring/` | GET | admin/student_leader | Roles expiring in N days |
+| `/governance/roles/history/` | GET | admin/student_leader | Role history (filter by user) |
+
+### 13.1 Platform Stats
+
+**Response**
 ```json
 {
   "students_count": 245,
@@ -616,52 +649,167 @@ Combines results from users, announcements, opportunities, found items, and blog
 }
 ```
 
----
+### 13.2 Audit Logs
 
-### 13.2 System Health
-`GET /governance/system-health/`  
-**Auth**: admin  
+**Query**: `action`, `target_user_id`, `severity`, `date_from`, `date_to`, `limit`, `offset`
+
+**Response**
 ```json
-{
-  "pending_offline_sync": 0,
-  "active_alerts": 0,
-  "cpu_usage": 23.5,
-  "memory_usage": "2.3 GB / 8 GB",
-  "alerts": []
-}
+[{
+  "id": "uuid",
+  "action": "ROLE_ASSIGNED",
+  "performed_by": "Admin Name",
+  "target_user": "Student Name",
+  "target_type": "StudentRole",
+  "severity": "info",
+  "created_at": "2026-05-31T09:00:00Z",
+  "metadata": {...}
+}]
 ```
 
 ---
 
-### 13.3 Audit Logs
-- `GET /governance/audit-logs/?action=ROLE_ASSIGNED&limit=20`  
-- `GET /governance/audit-logs/export/?date_from=2026-01-01` (CSV download)  
-- `GET /governance/audit-logs/recent/?limit=10`  
+## 🔔 Notifications
 
----
-
-### 13.4 Role Management
-- `GET /governance/roles/expiring/?days=7` – roles expiring soon  
-- `GET /governance/roles/history/?user_id=uuid`  
-
----
-
-## 14. Notifications
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/notifications/` | GET | required | List user’s notifications (limit, unread_only) |
+| `/notifications/unread-count/` | GET | required | Number of unread notifications |
+| `/notifications/{id}/read/` | POST | required | Mark single as read |
+| `/notifications/mark-all-read/` | POST | required | Mark all as read |
 
 ### 14.1 List Notifications
-`GET /notifications/`  
-**Auth**: required  
 
-### 14.2 Mark as Read
-`POST /notifications/{id}/read/`  
+**Response**
+```json
+[{
+  "id": "uuid",
+  "title": "New Announcement",
+  "message": "Exams postponed",
+  "type": "announcement",
+  "is_read": false,
+  "created_at": "2026-05-31T08:00:00Z",
+  "link": "/announcements/123"
+}]
+```
 
 ---
 
-## General Notes
+## 🔐 Two‑Factor Authentication (TOTP)
 
-- All endpoints return JSON.  
-- Pagination is not implemented by default (most endpoints return all results), but can be added via `?limit=&offset=` on some.  
-- For file uploads (found items, profile pic, evidence), use `multipart/form-data`.  
-- The base URL for development is `http://localhost:8000/`; the API root is the same (no `/api` prefix).  
-- Use the `Authorization: Bearer <access_token>` header for authenticated requests.  
-- Refresh tokens are obtained at login and can be used at `/accounts/refresh-token/` to get a new access token without re-authentication.  
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/accounts/2fa/setup/` | GET | required | Generate QR code & secret |
+| `/accounts/2fa/verify-setup/` | POST | required | Verify TOTP code & enable 2FA |
+| `/accounts/2fa/disable/` | POST | required | Disable 2FA (requires TOTP code) |
+| `/accounts/2fa/status/` | GET | required | Check if 2FA enabled |
+| `/accounts/2fa/verify-login/` | POST | none | Complete login after OTP (requires temp token) |
+
+### 15.1 Setup 2FA
+
+**Response**
+```json
+{"qr_code": "data:image/png;base64,...", "secret": "ABCDEFGH"}
+```
+
+### 15.2 Verify Setup
+
+**Request**
+```json
+{"code": "123456"}
+```
+
+**Response**
+```json
+{"message": "2FA enabled", "backup_codes": ["code1", "code2"]}
+```
+
+---
+
+## 👤 Biometric (Face) Authentication
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/accounts/biometric/enroll/` | POST | required | Enroll face (base64 image) |
+| `/accounts/biometric/login/` | POST | none | Login using face + phone number |
+| `/accounts/biometric/disable/` | POST | required | Disable biometric login |
+
+### 16.1 Enroll Biometric
+
+**Request**
+```json
+{"image_data": "base64-encoded-face-image"}
+```
+
+### 16.2 Biometric Login
+
+**Request**
+```json
+{
+  "phone_number": "0712345678",
+  "image_data": "base64-encoded-face-image"
+}
+```
+
+**Response** (same as `/verify-otp/` – returns JWT tokens)
+
+---
+
+## 🧪 Session Management
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/accounts/sessions/` | GET | required | List active sessions (with device info) |
+| `/accounts/sessions/{session_id}/revoke/` | POST | required | Revoke a specific session |
+| `/accounts/sessions/revoke-all/` | POST | required | Revoke all other sessions |
+
+---
+
+## 👥 Role Management (Accounts)
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/accounts/roles/` | GET | required | Get authenticated user’s own roles |
+| `/accounts/roles/assign/` | POST | admin/faculty_officer | Assign role to user |
+| `/accounts/roles/{role_id}/revoke/` | POST | admin/faculty_officer | Revoke role |
+
+---
+
+## 📡 Common Query Parameters
+
+- `limit` – maximum number of records (default varies)
+- `offset` – pagination offset (for those that support pagination)
+- `search` – text search
+- `ordering` – field name with optional `-` prefix for descending
+
+---
+
+## ⚠️ Error Response Format
+
+```json
+{"error": "Human‑readable error message"}
+```
+
+**HTTP status codes:**
+- `200`, `201` – success
+- `400` – bad request (validation)
+- `401` – missing or invalid token
+- `403` – permission denied
+- `404` – resource not found
+- `422` – unprocessable entity (schema validation)
+- `429` – rate limit exceeded
+- `500` – internal server error
+
+---
+
+## 📎 Additional Notes
+
+- All datetime fields are in UTC (ISO 8601).
+- The frontend uses Vite + React; the backend is Django + Ninja.
+- File uploads must use `multipart/form-data`.
+- The base URL for production will be your deployed backend domain.
+- For the Android APK build, you need to sync Capacitor (`npx cap sync android`) after building the web app.
+
+---
+
+*This documentation is complete and covers every major endpoint as of May 2026. For the latest updates, refer to the source code or contact the development team.*

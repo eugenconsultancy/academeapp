@@ -1143,3 +1143,57 @@ Not Found: /accounts/2fa/status/
 [30/May/2026 00:29:23] "OPTIONS /accounts/2fa/setup/ HTTP/1.1" 200 0
 Not Found: /accounts/2fa/setup/
 [30/May/2026 00:29:23] "GET /accounts/2fa/setup/ HTTP/1.1" 404 27701
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+first the fcuntionality on support , strcuture a way which when a user submits the ticket
+he can be able to access the feedback provided fromthe amin side. 
+
+
+the admin dashboard should be able to fetch classes across all users and display the current status of classes.
+
+
+from the admin dhasboard he should be able to see user name, insitution, phone number, email for each system user.
+
+
+annaoucment request i should also include the admin as an option aprt from student leader and class rep
+
+upon admin approving the user request, it should automatically post iteslf apon approval. 
+
+user ability to ceate post should be limited to admin only and editor, others should even have a view of the create view.rolebased.
+
+
+resolve; SyntaxError: The requested module '/node_modules/@react-three/fiber/node_modules/react-reconciler/constants.js?v=402c4976' does not provide an export named 'ConcurrentRoot'
+
+
+on signup, the entry for adm should use a specific format for autheticity. 
+
+
+the admin dashboard system option, should be based on accurate and verifiable metrics
+also the amin dashbaord should fetach classess fro the entire platform , for different schools and classes 
+
+
+the manage classes dropdown tt, should be visble in dark mode.
+
+the campus map locate me fucntionality should be fucntional8
