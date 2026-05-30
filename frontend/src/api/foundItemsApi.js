@@ -11,7 +11,7 @@ export const foundItemsApi = {
   deleteItem: (id) => apiClient.delete(`/found-items/items/${id}/`),
 
   // ── My Items (items posted by the logged‑in user) ─
-  getMyItems: () => apiClient.get('/found-items/my-items/'),   // ← NEW
+  getMyItems: () => apiClient.get('/found-items/my-items/'),
 
   // ── Ownership ────────────────────────────────────
   verifyOwnership: (itemId) => apiClient.post(`/found-items/items/${itemId}/verify-ownership/`),
@@ -33,8 +33,7 @@ export const foundItemsApi = {
 
   // ── Tips & Reports ──────────────────────────────
   sendTip: (itemId, message) => apiClient.post(`/found-items/items/${itemId}/tip/`, { message }),
-  reportItem: (itemId, reason) =>
-    apiClient.post(`/found-items/items/${itemId}/report/`, { reason }),
+  reportItem: (itemId, reason) => apiClient.post(`/found-items/items/${itemId}/report/`, { reason }),
 
   // ── User Claims ──────────────────────────────────
   listClaims: () => apiClient.get('/found-items/claims/'),

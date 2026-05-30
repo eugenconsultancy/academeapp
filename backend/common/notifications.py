@@ -1,6 +1,7 @@
 import firebase_admin
 from firebase_admin import credentials, messaging
 from django.conf import settings
+from django.core.mail import send_mail
 import logging
 
 logger = logging.getLogger(__name__)
@@ -53,16 +54,18 @@ class NotificationService:
     
     def send_bulk_notification(self, users, title, body, data=None):
         """Send push notification to multiple users (Chunked to 500)"""
-        # Filter users with tokens
-        valid_users = [u for u in users if u.fcm_token]
-        if not valid_users:
+        if not users:
             return False
         
-        tokens = [u.fcm_token for u in valid_users]
+        # Build a mapping from token to user for cleanup
+        token_user_map = {u.fcm_token: u for u in users if u.fcm_token}
+        tokens = list(token_user_map.keys())
         
-        # Firebase limits multicast to 500 tokens per request
+        if not tokens:
+            return False
+        
         for i in range(0, len(tokens), 500):
-            chunk = tokens[i:i + 500]
+            chunk = tokens[i:i+500]
             try:
                 message = messaging.MulticastMessage(
                     notification=messaging.Notification(title=title, body=body),
@@ -71,14 +74,33 @@ class NotificationService:
                 )
                 response = messaging.send_multicast(message)
                 
-                # Check for failed tokens in this chunk
+                # Clean up failed tokens
                 if response.failure_count > 0:
                     for idx, resp in enumerate(response.responses):
                         if not resp.success and isinstance(resp.exception, messaging.UnregisteredError):
-                            # In a bulk scenario, you may need to map index back to user
-                            logger.info("Found unregistered token in bulk send.")
-                            
+                            token = chunk[idx]
+                            user = token_user_map.get(token)
+                            if user:
+                                self._cleanup_token(user, token)
+                            else:
+                                logger.warning(f"Unregistered token {token} but no user found")
             except Exception as e:
                 logger.error(f"Bulk notification chunk failed: {e}")
-        
         return True
+    
+    # Email service stub (for password reset, data export, etc.)
+    def send_email(self, to_email, subject, html_content, text_content=None):
+        """Send an email using Django's send_mail. Requires EMAIL_BACKEND configured."""
+        try:
+            send_mail(
+                subject=subject,
+                message=text_content or html_content,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[to_email],
+                html_message=html_content,
+                fail_silently=False,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send email to {to_email}: {e}")
+            return False

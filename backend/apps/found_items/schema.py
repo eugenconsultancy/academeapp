@@ -5,9 +5,7 @@ from typing import Optional, List
 from pydantic import validator
 from common.constants import ItemCategory, ClaimStatus, ItemStatus
 
-
 class FoundItemCreateIn(Schema):
-    """Schema for creating a found item (with optional image upload)"""
     title: str
     category: str
     description: Optional[str] = None
@@ -16,11 +14,10 @@ class FoundItemCreateIn(Schema):
     security_question: Optional[str] = None
     security_answer: Optional[str] = None
     is_fee_required: bool = False
-    locator_phone: Optional[str] = None      # phone of the finder/locator
-    locator_name: Optional[str] = None        # optional name override
+    locator_phone: Optional[str] = None
+    locator_name: Optional[str] = None
     admission_number_on_item: Optional[str] = None
-    image: Optional[UploadedFile] = File(None)  # optional file upload
-
+    image: Optional[UploadedFile] = File(None)  # optional
 
 class FoundItemOut(Schema):
     id: str
@@ -39,10 +36,8 @@ class FoundItemOut(Schema):
     created_at: str
     posted_by: Optional[dict] = None
 
-
 class TipIn(Schema):
     message: str
-
 
 class ClaimOut(Schema):
     id: str
@@ -53,7 +48,6 @@ class ClaimOut(Schema):
     payment_received: bool
     created_at: str
     confirmed_at: Optional[str] = None
-
 
 class ClaimDetailOut(Schema):
     id: str
@@ -72,40 +66,32 @@ class ClaimDetailOut(Schema):
     created_at: str
     confirmed_at: Optional[str] = None
 
-
 class ClaimStatusOut(Schema):
-    """Minimal info for resuming a claim"""
     claim_id: str
     status: str
-    next_step: str  # e.g., 'security', 'evidence', 'payment', 'confirm', 'done'
+    next_step: str
     requires_security: bool
     requires_payment: bool
     security_question: Optional[str] = None
-
 
 class VerifyOwnershipOut(Schema):
     verified: bool
     error: Optional[str] = None
     admission_match: bool = False
 
-
 class SecurityAnswerIn(Schema):
     answer: str
 
-
 class EvidenceSubmitIn(Schema):
     description: Optional[str] = None
-
 
 class PaymentInitiateOut(Schema):
     message: str
     invoice_id: Optional[str] = None
     status: str
 
-
 class PaymentStatusOut(Schema):
-    status: str  # pending, completed, failed
-
+    status: str
 
 class ConfirmPaymentOut(Schema):
     status: str

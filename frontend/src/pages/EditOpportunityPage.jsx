@@ -3,6 +3,8 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { opportunitiesApi } from '../api/opportunitiesApi';
 import { useAuth } from '../contexts/AuthContext';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 import toast from 'react-hot-toast';
 import { FiArrowLeft, FiSave } from 'react-icons/fi';
 
@@ -94,13 +96,13 @@ export default function EditOpportunityPage() {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Description *</label>
-                            <textarea
-                                rows={6}
+                            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Description * (rich text)</label>
+                            <ReactQuill
+                                theme="snow"
                                 value={form.description}
-                                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                                className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
-                                required
+                                onChange={(html) => setForm({ ...form, description: html })}
+                                placeholder="Describe the opportunity in detail..."
+                                className="rounded-xl overflow-hidden"
                             />
                         </div>
 

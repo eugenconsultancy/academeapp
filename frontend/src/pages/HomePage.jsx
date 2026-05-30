@@ -1,7 +1,7 @@
 // src/pages/HomePage.jsx
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { announcementsApi } from '../api/announcementsApi';
 import { opportunitiesApi } from '../api/opportunitiesApi';
 import { classesApi } from '../api/classesApi';
@@ -12,8 +12,9 @@ import SkeletonLoader from '../components/shared/SkeletonLoader';
 import { useAuth } from '../contexts/AuthContext';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { useTheme } from '../contexts/ThemeContext';
-import HomepageScene from '../components/three/HomepageScene';
-import AttendanceRing3D from '../components/three/AttendanceRing3D';
+// Lazy load heavy 3D components
+const HomepageScene = lazy(() => import('../components/three/HomepageScene'));
+const AttendanceRing3D = lazy(() => import('../components/three/AttendanceRing3D'));
 import {
   FiArrowRight, FiPackage, FiBell, FiBriefcase,
   FiBook, FiClock, FiMapPin, FiUser, FiZap,
@@ -216,14 +217,14 @@ function AttendanceCTA({ nextMarkableClass, location, onSuccess, isDark }) {
   if (!nextMarkableClass) return null;
 
   const urgencyMap = {
-    normal: { border: '#6366f1', glow: 'rgba(99,102,241,.2)', btn: 'linear-gradient(135deg,#4f46e5,#7c3aed)' },
-    warning: { border: '#f59e0b', glow: 'rgba(245,158,11,.25)', btn: 'linear-gradient(135deg,#d97706,#f59e0b)' },
-    critical: { border: '#ef4444', glow: 'rgba(239,68,68,.3)', btn: 'linear-gradient(135deg,#dc2626,#ef4444)' },
+    normal: { border: '#f3601c', glow: 'rgb(238, 62, 9)', btn: 'linear-gradient(135deg,#4f46e5,#7c3aed)' },
+    warning: { border: '#a16a0a', glow: 'rgba(245,158,11,.25)', btn: 'linear-gradient(135deg,#d97706,#f59e0b)' },
+    critical: { border: '#ef4444', glow: 'rgba(165, 39, 39, 0.3)', btn: 'linear-gradient(135deg,#dc2626,#ef4444)' },
   };
   const u = urgencyMap[urgency];
 
   const cardBg = isDark ? 'rgba(15,23,42,0.9)' : '#ffffff';
-  const textMain = isDark ? '#f1f5f9' : '#1f2937';
+  const textMain = isDark ? '#ca3305' : '#1f2937';
   const border = isDark ? `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : u.border}` : `1px solid ${u.border}`;
   const shadow = isDark ? '0 4px 12px rgba(0,0,0,0.4)' : '0 2px 12px rgba(0,0,0,0.06)';
 
@@ -241,7 +242,7 @@ function AttendanceCTA({ nextMarkableClass, location, onSuccess, isDark }) {
           {urgency !== 'normal' && (
             <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: u.border, animation: 'hpCtaDot 1.3s ease-in-out infinite', flexShrink: 0 }} />
           )}
-          <span style={{ fontSize: '.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.08em', color: u.border }}>
+          <span style={{ fontSize: '.85rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.08em', color: u.border }}>
             Check-in window open
           </span>
         </div>
@@ -249,7 +250,7 @@ function AttendanceCTA({ nextMarkableClass, location, onSuccess, isDark }) {
           {nextMarkableClass.unit_name}
         </p>
         {timeLeft && (
-          <p style={{ fontSize: '.72rem', fontWeight: 700, color: u.border }}>
+          <p style={{ fontSize: '.72rem', fontWeight: 900, color: u.border }}>
             Closes in {timeLeft.mins}:{String(timeLeft.secs).padStart(2, '0')}
           </p>
         )}
@@ -357,9 +358,9 @@ function StatCard({ label, value, sublabel, icon: Icon, color, accentBg, trend, 
   const pct = total && value != null ? Math.min(100, Math.round((value / total) * 100)) : null;
   const bg = isDark ? 'rgba(15,23,42,0.8)' : '#ffffff';
   const borderColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-  const textMain = isDark ? '#f1f5f9' : '#111827';
-  const labelColor = isDark ? '#94a3b8' : '#9ca3af';
-  const subColor = isDark ? '#94a3b8' : '#6b7280';
+  const textMain = isDark ? '#cadbca' : '#111827';
+  const labelColor = isDark ? '#0f3b77' : '#9ca3af';
+  const subColor = isDark ? '#2b69c0' : '#6b7280';
 
   return (
     <div style={{
@@ -461,7 +462,6 @@ const FEATURE_SECTIONS = [
     cta: 'Explore Opportunities',
     reverse: false,
   },
-  // ... (other sections unchanged)
   {
     id: 'announcements',
     gradient: 'linear-gradient(135deg, rgba(245,158,11,.06) 0%, rgba(251,191,36,.04) 100%)',
@@ -487,7 +487,7 @@ const FEATURE_SECTIONS = [
     id: 'found-items',
     gradient: 'linear-gradient(135deg, rgba(16,185,129,.06) 0%, rgba(6,182,212,.04) 100%)',
     border: 'rgba(16,185,129,.15)',
-    accent: '#10b981',
+    accent: '#21966f',
     accentBg: 'rgba(16,185,129,.1)',
     icon: FiPackage,
     emoji: '🎒',
@@ -508,7 +508,7 @@ const FEATURE_SECTIONS = [
     id: 'classes',
     gradient: 'linear-gradient(135deg, rgba(139,92,246,.06) 0%, rgba(99,102,241,.04) 100%)',
     border: 'rgba(139,92,246,.15)',
-    accent: '#8b5cf6',
+    accent: '#2036f5',
     accentBg: 'rgba(139,92,246,.1)',
     icon: FiBook,
     emoji: '📚',
@@ -529,7 +529,7 @@ const FEATURE_SECTIONS = [
     id: 'campus-map',
     gradient: 'linear-gradient(135deg, rgba(6,182,212,.06) 0%, rgba(16,185,129,.04) 100%)',
     border: 'rgba(6,182,212,.15)',
-    accent: '#06b6d4',
+    accent: '#2ca89e',
     accentBg: 'rgba(6,182,212,.1)',
     icon: FiCompass,
     emoji: '🗺️',
@@ -553,10 +553,10 @@ function FeatureSection({ section, index, isDark }) {
   const { icon: Icon, reverse } = section;
   const textMain = isDark ? '#f1f5f9' : '#111827';
   const textMuted = isDark ? '#94a3b8' : '#6b7280';
-  const bodyColor = isDark ? '#cbd5e1' : '#374151';
+  const bodyColor = isDark ? '#f0f3f7' : '#374151';
   const cardBg = isDark ? 'rgba(15,23,42,0.8)' : '#ffffff';
   const borderColor = isDark ? 'rgba(255,255,255,0.08)' : section.border;
-  const accentBg = isDark ? `${section.accent}1a` : section.accentBg; // adjust opacity
+  const accentBg = isDark ? `${section.accent}1a` : section.accentBg;
 
   return (
     <section
@@ -575,7 +575,6 @@ function FeatureSection({ section, index, isDark }) {
       }}
       className="hp-feature-section"
     >
-      {/* Text side */}
       <div style={{ order: reverse ? 2 : 1 }}>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 14px', borderRadius: 99, background: accentBg, border: `1px solid ${borderColor}`, marginBottom: 20 }}>
           <Icon size={13} style={{ color: section.accent }} />
@@ -616,7 +615,6 @@ function FeatureSection({ section, index, isDark }) {
         </Link>
       </div>
 
-      {/* Visual card side */}
       <div style={{ order: reverse ? 1 : 2 }}>
         <div style={{
           borderRadius: 24,
@@ -660,7 +658,7 @@ function CampusIntelligence({ weather, isDark }) {
   const dayIdx = new Date().getDate() - 1;
   const [idx, setIdx] = useState(0);
   const slides = [
-    { icon: '💡', label: 'Campus Tip', text: CAMPUS_TIPS[dayIdx % CAMPUS_TIPS.length] },
+    { icon: '💡', label: 'Your Campus Tip', text: CAMPUS_TIPS[dayIdx % CAMPUS_TIPS.length] },
     weather && {
       icon: weather.icon, label: 'Weather',
       text: weatherInsight(weather.desc) || `${weather.temp}°C, ${weather.desc}. Humidity ${weather.humidity}%, wind ${weather.wind} m/s.`,
@@ -673,9 +671,8 @@ function CampusIntelligence({ weather, isDark }) {
   const cardBg = isDark ? 'rgba(15,23,42,0.8)' : '#ffffff';
   const border = isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,.06)';
   const textMain = isDark ? '#f1f5f9' : '#374151';
-  const textHead = isDark ? '#e2e8f0' : '#111827';
-  const labelColor = isDark ? '#94a3b8' : '#9ca3af';
-  const dotColor = '#6366f1';
+  const labelColor = isDark ? '#f0f4fa' : '#9ca3af';
+  const dotColor = '#2d30c9';
 
   return (
     <div style={{ borderRadius: 16, background: cardBg, border, borderLeft: `3px solid ${dotColor}`, padding: '16px 18px', boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
@@ -738,7 +735,7 @@ function ActivityFeed({ todayClasses, announcements, opportunities, claimedItems
   if (!items.length) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px 16px', color: textMuted }}>
       <span style={{ fontSize: '1.4rem', marginBottom: 8, opacity: .6 }}>📭</span>
-      <span style={{ fontSize: '.78rem', fontWeight: 600 }}>No recent activity</span>
+      <span style={{ fontSize: '.78rem', fontWeight: 700 }}>No recent activity</span>
     </div>
   );
 
@@ -786,7 +783,7 @@ function SectionTitle({ children, to, linkLabel, tier = 'secondary', isDark }) {
 function Card({ title, dotColor, to, linkLabel, children, elevated = false, accent = false, isDark }) {
   const bg = isDark ? 'rgba(15,23,42,0.8)' : '#ffffff';
   const border = isDark ? `1px solid ${accent ? 'rgba(99,102,241,.15)' : 'rgba(255,255,255,0.06)'}` : `1px solid ${accent ? 'rgba(99,102,241,.12)' : 'rgba(0,0,0,.06)'}`;
-  const titleColor = isDark ? '#f1f5f9' : '#111827';
+  const titleColor = isDark ? '#06adad' : '#111827';
 
   return (
     <div style={{ background: bg, border, borderRadius: 16, padding: 18, boxShadow: elevated ? (isDark ? '0 4px 20px rgba(0,0,0,.4)' : '0 4px 20px rgba(0,0,0,.07)') : '0 1px 4px rgba(0,0,0,.04)' }}>
@@ -846,7 +843,7 @@ function PlatformIntro({ isDark }) {
       transition: 'opacity .7s, transform .7s cubic-bezier(.16,1,.3,1)',
     }}>
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 16px', borderRadius: 99, background: isDark ? 'rgba(99,102,241,.1)' : 'rgba(99,102,241,.08)', border: `1px solid ${isDark ? 'rgba(99,102,241,.2)' : 'rgba(99,102,241,.15)'}`, marginBottom: 20 }}>
-        <FiZap size={13} style={{ color: '#6366f1' }} />
+        <FiZap size={13} style={{ color: '#3437e0' }} />
         <span style={{ fontSize: '.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', color: '#6366f1' }}>Everything in one place</span>
       </div>
       <h2 style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: 'clamp(1.8rem, 4vw, 3rem)', fontWeight: 800, letterSpacing: '-.04em', color: textMain, lineHeight: 1.15, marginBottom: 16, maxWidth: 600, margin: '0 auto 16px' }}>
@@ -1049,8 +1046,8 @@ export default function HomePage() {
           font-size: clamp(2rem, 5vw, 3.4rem);
           font-weight: 800; letter-spacing: -.045em; line-height: 1.08; margin: 0 0 8px; color: #fff;
         }
-        .hp-hero-name span { color: #fbbf24; }
-        .hp-hero-sub { font-size:.87rem; font-weight:500; color:rgba(255,255,255,.45); margin:0 0 24px; max-width:380px; }
+        .hp-hero-name span { color: #d3e203; }
+        .hp-hero-sub { font-size:.87rem; font-weight:300; color:rgba(16, 201, 207, 0.87); margin:0 0 24px; max-width:380px; }
         .hp-hero-pills { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:0; }
         .hp-hero-pill {
           display:inline-flex; align-items:center; gap:5px;
@@ -1069,7 +1066,7 @@ export default function HomePage() {
           display:flex; align-items:center; gap:5px;
           padding:6px 13px; border-radius:10px;
           background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.08);
-          font-size:.68rem; font-weight:600; color:rgba(255,255,255,.65); white-space:nowrap;
+          font-size:.68rem; font-weight:600; color:rgba(249, 253, 253, 0.92); white-space:nowrap;
         }
 
         .hp-cta-wrap {
@@ -1149,7 +1146,10 @@ export default function HomePage() {
         .dark .hp-divider { border-top-color: rgba(255,255,255,0.07); }
       `}</style>
 
-      <HomepageScene isMobile={isMobile} isDark={isDark} />
+      {/* Lazy‑load the 3D background – only after main content is interactive */}
+      <Suspense fallback={<div style={{ position: 'fixed', inset: 0, zIndex: 0, background: isDark ? '#071226' : '#FAFBFD' }} />}>
+        <HomepageScene isMobile={isMobile} isDark={isDark} />
+      </Suspense>
 
       <div className="hp-root">
         <div className="hp-hero">
@@ -1169,7 +1169,9 @@ export default function HomePage() {
               </div>
             </div>
             <div className="hp-hero-right">
-              <AttendanceRing3D attended={attendedCount} total={totalClasses} size={isMobile ? 80 : 100} isDark={isDark} />
+              <Suspense fallback={<div style={{ width: isMobile ? 80 : 100, height: isMobile ? 80 : 100, borderRadius: '50%', background: isDark ? '#1f2937' : '#e2e8f0' }} />}>
+                <AttendanceRing3D attended={attendedCount} total={totalClasses} size={isMobile ? 80 : 100} isDark={isDark} />
+              </Suspense>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'center' }}>
                 {nextMarkableClass ? (
                   <div className="hp-hero-meta-pill"><FiClock size={10} />{nextMarkableClass.unit_name?.split(' ').slice(0, 3).join(' ')}</div>
@@ -1264,7 +1266,7 @@ export default function HomePage() {
                       <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#8b5cf6', flexShrink: 0 }} />
                       <div style={{ flex: 1 }}>
                         <p style={{ fontSize: '.82rem', fontWeight: 700, color: isDark ? '#e2e8f0' : '#1f2937', marginBottom: 2 }}>{s.label}</p>
-                        <p style={{ fontSize: '.63rem', color: isDark ? '#94a3b8' : '#9ca3af' }}>{s.desc}</p>
+                        <p style={{ fontSize: '.63rem', color: isDark ? '#e6ebf1' : '#e0e5ec' }}>{s.desc}</p>
                       </div>
                       <span style={{ fontWeight: 800, fontSize: '1.15rem', color: isDark ? '#f1f5f9' : '#1f2937' }}>{s.value}</span>
                     </div>

@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
+// src/components/layout/FAB.jsx
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useDraggableFAB } from '../../hooks/useDraggableFAB';
+import useDraggableFAB from '../../hooks/useDraggableFAB';
 import { FiHome, FiPackage, FiBell, FiUser, FiLogOut, FiX } from 'react-icons/fi';
 
 export default function FAB() {
@@ -9,7 +10,28 @@ export default function FAB() {
     const navigate = useNavigate();
     const { logout } = useAuth();
     const fabRef = useRef(null);
-    const { position, handleDragStart, handleDragEnd } = useDraggableFAB(fabRef);
+
+    // Use the draggable hook
+    const {
+        handleDragStart,
+        handleDrag,
+        handleDragEnd,
+        handleTouchStart,
+        handleTouchMove,
+        handleTouchEnd,
+        fabStyle,
+        isDragging,
+        position,
+        snapEdge,
+    } = useDraggableFAB({
+        snapToEdge: true,
+        edgePadding: 16,
+        onClick: () => setOpen(prev => !prev),
+        onDragStart: () => {
+            // Optionally close menu when dragging starts
+            if (open) setOpen(false);
+        },
+    });
 
     const menuItems = [
         { icon: FiHome, label: 'Home', action: () => navigate('/'), color: 'text-blue-500' },
@@ -28,6 +50,12 @@ export default function FAB() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [open]);
 
+    // Prevent dragging when clicking on menu items
+    const handleMenuItemClick = (action) => {
+        action();
+        setOpen(false);
+    };
+
     return (
         <>
             {/* Backdrop overlay */}
@@ -43,10 +71,22 @@ export default function FAB() {
             <div
                 ref={fabRef}
                 className="fixed z-50 touch-none"
-                style={{
-                    left: position.x,
-                    top: position.y,
-                    transform: 'translate(0, 0)', // ensure correct positioning
+                style={fabStyle}
+                onMouseDown={handleDragStart}
+                onMouseMove={handleDrag}
+                onMouseUp={handleDragEnd}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                role="button"
+                aria-label="Floating action button"
+                aria-expanded={open}
+                tabIndex={0}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setOpen(prev => !prev);
+                    }
                 }}
             >
                 {/* Menu Items (popup above FAB) */}
@@ -55,9 +95,9 @@ export default function FAB() {
                         {menuItems.map((item, index) => (
                             <button
                                 key={index}
-                                onClick={() => {
-                                    item.action();
-                                    setOpen(false);
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMenuItemClick(item.action);
                                 }}
                                 className={`
                                     group relative flex items-center justify-center
@@ -87,7 +127,6 @@ export default function FAB() {
 
                 {/* Main Floating Action Button */}
                 <button
-                    onClick={() => setOpen(!open)}
                     className={`
                         w-14 h-14 rounded-full shadow-xl flex items-center justify-center
                         transition-all duration-300 ease-out

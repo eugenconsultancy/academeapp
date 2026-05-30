@@ -1081,3 +1081,65 @@ The application encountered an unexpected processing error. Try resetting the pa
 Error: Objects are not valid as a React child (found: object with keys {id, full_name}). If you meant to render a collection of children, use an array instead.
 
 ALSO THE ADMIN DAHSBOARD INTUIVE AND APPEALING COLORS NEEDED AND STYLINGS
+
+
+
+
+
+
+
+
+so the announcment page is not fucntional for some features like delete , update etc (crud)
+the locate me button is not fucntonal in the campus map page.
+the notifications section is fully not fucntional and poorly orgernized
+
+the change of font s in the navbar should apply to pages content 
+
+
+the modify the entire accounts/login system, for login can accept the 3 different number frmats : +254702496196, 0108038898, and 0702496196 and accepts any format grouned that the other sections of the nuber are matching
+implement the biometric system in signup
+should not accept letters, symbols, or any special characters for number fields strcitly except the + only at start of phone number. 
+
+
+also grant the admin, via the admin panel the ability to deactvate a user account.
+
+
+
+
+
+
+
+
+
+
+
+
+Platform Statistics
+Comprehensive platform metrics and analytics for your different parameters.
+
+0
+
+Total Students
+
+0
+
+Active Roles
+
+this feature is not accurate and fucntional as it reads 0 yet there ate different metrics stats.
+
+also Content Reports
+Review and moderate reported content.
+
+All
+Pending
+Resolved.... AND ALSO THE AUDOT LOGS : THOE 2 RISE FROM GOVERNANCE DASHBOARD
+unt/ HTTP/1.1" 200 12
+[30/May/2026 00:29:20] "OPTIONS /accounts/2fa/status/ HTTP/1.1" 200 0
+[30/May/2026 00:29:20] "OPTIONS /accounts/2fa/status/ HTTP/1.1" 200 0
+Not Found: /accounts/2fa/status/
+[30/May/2026 00:29:20] "GET /accounts/2fa/status/ HTTP/1.1" 404 27704
+Not Found: /accounts/2fa/status/
+[30/May/2026 00:29:20] "GET /accounts/2fa/status/ HTTP/1.1" 404 27704
+[30/May/2026 00:29:23] "OPTIONS /accounts/2fa/setup/ HTTP/1.1" 200 0
+Not Found: /accounts/2fa/setup/
+[30/May/2026 00:29:23] "GET /accounts/2fa/setup/ HTTP/1.1" 404 27701

@@ -24,7 +24,7 @@ class OpportunityUpdate(Schema):
     expires_in_days: Optional[int] = None   # days from now, or keep existing
 
 # ------------------------------------------------------------
-# EXISTING ENDPOINTS (unchanged except date format)
+# EXISTING ENDPOINTS   unchanged except date format)
 # ------------------------------------------------------------
 @router.get("/", auth=JWTAuth())
 def list_opportunities(request, category: str = None):

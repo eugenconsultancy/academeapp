@@ -8,7 +8,6 @@ class UserManager(BaseUserManager):
     def create_user(self, phone_number, password=None, **extra_fields):
         if not phone_number:
             raise ValueError('Phone number is required')
-        
         user = self.model(phone_number=phone_number, **extra_fields)
         if password:
             user.set_password(password)
@@ -19,6 +18,7 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
         extra_fields.setdefault('role', UserRole.ADMIN)
+        extra_fields.setdefault('is_system_user', True)   # superuser is system user
         return self.create_user(phone_number, password, **extra_fields)
 
 class User(AbstractBaseUser, PermissionsMixin, BaseModel):
@@ -32,14 +32,8 @@ class User(AbstractBaseUser, PermissionsMixin, BaseModel):
     profile_pic = models.URLField(blank=True)
     
     # Biometric Authentication (Cloud-Ready)
-    biometric_enabled = models.BooleanField(
-        default=False,
-        help_text="Flag indicating if the user has enabled cloud-based face login"
-    )
-    face_data = models.TextField(
-        blank=True,
-        help_text="Base64-encoded face image for cloud verification"
-    )
+    biometric_enabled = models.BooleanField(default=False)
+    face_data = models.TextField(blank=True)   # base64 image, size ~200KB, acceptable for demo
     
     # Role & Permissions
     role = models.CharField(
@@ -47,18 +41,14 @@ class User(AbstractBaseUser, PermissionsMixin, BaseModel):
         choices=[(role.value, role.name) for role in UserRole],
         default=UserRole.STUDENT.value
     )
-    is_system_user = models.BooleanField(
-        default=False,
-        help_text="If True, this user cannot be deleted through normal admin actions"
-    )
+    is_system_user = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     
-    # Two-Factor Authentication
-    two_factor_enabled = models.BooleanField(
-        default=False,
-        help_text="Whether the user has enabled two-factor authentication"
-    )
+    # Two-Factor Authentication (TOTP)
+    two_factor_enabled = models.BooleanField(default=False)
+    totp_secret = models.CharField(max_length=32, blank=True, null=True)  # TOTP secret key
+    backup_codes = models.JSONField(default=list, blank=True)  # list of hashed backup codes
     
     # Tracking & Notifications
     fcm_token = models.CharField(max_length=255, blank=True)
@@ -116,10 +106,6 @@ class User(AbstractBaseUser, PermissionsMixin, BaseModel):
 # ROLE LIFECYCLE: StudentRole Model
 # ============================================
 class StudentRole(BaseModel):
-    """
-    Core RBAC model for time-bound leadership positions.
-    ...
-    """
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -152,39 +138,23 @@ class StudentRole(BaseModel):
         blank=True,
         help_text="Human-readable name of the scope (e.g., '3rd Year Microbiology')"
     )
-    start_date = models.DateTimeField(
-        help_text="When this role assignment becomes active"
-    )
-    end_date = models.DateTimeField(
-        help_text="When this role assignment expires. Automatically deactivated by expire_roles task."
-    )
-    is_active = models.BooleanField(
-        default=True,
-        help_text="Set to False by expire_roles task when end_date passes, or manually by admin"
-    )
+    start_date = models.DateTimeField()
+    end_date = models.DateTimeField()
+    is_active = models.BooleanField(default=True)
     assigned_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
         null=True,
         related_name='roles_assigned',
-        help_text="The admin/officer who assigned this role"
     )
-    revocation_reason = models.TextField(
-        blank=True,
-        help_text="Reason for early revocation (if revoked before end_date)"
-    )
-    revoked_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When this role was manually revoked (if applicable)"
-    )
+    revocation_reason = models.TextField(blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
     revoked_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='roles_revoked',
-        help_text="Who revoked this role (if applicable)"
     )
     
     class Meta:
@@ -218,9 +188,7 @@ class StudentRole(BaseModel):
         self.revoked_at = timezone.now()
         if revoked_by:
             self.revoked_by = revoked_by
-        self.save(update_fields=[
-            'is_active', 'revocation_reason', 'revoked_at', 'revoked_by'
-        ])
+        self.save(update_fields=['is_active', 'revocation_reason', 'revoked_at', 'revoked_by'])
         self._update_user_base_role()
     
     def _update_user_base_role(self):
@@ -274,8 +242,9 @@ class UserSession(BaseModel):
             self.revoked_by = revoked_by
         self.save()
 
+
 # ============================================
-# EXISTING MODELS
+# Badge & DataExport (unchanged)
 # ============================================
 class Badge(BaseModel):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='badges')

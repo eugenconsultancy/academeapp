@@ -1,78 +1,116 @@
 /* ══════════════════════════════════════════════════════════
    ACADEME — TYPOGRAPHY SYSTEM
+   ══════════════════════════════════════════════════════════
    Display : Bricolage Grotesque (700/800)
    Body    : DM Sans (400/500/600/700)
-   Mono    : JetBrains Mono
+   Mono    : JetBrains Mono (400/500/600)
+   Backup  : IBM Plex Sans (fallback for third-party libs)
 ══════════════════════════════════════════════════════════ */
 
+/* ══════════════════════════════════════
+   FONT IMPORTS – WITH SWAP & FALLBACK
+   ══════════════════════════════════════ */
+
+/* Primary Display Font */
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&display=swap');
+
+/* Primary Body Font */
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap');
+
+/* Monospace Font for Code */
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* 
+   FONT LOADING STRATEGY:
+   
+   'display=swap' means:
+   1. Browser uses system font while downloading custom fonts
+   2. When custom font arrives, it swaps in
+   3. No "flash of invisible text" (FOIT)
+   4. Web Vitals compliant
+   5. If CDN is blocked/slow, system fonts continue to work
+   
+   This is the optimal strategy for web performance and accessibility.
+*/
 
 /* ══════════════════════════════════════
    FONT CSS VARIABLES
-══════════════════════════════════════ */
+   ══════════════════════════════════════ */
 :root {
-  /* ── Font families ── */
+  /* ── Font families (primary stack) ── */
   --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
   --font-body:    'DM Sans', ui-sans-serif, system-ui, sans-serif;
   --font-mono:    'JetBrains Mono', ui-monospace, monospace;
+  
+  /* ── Backup fonts (if third-party libraries fail to load IBM Plex) ── */
+  --font-backup-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
 
-  /* ── Typographic Scale ── */
-  --text-xs:   0.70rem;   /* 11.2px */
-  --text-sm:   0.80rem;   /* 12.8px */
-  --text-base: 0.9375rem; /* 15px   */
-  --text-md:   1.0625rem; /* 17px   */
-  --text-lg:   1.25rem;   /* 20px   */
-  --text-xl:   1.5rem;    /* 24px   */
-  --text-2xl:  1.875rem;  /* 30px   */
-  --text-3xl:  2.25rem;   /* 36px   */
-  --text-4xl:  2.75rem;   /* 44px   */
-  --text-5xl:  3.25rem;   /* 52px   */
+  /* ── Typographic Scale (in rem, based on 16px base) ── */
+  --text-xs:   0.70rem;   /* 11.2px  – captions, badges           */
+  --text-sm:   0.80rem;   /* 12.8px  – small labels               */
+  --text-base: 0.9375rem; /* 15px    – body text, form inputs     */
+  --text-md:   1.0625rem; /* 17px    – larger body text           */
+  --text-lg:   1.25rem;   /* 20px    – section subheadings        */
+  --text-xl:   1.5rem;    /* 24px    – secondary headings         */
+  --text-2xl:  1.875rem;  /* 30px    – primary headings           */
+  --text-3xl:  2.25rem;   /* 36px    – large headings             */
+  --text-4xl:  2.75rem;   /* 44px    – extra large headings       */
+  --text-5xl:  3.25rem;   /* 52px    – hero titles                */
 
   /* ── Line Heights ── */
-  --lh-tight:   1.15;   /* display headings only  */
-  --lh-snug:    1.30;   /* subheadings            */
-  --lh-normal:  1.55;   /* UI labels, cards       */
-  --lh-relaxed: 1.70;   /* body copy              */
-  --lh-loose:   1.85;   /* long-form prose        */
+  --lh-tight:   1.15;   /* 1.15 – display headings only              */
+  --lh-snug:    1.30;   /* 1.30 – subheadings, short copy           */
+  --lh-normal:  1.55;   /* 1.55 – UI labels, form labels, cards     */
+  --lh-relaxed: 1.70;   /* 1.70 – body copy, paragraphs             */
+  --lh-loose:   1.85;   /* 1.85 – long-form prose, articles         */
 
   /* ── Letter Spacing ── */
-  --ls-tighter: -0.035em;  /* large display titles */
-  --ls-tight:   -0.022em;  /* section heads        */
-  --ls-normal:   0em;
-  --ls-wide:     0.03em;
-  --ls-wider:    0.06em;
-  --ls-widest:   0.10em;   /* ALL-CAPS labels      */
+  --ls-tighter: -0.035em;  /* large display titles (-2px @ 56px)    */
+  --ls-tight:   -0.022em;  /* section headings (-1px @ 44px)        */
+  --ls-normal:   0em;      /* standard spacing                       */
+  --ls-wide:     0.03em;   /* 0.5px @ 16px                          */
+  --ls-wider:    0.06em;   /* 1px @ 16px                            */
+  --ls-widest:   0.10em;   /* 1.6px @ 16px – ALL-CAPS labels       */
 
   /* ── Font Weights ── */
-  --fw-regular:    400;
-  --fw-medium:     500;
-  --fw-semibold:   600;
-  --fw-bold:       700;
-  --fw-extrabold:  800;
+  --fw-regular:    400;  /* book / normal weight      */
+  --fw-medium:     500;  /* medium weight             */
+  --fw-semibold:   600;  /* semi-bold / demi-bold    */
+  --fw-bold:       700;  /* bold weight               */
+  --fw-extrabold:  800;  /* extra-bold / heavy weight */
+
+  /* ── Academic Theme Colors (integrated with typography) ── */
+  --color-primary:     #4F6BFF;   /* Scholarly indigo      */
+  --color-secondary:   #7DA8FF;   /* Glowing blue          */
+  --color-tertiary:    #1E3A8A;   /* Tertiary blue         */
+  --color-text-dark:   #F8FAFC;   /* Bright white (dark)   */
+  --color-text-light:  #0F172A;   /* Dark slate (light)    */
+  --color-bg-dark:     #071226;   /* Deep navy (dark)      */
+  --color-bg-light:    #FAFBFD;   /* Off-white (light)     */
 }
 
 /* ══════════════════════════════════════
    FONT UTILITY CLASSES
-══════════════════════════════════════ */
+   ══════════════════════════════════════ */
 
-/* Family */
+/* Font Family */
 .font-display { font-family: var(--font-display); }
 .font-body    { font-family: var(--font-body); }
 .font-mono    { font-family: var(--font-mono); }
 
-/* Kept for backwards compat */
+/* Backward Compatibility – Map old class names to current fonts */
 .font-inter    { font-family: var(--font-body); }
 .font-roboto   { font-family: var(--font-body); }
 .font-poppins  { font-family: var(--font-display); }
 .font-opensans { font-family: var(--font-body); }
+.font-ibm      { font-family: var(--font-backup-sans); }
 
-/* ── Display heading presets ── */
+/* ── Display Heading Presets ── */
+
 .heading-hero {
   font-family: var(--font-display);
   font-size: clamp(2.0rem, 5vw, var(--text-5xl));
-  font-weight: 800;
+  font-weight: var(--fw-extrabold);
   line-height: var(--lh-tight);
   letter-spacing: var(--ls-tighter);
   overflow: visible;
@@ -82,7 +120,7 @@
 .heading-xl {
   font-family: var(--font-display);
   font-size: clamp(1.5rem, 3vw, var(--text-3xl));
-  font-weight: 800;
+  font-weight: var(--fw-extrabold);
   line-height: var(--lh-tight);
   letter-spacing: var(--ls-tight);
   overflow: visible;
@@ -91,7 +129,7 @@
 .heading-lg {
   font-family: var(--font-display);
   font-size: var(--text-xl);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   line-height: var(--lh-snug);
   letter-spacing: var(--ls-tight);
 }
@@ -99,7 +137,7 @@
 .heading-md {
   font-family: var(--font-display);
   font-size: var(--text-lg);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   line-height: var(--lh-snug);
   letter-spacing: -0.015em;
 }
@@ -107,15 +145,17 @@
 .heading-sm {
   font-family: var(--font-display);
   font-size: var(--text-md);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   line-height: var(--lh-normal);
   letter-spacing: -0.01em;
 }
 
+/* ── Body Text Presets ── */
+
 .label-caps {
   font-family: var(--font-body);
   font-size: var(--text-xs);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   line-height: var(--lh-normal);
   letter-spacing: var(--ls-widest);
   text-transform: uppercase;
@@ -124,25 +164,137 @@
 .body-lg {
   font-family: var(--font-body);
   font-size: var(--text-md);
-  font-weight: 400;
+  font-weight: var(--fw-regular);
   line-height: var(--lh-relaxed);
 }
 
 .body-base {
   font-family: var(--font-body);
   font-size: var(--text-base);
-  font-weight: 400;
+  font-weight: var(--fw-regular);
   line-height: var(--lh-relaxed);
 }
 
 .body-sm {
   font-family: var(--font-body);
   font-size: var(--text-sm);
-  font-weight: 400;
+  font-weight: var(--fw-regular);
   line-height: var(--lh-normal);
 }
 
+/* ── Emphasis Variants ── */
+
+.text-semibold {
+  font-weight: var(--fw-semibold);
+}
+
+.text-bold {
+  font-weight: var(--fw-bold);
+}
+
+.text-extrabold {
+  font-weight: var(--fw-extrabold);
+}
+
 /* ══════════════════════════════════════
-   FONT DISPLAY PERFORMANCE
-══════════════════════════════════════ */
-@font-face { font-display: swap; }
+   FONT LOADING STRATEGY
+   ══════════════════════════════════════ */
+
+/* 
+   FONT-DISPLAY STRATEGY:
+   
+   'swap' means:
+   1. If custom font isn't loaded yet, use system font
+   2. When custom font arrives, swap it in
+   3. No blank text (FOIT – Flash of Invisible Text)
+   
+   This is the best strategy for web performance and accessibility.
+   User sees content immediately, even if fonts are slow.
+   
+   All fonts above use font-display: swap for optimal UX.
+*/
+
+/* ══════════════════════════════════════
+   FONT OPTIMIZATION HINTS
+   ══════════════════════════════════════ */
+
+/* Preload critical fonts in your HTML head:
+   
+   <link rel="preload" as="font" 
+         href="https://fonts.gstatic.com/s/bricolage...woff2" 
+         type="font/woff2" crossorigin>
+   
+   <link rel="preload" as="font"
+         href="https://fonts.gstatic.com/s/dmsans...woff2"
+         type="font/woff2" crossorigin>
+   
+   This tells the browser to download critical fonts ASAP,
+   reducing First Contentful Paint (FCP) and Largest Contentful Paint (LCP).
+*/
+
+/* ══════════════════════════════════════
+   DARK MODE FONT ADJUSTMENTS
+   ══════════════════════════════════════ */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* In dark mode, fonts may appear bolder due to light text on dark background.
+       Consider reducing font-weight slightly or increasing letter-spacing for better readability. */
+    --lh-relaxed: 1.75;  /* Slightly increased for dark mode */
+    --lh-loose:   1.90;  /* Slightly increased for dark mode */
+  }
+
+  body {
+    /* Slight text-shadow can improve readability in dark mode without being obvious */
+    text-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+}
+
+/* ══════════════════════════════════════
+   ACCESSIBILITY – HIGH CONTRAST MODE
+   ══════════════════════════════════════ */
+
+@media (prefers-contrast: more) {
+  :root {
+    --fw-regular:    500;  /* Bump regular weight for better contrast */
+    --fw-semibold:   700;
+  }
+
+  .heading-hero,
+  .heading-xl,
+  .heading-lg {
+    font-weight: var(--fw-extrabold);
+  }
+}
+
+/* ══════════════════════════════════════
+   REDUCED MOTION – NO FONT ANIMATIONS
+   ══════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ══════════════════════════════════════
+   PRINT STYLES
+   ══════════════════════════════════════ */
+
+@media print {
+  :root {
+    --lh-relaxed: 1.8;   /* Increase line height for print */
+  }
+
+  body {
+    font-family: var(--font-body), serif;
+    color: #000;
+  }
+
+  a {
+    color: #000;
+    text-decoration: underline;
+  }
+}

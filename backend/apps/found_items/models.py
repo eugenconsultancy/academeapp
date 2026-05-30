@@ -19,7 +19,7 @@ class FoundItem(BaseModel):
         default=ItemStatus.PROCESSING.value
     )
     security_question = models.TextField(blank=True)
-    security_answer = models.TextField(blank=True)  # Hashed
+    security_answer = models.TextField(blank=True)  # Hashed for privacy
     posted_by = models.ForeignKey(
         'accounts.User',
         on_delete=models.SET_NULL,
@@ -57,17 +57,19 @@ class Claim(BaseModel):
         choices=[(status.value, status.name) for status in ClaimStatus],
         default=ClaimStatus.PENDING.value
     )
+    # NEW: store failed security attempts
+    failed_security_attempts = models.IntegerField(default=0)
     security_answer = models.TextField(blank=True)
     evidence_url = models.URLField(blank=True)
     admin_notes = models.TextField(blank=True)
     payment_received = models.BooleanField(default=False)
-    receipt_generated_at = models.DateTimeField(null=True, blank=True)  # Added for receipt
+    receipt_generated_at = models.DateTimeField(null=True, blank=True)
     confirmed_at = models.DateTimeField(null=True, blank=True)
     dispute_reason = models.TextField(blank=True)
     auto_confirmed = models.BooleanField(default=False)
     
     class Meta:
-        unique_together = ['item', 'claimant']  # One claim per item per student
+        unique_together = ['item', 'claimant']
 
 class PaymentTransaction(BaseModel):
     claim = models.ForeignKey(Claim, on_delete=models.CASCADE, related_name='transactions')
@@ -78,20 +80,16 @@ class PaymentTransaction(BaseModel):
     status = models.CharField(max_length=20)  # PENDING, SUCCESS, FAILED
     response_data = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
+    # NEW: store invoice ID from payment provider for reliable webhook matching
+    invoice_id = models.CharField(max_length=100, blank=True)
 
 class Tip(BaseModel):
-    """Non-claimant tip about item ownership"""
     item = models.ForeignKey(FoundItem, on_delete=models.CASCADE, related_name='tips')
-    sender = models.ForeignKey(
-        'accounts.User',
-        on_delete=models.CASCADE,
-        related_name='sent_tips'
-    )
+    sender = models.ForeignKey('accounts.User', on_delete=models.CASCADE, related_name='sent_tips')
     message = models.TextField()
     is_read = models.BooleanField(default=False)
 
 class MpesaTransactionLog(BaseModel):
-    """Audit log for all M-Pesa transactions"""
     request_type = models.CharField(max_length=50)
     request_data = models.JSONField()
     response_data = models.JSONField()
@@ -99,6 +97,4 @@ class MpesaTransactionLog(BaseModel):
     created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:
-        indexes = [
-            models.Index(fields=['created_at']),
-        ]
+        indexes = [models.Index(fields=['created_at'])]

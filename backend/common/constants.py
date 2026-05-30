@@ -1,11 +1,24 @@
 """
 Common constants used across the Academe platform.
+
+This file contains all enumerations, choices, thresholds,
+and standardized action types for the entire application.
 """
 
 from enum import Enum
 
 
+# ============================================
+# USER ROLES
+# ============================================
+
 class UserRole(Enum):
+    """
+    User roles in the platform.
+    
+    Hierarchy (highest to lowest):
+    ADMIN > FACULTY_OFFICER > STUDENT_LEADER > FACULTY_REP > CLASS_REP > STUDENT
+    """
     ADMIN = "admin"
     FACULTY_OFFICER = "faculty_officer"
     STUDENT_LEADER = "student_leader"
@@ -13,6 +26,10 @@ class UserRole(Enum):
     CLASS_REP = "class_rep"
     STUDENT = "student"
 
+
+# ============================================
+# BADGE TYPES & THRESHOLDS
+# ============================================
 
 class BadgeType(Enum):
     LOGIN_BRONZE = "login_bronze"
@@ -37,6 +54,10 @@ BADGE_THRESHOLDS = {
 }
 
 
+# ============================================
+# ANNOUNCEMENT TARGETS
+# ============================================
+
 class AnnouncementTarget(Enum):
     ENTIRE_INSTITUTION = "entire_institution"
     SPECIFIC_CLASS = "specific_class"
@@ -45,6 +66,10 @@ class AnnouncementTarget(Enum):
     STUDENT_LEADERS = "student_leaders"
     CLASS_REPS = "class_reps"
 
+
+# ============================================
+# FOUND ITEM CATEGORIES & STATUSES
+# ============================================
 
 class ItemCategory(Enum):
     ID_CARD = "id"
@@ -78,7 +103,7 @@ class ClaimStatus(Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
     COMPLETED = "completed"
-    CANCELLED = "cancelled"                # <-- NEW
+    CANCELLED = "cancelled"
     DISPUTED = "disputed"
 
 
@@ -124,6 +149,10 @@ class SplitStatus(Enum):
     FINDER_PAID = "finder_paid"
     FULLY_SETTLED = "fully_settled"
 
+
+# ============================================
+# AUDIT LOG ACTION TYPES
+# ============================================
 
 class AuditAction:
     ROLE_ASSIGNED = "ROLE_ASSIGNED"
@@ -187,6 +216,10 @@ class AuditAction:
     MAINTENANCE_ENDED = "MAINTENANCE_ENDED"
 
 
+# ============================================
+# NOTIFICATION TYPES
+# ============================================
+
 class NotificationType:
     WELCOME = "welcome"
     ANNOUNCEMENT = "announcement"
@@ -246,6 +279,10 @@ class DayOfWeek(Enum):
     SATURDAY = 5
     SUNDAY = 6
 
+
+# ============================================
+# PLATFORM CONFIGURATION DEFAULTS
+# ============================================
 
 class PlatformDefaults:
     DEFAULT_ATTENDANCE_RADIUS_METERS = 100

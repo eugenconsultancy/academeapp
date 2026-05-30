@@ -13,6 +13,6 @@ def delete_expired_opportunities():
         is_active=True
     )
     
-    # Mark as inactive instead of deleting
+    # Maurk as inactive instead of deleting
     count = expired.update(is_active=False)
     logger.info(f"Deactivated {count} expired opportunities")

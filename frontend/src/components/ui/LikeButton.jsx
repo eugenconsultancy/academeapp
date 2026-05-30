@@ -33,9 +33,9 @@ export default function LikeButton({
     tooltip = '',
     className = '',
 }) {
-    const [animating, setAnimating] = useState(false);
     const [optimisticCount, setOptimisticCount] = useState(count);
     const [optimisticActive, setOptimisticActive] = useState(active);
+    const [internalLoading, setInternalLoading] = useState(false);
 
     useEffect(() => {
         setOptimisticCount(count);
@@ -48,27 +48,27 @@ export default function LikeButton({
     const isActive = optimisticActive;
 
     const handleClick = useCallback(async () => {
-        if (disabled || loading) return;
+        if (disabled || loading || internalLoading) return;
 
-        setAnimating(true);
         const newActive = !isActive;
+        // Optimistic update
         setOptimisticActive(newActive);
         setOptimisticCount((prev) => (newActive ? prev + 1 : Math.max(0, prev - 1)));
+        setInternalLoading(true);
 
         try {
             if (onToggle) {
-                await onToggle(!isActive);
+                await onToggle(newActive);
             }
         } catch (error) {
             // Rollback on failure
             setOptimisticActive(isActive);
             setOptimisticCount(count);
         } finally {
-            setTimeout(() => setAnimating(false), 300);
+            setInternalLoading(false);
         }
-    }, [disabled, loading, isActive, count, onToggle]);
+    }, [disabled, loading, internalLoading, isActive, count, onToggle]);
 
-    // Build the visual label: always show the text label + count if >0
     const displayLabel = label
         ? displayCount > 0
             ? `${displayCount} ${label}`
@@ -77,27 +77,28 @@ export default function LikeButton({
             ? displayCount
             : '';
 
-    const actionWord = type.charAt(0).toUpperCase() + type.slice(1); // "Like" / "Dislike"
+    const actionWord = type.charAt(0).toUpperCase() + type.slice(1);
     const title = tooltip || `${isActive ? 'Unlike' : actionWord}${label ? ` ${label}` : ''}`;
+
+    const isLoading = loading || internalLoading;
 
     return (
         <button
             onClick={handleClick}
-            disabled={disabled || loading}
+            disabled={disabled || isLoading}
             title={title}
             aria-label={`${isActive ? 'Unlike' : actionWord}${label ? ` ${label}` : ''}. ${displayLabel}`}
             aria-pressed={isActive}
             className={`
-        inline-flex items-center font-medium transition-all duration-200
-        ${isActive ? `${colors.bg} ${colors.text}` : `text-gray-500 dark:text-gray-400 ${colors.hover}`}
-        ${animating ? 'scale-110' : 'scale-100'} 
-        ${loading ? 'opacity-70' : ''}
-        disabled:opacity-50 disabled:cursor-not-allowed
-        ${sizes[size] || sizes.md}
-        ${className}
-      `.trim()}
+                inline-flex items-center font-medium transition-all duration-200
+                ${isActive ? `${colors.bg} ${colors.text}` : `text-gray-500 dark:text-gray-400 ${colors.hover}`}
+                ${isLoading ? 'opacity-70' : ''}
+                disabled:opacity-50 disabled:cursor-not-allowed
+                ${sizes[size] || sizes.md}
+                ${className}
+            `.trim()}
         >
-            {loading ? (
+            {isLoading ? (
                 <svg className="animate-spin w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />

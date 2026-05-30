@@ -1,5 +1,5 @@
 // Navbar.jsx — Campus OS aligned
-// Updated: theme now uses ThemeContext, reactive across entire app
+// Fixed duplicate theme/font controls; enhanced dynamic greeting
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -10,7 +10,7 @@ import {
   FiSun, FiMoon, FiMonitor, FiSearch, FiType
 } from 'react-icons/fi';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';   // ← NEW import
+import { useTheme } from '../../contexts/ThemeContext';
 
 const navLinks = [
   { path: '/', label: 'Home', icon: FiHome, color: '#5356f3', accent: 'indigo' },
@@ -43,9 +43,7 @@ const suggestions = [
 ];
 
 export default function Navbar({ onToggleSidebar }) {
-  // ── Theme from context (reactive, persisted, app‑wide) ──
   const { theme, setTheme, isDark } = useTheme();
-
   const [profileOpen, setProfileOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -71,7 +69,7 @@ export default function Navbar({ onToggleSidebar }) {
   const isLeader = ['admin', 'student_leader', 'faculty_rep'].includes(user?.role);
   const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
 
-  /* ── Font sync (unchanged) ── */
+  /* ── Font sync ── */
   useEffect(() => {
     const font = fonts.find(f => f.id === currentFont);
     if (font) document.documentElement.style.setProperty('--nav-font', font.fontFamily);
@@ -255,12 +253,28 @@ export default function Navbar({ onToggleSidebar }) {
           border-radius: 99px; background: currentColor; opacity: .7;
         }
 
-        /* ═══════ GREETING ═══════ */
+        /* ═══════ GREETING (enhanced) ═══════ */
         .nav-greeting {
-          font-size: .72rem; font-weight: 600;
-          color: #06b6d4; white-space: nowrap; letter-spacing: -.01em;
+          font-size: 0.9rem;
+          font-weight: 800;
+          letter-spacing: -0.02em;
+          background: linear-gradient(135deg, #6366f1, #8b5cf6);
+          -webkit-background-clip: text;
+          background-clip: text;
+          color: transparent;
+          white-space: nowrap;
+          transition: all 0.2s;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .dark .nav-greeting {
+          background: linear-gradient(135deg, #a5b4fc, #c4b5fd);
+          -webkit-background-clip: text;
+          background-clip: text;
         }
         @media (max-width: 1100px) { .nav-greeting { display: none; } }
+
         .nav-spacer { flex: 1; }
 
         /* ═══════ ACTIONS ROW ═══════ */
@@ -303,30 +317,6 @@ export default function Navbar({ onToggleSidebar }) {
         }
         .nav-btn-notif:hover { background: rgba(245,158,11,.18); box-shadow: 0 3px 12px rgba(245,158,11,.25); }
         .dark .nav-btn-notif { background: rgba(245,158,11,.15); border-color: rgba(245,158,11,.3); color: #fbbf24; }
-
-        /* ── Theme button: violet ── */
-        .nav-btn-theme {
-          background: linear-gradient(135deg, rgba(139,92,246,.12), rgba(139,92,246,.06));
-          border-color: rgba(139,92,246,.25);
-          color: #7c3aed;
-        }
-        .nav-btn-theme:hover { background: rgba(139,92,246,.18); box-shadow: 0 3px 12px rgba(139,92,246,.22); }
-        .dark .nav-btn-theme { background: rgba(139,92,246,.15); border-color: rgba(139,92,246,.3); color: #c4b5fd; }
-
-        /* ── Font button: teal ── */
-        .nav-btn-font {
-          background: linear-gradient(135deg, rgba(20,184,166,.12), rgba(20,184,166,.06));
-          border-color: rgba(20,184,166,.25);
-          color: #0d9488;
-        }
-        .nav-btn-font:hover { background: rgba(20,184,166,.18); box-shadow: 0 3px 12px rgba(20,184,166,.22); }
-        .dark .nav-btn-font { background: rgba(20,184,166,.15); border-color: rgba(20,184,166,.3); color: #2dd4bf; }
-
-        /* Hide labels on smaller screens */
-        @media (max-width: 960px) {
-          .nav-btn-label { display: none; }
-          .nav-icon-btn:not(.icon-only) { padding: 0; width: 34px; }
-        }
 
         /* ═══════ NOTIFICATION BADGE ═══════ */
         .nav-notif-badge {
@@ -435,7 +425,7 @@ export default function Navbar({ onToggleSidebar }) {
         }
         .nav-notif-footer button:hover { color: #4f46e5; }
 
-        /* Generic option dropdown */
+        /* Generic option dropdown (reused in profile) */
         .nav-option-drop { width: 200px; padding: 6px; }
         .nav-option-btn {
           display: flex; align-items: center; gap: 9px;
@@ -508,7 +498,7 @@ export default function Navbar({ onToggleSidebar }) {
         @media (max-width: 480px) { .nav-chevron { display: none; } }
 
         /* ── Profile dropdown ── */
-        .nav-profile-drop { width: 230px; }
+        .nav-profile-drop { width: 260px; }
         .nav-profile-head {
           padding: 14px 16px;
           border-bottom: 1px solid rgba(0,0,0,.05);
@@ -743,8 +733,9 @@ export default function Navbar({ onToggleSidebar }) {
 
         <div className="nav-spacer" />
 
-        {/* Greeting */}
+        {/* Enhanced greeting */}
         <span className="nav-greeting">
+          <span role="img" aria-label="greeting icon">🌟</span>
           {getGreeting()}, {user?.full_name?.split(' ')[0] ?? 'User'}
         </span>
 
@@ -831,71 +822,7 @@ export default function Navbar({ onToggleSidebar }) {
             )}
           </div>
 
-          {/* ── Theme (desktop) ── */}
-          <div className="nav-dropdown-wrap" style={{ display: 'none' }}
-            ref={el => { if (el) el.style.display = ''; }}>
-            <button
-              className="nav-icon-btn nav-btn-theme"
-              onClick={() => { closeAll(); setThemeOpen(o => !o); }}
-              aria-label="Change theme"
-            >
-              <ThemeIcon size={14} />
-              <span className="nav-btn-label">Theme</span>
-            </button>
-            {themeOpen && (
-              <>
-                <div className="nav-overlay" onClick={() => setThemeOpen(false)} />
-                <div className="nav-drop nav-option-drop">
-                  <div style={{ padding: 6 }}>
-                    {themes.map(t => (
-                      <button
-                        key={t.id}
-                        className={`nav-option-btn${theme === t.id ? ' selected' : ''}`}
-                        onClick={() => { setTheme(t.id); setThemeOpen(false); }}
-                      >
-                        <t.icon size={14} /> {t.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* ── Font selector (desktop) ── */}
-          <div className="nav-dropdown-wrap" style={{ display: 'none' }}
-            ref={el => { if (el) el.style.display = ''; }}>
-            <button
-              className="nav-icon-btn nav-btn-font"
-              onClick={() => { closeAll(); setFontOpen(o => !o); }}
-              aria-label="Change font"
-            >
-              <FiType size={14} />
-              <span className="nav-btn-label">Font</span>
-            </button>
-            {fontOpen && (
-              <>
-                <div className="nav-overlay" onClick={() => setFontOpen(false)} />
-                <div className="nav-drop" style={{ width: 220, padding: 6 }}>
-                  {fonts.map(f => (
-                    <button
-                      key={f.id}
-                      className={`nav-option-btn${currentFont === f.id ? ' selected' : ''}`}
-                      onClick={() => { setCurrentFont(f.id); setFontOpen(false); }}
-                      style={{ fontFamily: f.fontFamily }}
-                    >
-                      <FiType size={13} />
-                      {f.label}
-                      <span className="nav-font-preview"
-                        style={{ fontFamily: f.fontFamily }}>Aa</span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* ── Profile ── */}
+          {/* ── Profile (contains theme & font inside dropdown) ── */}
           <div className="nav-dropdown-wrap">
             <button
               className="nav-profile-btn"
@@ -929,7 +856,7 @@ export default function Navbar({ onToggleSidebar }) {
                       <span className="nav-dd-icon"><FiHelpCircle size={13} /></span> Help & Support
                     </button>
                     <div className="nav-divider" />
-                    {/* Theme in mobile profile dropdown */}
+                    {/* Theme options */}
                     {themes.map(t => (
                       <button
                         key={t.id}
@@ -939,8 +866,8 @@ export default function Navbar({ onToggleSidebar }) {
                         <span className="nav-dd-icon"><t.icon size={13} /></span> {t.label} Theme
                       </button>
                     ))}
-                    {/* Font in mobile profile dropdown */}
                     <div className="nav-divider" />
+                    {/* Font options */}
                     {fonts.map(f => (
                       <button
                         key={f.id}
@@ -984,9 +911,7 @@ export default function Navbar({ onToggleSidebar }) {
           </button>
         </div>
 
-        {/* ═══════════════════════════════
-            MOBILE DRAWER
-        ═══════════════════════════════ */}
+        {/* MOBILE DRAWER */}
         {mobileOpen && (
           <>
             <div className="nav-overlay" style={{ zIndex: 100 }} onClick={() => setMobileOpen(false)} aria-hidden="true" />

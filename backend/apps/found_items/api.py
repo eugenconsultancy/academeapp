@@ -8,10 +8,11 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.conf import settings
 from django.db import transaction
-from ninja import Router, File, Form
+from ninja import Router, File, Form, Body
 from ninja.files import UploadedFile
 from ninja.errors import HttpError
 from common.jwt_auth import JWTAuth
+from common.constants import ClaimStatus, ItemStatus
 from .models import FoundItem, Claim, PaymentTransaction, MpesaTransactionLog, Tip
 from .services import EscrowService, ClaimService
 from .schema import (
@@ -24,7 +25,6 @@ from .schema import (
 router = Router()
 logger = logging.getLogger(__name__)
 
-# ───────────────────────────── helpers ─────────────────────────────
 def _hash_security_answer(answer: str) -> str:
     return hashlib.sha256(answer.encode()).hexdigest()
 
@@ -56,7 +56,7 @@ def _item_to_out(item: FoundItem) -> FoundItemOut:
 
 @router.get("/items/", auth=JWTAuth(), response=List[FoundItemOut])
 def list_items(request, category: str = None, search: str = None):
-    items = FoundItem.objects.filter(status='active')
+    items = FoundItem.objects.filter(status=ItemStatus.ACTIVE.value)
     if category:
         items = items.filter(category=category)
     if search:
@@ -67,11 +67,14 @@ def list_items(request, category: str = None, search: str = None):
 
 @router.post("/items/", auth=JWTAuth(), response={201: FoundItemOut})
 def create_item(request, data: FoundItemCreateIn = Form(...)):
-    """Create a found item, with optional image. Image upload triggers blur task."""
-    # Hash security answer if provided
-    security_answer_hashed = ""
-    if data.security_answer:
-        security_answer_hashed = _hash_security_answer(data.security_answer)
+    """Create a found item. If no image, set status='active' immediately."""
+    security_answer_hashed = _hash_security_answer(data.security_answer) if data.security_answer else ""
+
+    # Determine initial status
+    if data.image:
+        status = ItemStatus.PROCESSING.value
+    else:
+        status = ItemStatus.ACTIVE.value
 
     item = FoundItem.objects.create(
         title=data.title,
@@ -86,11 +89,10 @@ def create_item(request, data: FoundItemCreateIn = Form(...)):
         posted_by=request.auth,
         locator_name=data.locator_name or "",
         locator_phone=data.locator_phone or request.auth.phone_number,
-        locator=request.auth,   # the finder is the locator
-        status='processing'     # initial status before blur
+        locator=request.auth,
+        status=status
     )
 
-    # If image uploaded, save it and trigger blur
     if data.image:
         from django.core.files.storage import default_storage
         import os
@@ -100,7 +102,6 @@ def create_item(request, data: FoundItemCreateIn = Form(...)):
         item.original_image_url = default_storage.url(saved_path)
         item.save(update_fields=['original_image_url'])
 
-        # Trigger blur task (fire-and-forget via Celery)
         from .tasks import blur_sensitive_regions
         blur_sensitive_regions.delay(str(item.id))
 
@@ -116,21 +117,29 @@ def delete_item(request, item_id: UUID):
     item = get_object_or_404(FoundItem, id=item_id)
     if request.auth != item.posted_by and request.auth.role != 'admin':
         raise HttpError(403, "Not allowed")
+    # Delete associated images from storage
+    from common.storage import DualBucketStorage
+    storage = DualBucketStorage()
+    if item.original_image_url:
+        storage.delete_raw_image(item.original_image_url.split('/')[-1])
+    if item.blurred_image_url:
+        # blurred image is in public bucket, but we can also delete it
+        try:
+            storage.s3.delete_object(Bucket=storage.public_bucket, Key=item.blurred_image_url.split('/')[-1])
+        except:
+            pass
     item.delete()
     return {"message": "Deleted"}
 
-# ══════════════════════════════════════════════════════════════════
-# MY ITEMS (NEW) – items posted by the authenticated user
-# ══════════════════════════════════════════════════════════════════
 @router.get("/my-items/", auth=JWTAuth(), response=List[FoundItemOut])
 def my_items(request):
-    """Return items posted by the currently logged-in user."""
     items = FoundItem.objects.filter(posted_by=request.auth).order_by('-created_at')
     return [_item_to_out(i) for i in items]
 
 # ══════════════════════════════════════════════════════════════════
-# OWNERSHIP VERIFICATION (hard gate – does NOT create claim)
+# OWNERSHIP VERIFICATION (now enforced in claim creation)
 # ══════════════════════════════════════════════════════════════════
+
 @router.post("/items/{item_id}/verify-ownership/", auth=JWTAuth(), response=VerifyOwnershipOut)
 def verify_ownership(request, item_id: UUID):
     item = get_object_or_404(FoundItem, id=item_id)
@@ -141,31 +150,53 @@ def verify_ownership(request, item_id: UUID):
     return {"verified": True, "admission_match": True, "error": None}
 
 # ══════════════════════════════════════════════════════════════════
-# CLAIM LIFECYCLE
+# CLAIM LIFECYCLE (with proper enum and ownership enforcement)
 # ══════════════════════════════════════════════════════════════════
 
 @router.get("/items/{item_id}/claim-status/", auth=JWTAuth(), response=ClaimStatusOut)
 def get_item_claim_status(request, item_id: UUID):
-    """Check if a claim exists for this user and return resume info."""
     claim = Claim.objects.filter(item_id=item_id, claimant=request.auth).first()
-    if not claim:
-        return {"claim_id": "", "status": "none", "next_step": "ownership_verify" if FoundItem.objects.get(id=item_id).admission_number_on_item else "claim"}
-    return ClaimService.get_claim_status(claim)
+    if claim:
+        return ClaimService.get_claim_status(claim)
+    item = get_object_or_404(FoundItem, id=item_id)
+    # If item requires admission number match, the next step is ownership_verify
+    if item.admission_number_on_item:
+        return {
+            "claim_id": "",
+            "status": "none",
+            "next_step": "ownership_verify",
+            "requires_security": False,
+            "requires_payment": False,
+            "security_question": None,
+        }
+    else:
+        return {
+            "claim_id": "",
+            "status": "none",
+            "next_step": "claim",
+            "requires_security": False,
+            "requires_payment": False,
+            "security_question": None,
+        }
 
 @router.post("/items/{item_id}/claim/", auth=JWTAuth(), response={201: ClaimDetailOut})
 def claim_item(request, item_id: UUID):
-    """Start or resume a claim. If a non‑terminal claim exists, return it."""
     item = get_object_or_404(FoundItem, id=item_id)
     if item.is_claimed:
         raise HttpError(400, "Item already claimed")
+    # Enforce ownership verification if admission number on item
+    if item.admission_number_on_item:
+        if request.auth.admission_number.lower() != item.admission_number_on_item.lower():
+            raise HttpError(403, "Ownership not verified. Your admission number does not match.")
     existing = Claim.objects.filter(item=item, claimant=request.auth).first()
-    if existing and existing.status not in ('cancelled', 'rejected'):
-        # Resume
+    if existing and existing.status not in (ClaimStatus.CANCELLED.value, ClaimStatus.REJECTED.value):
+        # Resume existing claim
         return ClaimService.get_claim_detail(existing)
     if existing:
-        # Allow re‑claim if previous was cancelled/rejected
-        existing.delete()
-    claim = Claim.objects.create(item=item, claimant=request.auth, status='pending')
+        existing.delete()  # allow re-claim after cancellation/rejection
+    claim = Claim.objects.create(item=item, claimant=request.auth, status=ClaimStatus.PENDING.value)
+    # If ownership verification already passed, we can immediately move to security or evidence
+    # But the frontend will handle next steps via claim-status.
     return ClaimService.get_claim_detail(claim)
 
 @router.get("/claims/{claim_id}/", auth=JWTAuth(), response=ClaimDetailOut)
@@ -176,11 +207,11 @@ def get_claim_detail(request, claim_id: UUID):
 @router.post("/claims/{claim_id}/answer-security/", auth=JWTAuth())
 def answer_security(request, claim_id: UUID, data: SecurityAnswerIn):
     claim = get_object_or_404(Claim, id=claim_id, claimant=request.auth)
-    if claim.status != 'pending':
+    if claim.status != ClaimStatus.PENDING.value:
         raise HttpError(400, "Security question already answered or not applicable")
     is_correct, error = ClaimService.verify_security_answer(claim, data.answer)
     if is_correct:
-        claim.status = 'security_verified'
+        claim.status = ClaimStatus.SECURITY_VERIFIED.value
         claim.save()
         return {"correct": True, "message": "Correct", "status": claim.status}
     else:
@@ -191,18 +222,18 @@ def submit_evidence(request, claim_id: UUID,
                     file: UploadedFile = File(None),
                     description: str = Form("")):
     claim = get_object_or_404(Claim, id=claim_id, claimant=request.auth)
-    if claim.status not in ('pending', 'security_verified'):
+    if claim.status not in (ClaimStatus.PENDING.value, ClaimStatus.SECURITY_VERIFIED.value):
         raise HttpError(400, f"Cannot submit evidence in current status ({claim.status})")
     if file:
-        import os
         from django.core.files.storage import default_storage
+        import os
         ext = os.path.splitext(file.name)[1] if '.' in file.name else '.jpg'
         filename = f"evidence/claim_{claim.id}{ext}"
         saved_path = default_storage.save(filename, file)
         claim.evidence_url = default_storage.url(saved_path)
     if description:
         claim.admin_notes = (claim.admin_notes or '') + f"[Evidence note] {description}\n"
-    claim.status = 'evidence_submitted'
+    claim.status = ClaimStatus.EVIDENCE_SUBMITTED.value
     claim.save()
     return {"message": "Evidence submitted", "status": claim.status}
 
@@ -213,13 +244,13 @@ def initiate_payment(request, claim_id: UUID):
         return {"error": "Payment not required"}
     if claim.payment_received:
         return {"error": "Payment already received"}
-    if claim.status not in ('evidence_submitted', 'awaiting_payment', 'security_verified'):
-        # allow from security_verified if evidence not required (no file forced)
-        pass  # proceed
+    # Strict state check
+    if claim.status not in (ClaimStatus.EVIDENCE_SUBMITTED.value, ClaimStatus.SECURITY_VERIFIED.value):
+        raise HttpError(400, f"Cannot initiate payment from status {claim.status}")
     response, error = EscrowService.initiate_payment(claim)
     if error:
         return {"error": error}
-    claim.status = 'awaiting_payment'
+    claim.status = ClaimStatus.PAYMENT_PENDING.value
     claim.save()
     return {"message": "STK push sent", "invoice_id": response.get("invoice"), "status": claim.status}
 
@@ -228,30 +259,11 @@ def check_payment_status(request, claim_id: UUID):
     claim = get_object_or_404(Claim, id=claim_id, claimant=request.auth)
     if claim.payment_received:
         return {"status": "completed"}
-    # Check webhook-confirmed transactions
-    success = PaymentTransaction.objects.filter(
-        claim=claim, transaction_type='STK_PUSH', status='SUCCESS'
-    ).exists()
+    # Check if any successful transaction exists
+    success = claim.transactions.filter(transaction_type='STK_PUSH', status='SUCCESS').exists()
     if success:
         claim.payment_received = True
-        claim.status = 'payment_received'
-        claim.save()
-        return {"status": "completed"}
-    return {"status": "pending"}
-
-@router.post("/claims/{claim_id}/confirm-payment/", auth=JWTAuth())
-def confirm_payment(request, claim_id: UUID):
-    """Deprecated alias – use GET /payment-status instead."""
-    claim = get_object_or_404(Claim, id=claim_id, claimant=request.auth)
-    # same logic
-    if claim.payment_received:
-        return {"status": "completed"}
-    success = PaymentTransaction.objects.filter(
-        claim=claim, transaction_type='STK_PUSH', status='SUCCESS'
-    ).exists()
-    if success:
-        claim.payment_received = True
-        claim.status = 'payment_received'
+        claim.status = ClaimStatus.PAYMENT_RECEIVED.value
         claim.save()
         return {"status": "completed"}
     return {"status": "pending"}
@@ -259,12 +271,13 @@ def confirm_payment(request, claim_id: UUID):
 @router.post("/claims/{claim_id}/confirm-receipt/", auth=JWTAuth())
 def confirm_receipt(request, claim_id: UUID):
     claim = get_object_or_404(Claim, id=claim_id, claimant=request.auth)
-    if claim.status != 'payment_received':
+    if claim.status != ClaimStatus.PAYMENT_RECEIVED.value:
         raise HttpError(400, "Payment not confirmed yet")
-    claim.status = 'claimed'
+    claim.status = ClaimStatus.COMPLETED.value
     claim.confirmed_at = timezone.now()
     claim.save()
     claim.item.is_claimed = True
+    claim.item.status = ItemStatus.CLAIMED.value
     claim.item.save()
     EscrowService.disburse_funds(claim)
     return {"message": "Receipt confirmed", "status": claim.status}
@@ -272,15 +285,16 @@ def confirm_receipt(request, claim_id: UUID):
 @router.post("/claims/{claim_id}/cancel/", auth=JWTAuth())
 def cancel_claim(request, claim_id: UUID):
     claim = get_object_or_404(Claim, id=claim_id, claimant=request.auth)
-    if claim.status in ('claimed', 'completed', 'cancelled'):
+    if claim.status in (ClaimStatus.COMPLETED.value, ClaimStatus.CANCELLED.value):
         raise HttpError(400, "Cannot cancel this claim")
-    claim.status = 'cancelled'
+    claim.status = ClaimStatus.CANCELLED.value
     claim.save()
     return {"message": "Claim cancelled", "status": claim.status}
 
 # ══════════════════════════════════════════════════════════════════
 # TIPS & REPORT
 # ══════════════════════════════════════════════════════════════════
+
 @router.post("/items/{item_id}/tip/", auth=JWTAuth())
 def send_tip(request, item_id: UUID, data: TipIn):
     item = get_object_or_404(FoundItem, id=item_id)
@@ -288,8 +302,10 @@ def send_tip(request, item_id: UUID, data: TipIn):
     return {"message": "Tip sent"}
 
 @router.post("/items/{item_id}/report/", auth=JWTAuth())
-def report_item(request, item_id: UUID, reason: str = Form("")):
+def report_item(request, item_id: UUID, data: dict = Body(...)):
+    """Accept JSON payload: {'reason': str}"""
     item = get_object_or_404(FoundItem, id=item_id)
+    reason = data.get('reason', '')
     from apps.governance.models import AuditLog
     AuditLog.objects.create(
         action='ITEM_REPORTED',
@@ -303,6 +319,7 @@ def report_item(request, item_id: UUID, reason: str = Form("")):
 # ══════════════════════════════════════════════════════════════════
 # USER CLAIMS LIST
 # ══════════════════════════════════════════════════════════════════
+
 @router.get("/claims/", auth=JWTAuth(), response=List[ClaimOut])
 def list_user_claims(request):
     claims = Claim.objects.filter(claimant=request.auth).select_related('item').order_by('-created_at')
@@ -318,29 +335,54 @@ def list_user_claims(request):
     } for c in claims]
 
 # ══════════════════════════════════════════════════════════════════
-# ADMIN ENDPOINTS (simplified)
+# ADMIN ENDPOINTS (added approve/reject)
 # ══════════════════════════════════════════════════════════════════
+
 @router.get("/admin/items/", auth=JWTAuth())
 def admin_items(request):
-    if request.auth.role != 'admin': raise HttpError(403, "")
+    if request.auth.role != 'admin':
+        raise HttpError(403, "")
     return [_item_to_out(i) for i in FoundItem.objects.all()]
 
 @router.get("/admin/claims/", auth=JWTAuth())
 def admin_claims(request):
-    if request.auth.role != 'admin': raise HttpError(403, "")
-    claims = Claim.objects.select_related('item','claimant').all()
+    if request.auth.role != 'admin':
+        raise HttpError(403, "")
+    claims = Claim.objects.select_related('item', 'claimant').all()
     return [{"id": str(c.id), "item_title": c.item.title, "claimant_name": c.claimant.full_name,
              "status": c.status, "payment_received": c.payment_received} for c in claims]
 
+@router.post("/admin/claims/{claim_id}/approve/", auth=JWTAuth())
+def admin_approve_claim(request, claim_id: UUID):
+    if request.auth.role != 'admin':
+        raise HttpError(403, "")
+    claim = get_object_or_404(Claim, id=claim_id)
+    if claim.status != ClaimStatus.PENDING.value:
+        raise HttpError(400, "Claim already processed")
+    claim.status = ClaimStatus.APPROVED.value
+    claim.save()
+    # Optionally trigger payment or next step
+    return {"message": "Claim approved"}
+
+@router.post("/admin/claims/{claim_id}/reject/", auth=JWTAuth())
+def admin_reject_claim(request, claim_id: UUID):
+    if request.auth.role != 'admin':
+        raise HttpError(403, "")
+    claim = get_object_or_404(Claim, id=claim_id)
+    claim.status = ClaimStatus.REJECTED.value
+    claim.save()
+    return {"message": "Claim rejected"}
+
 # ══════════════════════════════════════════════════════════════════
-# PAYMENT WEBHOOK (with signature verification)
+# PAYMENT WEBHOOK (improved matching)
 # ══════════════════════════════════════════════════════════════════
+
 @router.post("/payment-callback/", auth=None)
 def intasend_webhook_callback(request):
     try:
         import intasend
         webhook = intasend.Webhook()
-        payload = webhook.verify(request.body, request.headers)  # raises if invalid
+        payload = webhook.verify(request.body, request.headers)
     except Exception as e:
         logger.error(f"Webhook verification failed: {e}")
         return {"status": "ignored", "reject": True}
@@ -357,13 +399,14 @@ def intasend_webhook_callback(request):
     )
 
     if state == 'COMPLETE':
-        claim_id_prefix = api_ref.replace('CLAIM_', '') if api_ref else ''
-        claim = Claim.objects.filter(id__startswith=claim_id_prefix).first()
-        if claim:
-            claim.status = 'payment_received'
+        # Find transaction by invoice_id (stored during payment initiation)
+        transaction = PaymentTransaction.objects.filter(invoice_id=invoice_id).first()
+        if transaction:
+            claim = transaction.claim
+            claim.status = ClaimStatus.PAYMENT_RECEIVED.value
             claim.payment_received = True
             claim.save()
-            PaymentTransaction.objects.filter(claim=claim, transaction_type='STK_PUSH').update(
-                status='SUCCESS', response_data=payload
-            )
+            transaction.status = 'SUCCESS'
+            transaction.response_data = payload
+            transaction.save()
     return {"status": "processed"}

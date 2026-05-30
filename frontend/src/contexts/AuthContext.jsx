@@ -1,40 +1,37 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import apiClient from '../api/client';
 import { jwtDecode } from 'jwt-decode';
+import { accountsApi } from '../api/accountsApi';
 
 const AuthContext = createContext(null);
 
-// ── Constants ──────────────────────────────────────────────────────
 const ACCESS_TOKEN_KEY = 'access_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
 const USER_KEY = 'user_data';
 const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
-const TOKEN_REFRESH_BUFFER = 60; // Refresh 60 seconds before expiry
+const TOKEN_REFRESH_BUFFER = 60;
 
-// ── Token Helpers ──────────────────────────────────────────────────
 function getStoredToken() {
     try { return localStorage.getItem(ACCESS_TOKEN_KEY); } catch { return null; }
 }
-
 function getStoredRefreshToken() {
     try { return localStorage.getItem(REFRESH_TOKEN_KEY); } catch { return null; }
 }
-
 function storeTokens(access, refresh) {
     try {
         localStorage.setItem(ACCESS_TOKEN_KEY, access);
         if (refresh) localStorage.setItem(REFRESH_TOKEN_KEY, refresh);
-    } catch { console.error('Failed to store tokens'); }
+    } catch { /* ignore */ }
 }
-
 function clearTokens() {
     try {
         localStorage.removeItem(ACCESS_TOKEN_KEY);
         localStorage.removeItem(REFRESH_TOKEN_KEY);
         localStorage.removeItem(USER_KEY);
-    } catch { /* Ignore */ }
+        localStorage.removeItem('2fa_temp_token');
+        localStorage.removeItem('2fa_phone');
+    } catch { /* ignore */ }
 }
-
 function isTokenExpired(token) {
     if (!token) return true;
     try {
@@ -43,27 +40,21 @@ function isTokenExpired(token) {
         return decoded.exp < now + TOKEN_REFRESH_BUFFER;
     } catch { return true; }
 }
-
-// ── Safe JSON parsing with corrupted data cleanup ──────────────
 function getStoredUser() {
     try {
         const stored = localStorage.getItem(USER_KEY);
         return stored ? JSON.parse(stored) : null;
     } catch {
-        // Corrupted data – remove it to avoid crash on boot
         localStorage.removeItem(USER_KEY);
         return null;
     }
 }
-
 function storeUser(user) {
-    try { localStorage.setItem(USER_KEY, JSON.stringify(user)); } catch { /* Ignore */ }
+    try { localStorage.setItem(USER_KEY, JSON.stringify(user)); } catch { /* ignore */ }
 }
 
-// ── Axios Interceptors Setup ───────────────────────────────────────
 let isRefreshing = false;
 let failedQueue = [];
-
 function processQueue(error, token = null) {
     failedQueue.forEach(({ resolve, reject }) => {
         if (error) reject(error);
@@ -72,10 +63,6 @@ function processQueue(error, token = null) {
     failedQueue = [];
 }
 
-/**
- * Setup Axios interceptors with a mutable reference to the logout callback.
- * This prevents recreating interceptors on every state change (memory leak).
- */
 function setupAxiosInterceptors(logoutRef) {
     const requestInterceptor = apiClient.interceptors.request.use(
         (config) => {
@@ -87,49 +74,35 @@ function setupAxiosInterceptors(logoutRef) {
         },
         (error) => Promise.reject(error)
     );
-
     const responseInterceptor = apiClient.interceptors.response.use(
         (response) => response,
         async (error) => {
             const originalRequest = error.config;
-
-            // Avoid intercepting login/refresh endpoints themselves
-            if (
-                originalRequest.url?.includes('/accounts/login/') ||
+            if (originalRequest.url?.includes('/accounts/login/') ||
                 originalRequest.url?.includes('/accounts/verify-otp/') ||
                 originalRequest.url?.includes('/accounts/refresh-token/') ||
-                originalRequest.url?.includes('/accounts/request-otp/')
-            ) {
+                originalRequest.url?.includes('/accounts/request-otp/')) {
                 return Promise.reject(error);
             }
-
             if (error.response?.status === 401 && !originalRequest._retry) {
                 if (isRefreshing) {
                     return new Promise((resolve, reject) => {
                         failedQueue.push({ resolve, reject });
-                    })
-                        .then((token) => {
-                            originalRequest.headers.Authorization = `Bearer ${token}`;
-                            return apiClient(originalRequest);
-                        })
-                        .catch((err) => Promise.reject(err));
+                    }).then((token) => {
+                        originalRequest.headers.Authorization = `Bearer ${token}`;
+                        return apiClient(originalRequest);
+                    }).catch((err) => Promise.reject(err));
                 }
-
                 originalRequest._retry = true;
                 isRefreshing = true;
-
                 const refreshToken = getStoredRefreshToken();
                 if (!refreshToken) {
                     isRefreshing = false;
-                    // Use the ref to call the current logout
                     logoutRef.current?.();
                     return Promise.reject(error);
                 }
-
                 try {
-                    const response = await apiClient.post('/accounts/refresh-token/', {
-                        refresh: refreshToken,
-                    });
+                    const response = await apiClient.post('/accounts/refresh-token/', { refresh: refreshToken });
                     const { access } = response.data;
                     storeTokens(access, response.data.refresh || refreshToken);
                     processQueue(null, access);
@@ -137,44 +110,34 @@ function setupAxiosInterceptors(logoutRef) {
                     return apiClient(originalRequest);
                 } catch (refreshError) {
                     processQueue(refreshError, null);
-                    // Use the mutable ref to avoid infinite loops on refresh failure
                     logoutRef.current?.();
                     return Promise.reject(refreshError);
                 } finally {
                     isRefreshing = false;
                 }
             }
-
             if (error.response?.status === 403) {
                 console.warn('Access denied:', error.response?.data);
             }
-
             return Promise.reject(error);
         }
     );
-
-    // Return a cleanup function that ejects both interceptors
     return () => {
         apiClient.interceptors.request.eject(requestInterceptor);
         apiClient.interceptors.response.eject(responseInterceptor);
     };
 }
 
-// ═══════════════════════════════════════════════════════════════
-// AUTH PROVIDER
-// ═══════════════════════════════════════════════════════════════
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(() => getStoredUser());
     const [loading, setLoading] = useState(true);
     const [loginLoading, setLoginLoading] = useState(false);
     const [error, setError] = useState(null);
     const [isRefreshingToken, setIsRefreshingToken] = useState(false);
-
     const idleTimerRef = useRef(null);
     const cleanupInterceptorsRef = useRef(null);
-    const logoutRef = useRef(null); // Mutable reference to the latest logout
+    const logoutRef = useRef(null);
 
-    // ── Logout ──────────────────────────────────────────────────
     const logout = useCallback(() => {
         clearTokens();
         setUser(null);
@@ -184,21 +147,17 @@ export function AuthProvider({ children }) {
             const channel = new BroadcastChannel('auth_channel');
             channel.postMessage({ type: 'LOGOUT' });
             channel.close();
-        } catch { /* Ignore */ }
+        } catch { /* ignore */ }
     }, []);
 
-    // Keep logoutRef synced with the latest logout
     useEffect(() => {
         logoutRef.current = logout;
     }, [logout]);
 
-    // ── Check Auth (with race condition guard) ─────────────────
     const checkAuth = useCallback(async () => {
         const token = getStoredToken();
         if (!token) { setLoading(false); return; }
-
-        let isCurrentRequest = true; // Local flag to prevent stale updates
-
+        let isCurrent = true;
         if (isTokenExpired(token)) {
             const refreshToken = getStoredRefreshToken();
             if (refreshToken) {
@@ -219,46 +178,74 @@ export function AuthProvider({ children }) {
                 return;
             }
         }
-
         try {
             const response = await apiClient.get('/accounts/profile/');
-            // Only update state if this request is the latest one
-            if (!isCurrentRequest) return;
-            const userData = response.data;
-            setUser(userData);
-            storeUser(userData);
+            if (!isCurrent) return;
+            setUser(response.data);
+            storeUser(response.data);
         } catch (err) {
-            console.error('Auth check failed:', err);
             if (err.response?.status === 401) logout();
         } finally {
-            // Only set loading to false if this is the current request
-            if (isCurrentRequest) setLoading(false);
+            if (isCurrent) setLoading(false);
         }
-
-        // Cleanup: if component unmounts or a new checkAuth is called, cancel this one
-        return () => { isCurrentRequest = false; };
+        return () => { isCurrent = false; };
     }, [logout]);
 
-    // ── Auth Actions (unchanged except rely on updated helpers) ─
+    // Fixed register: uses /accounts/signup/
+    const register = useCallback(async (userData) => {
+        setLoginLoading(true);
+        setError(null);
+        try {
+            const response = await apiClient.post('/accounts/signup/', userData);
+            return response.data;
+        } catch (err) {
+            const message = err.response?.data?.error || 'Registration failed.';
+            setError(message);
+            throw new Error(message);
+        } finally {
+            setLoginLoading(false);
+        }
+    }, []);
+
+    // Fixed login with 2FA detection
     const login = useCallback(async (phone, otp) => {
         setLoginLoading(true);
         setError(null);
         try {
             const response = await apiClient.post('/accounts/verify-otp/', { phone_number: phone, otp: otp });
-            const { access, refresh, user: userData } = response.data;
+            const data = response.data;
+            if (data.require_2fa) {
+                localStorage.setItem('2fa_temp_token', data.temp_token);
+                localStorage.setItem('2fa_phone', phone);
+                return { require_2fa: true, temp_token: data.temp_token };
+            }
+            const { access, refresh, user: userData } = data;
             storeTokens(access, refresh);
             storeUser(userData);
             setUser(userData);
-            try {
-                const channel = new BroadcastChannel('auth_channel');
-                channel.postMessage({ type: 'LOGIN' });
-                channel.close();
-            } catch { /* Ignore */ }
             return userData;
         } catch (err) {
             const message = err.response?.data?.error || err.response?.data?.message || 'Login failed.';
             setError(message);
             throw new Error(message);
+        } finally {
+            setLoginLoading(false);
+        }
+    }, []);
+
+    const verify2FALogin = useCallback(async (tempToken, code) => {
+        setLoginLoading(true);
+        try {
+            const response = await apiClient.post('/accounts/2fa/verify-login/', { temp_token: tempToken, code: code });
+            const { access, refresh, user: userData } = response.data;
+            storeTokens(access, refresh);
+            storeUser(userData);
+            setUser(userData);
+            localStorage.removeItem('2fa_temp_token');
+            localStorage.removeItem('2fa_phone');
+            return userData;
+        } catch (err) {
+            throw new Error(err.response?.data?.error || '2FA verification failed');
         } finally {
             setLoginLoading(false);
         }
@@ -276,61 +263,25 @@ export function AuthProvider({ children }) {
         }
     }, []);
 
-    const register = useCallback(async (userData) => {
-        setLoginLoading(true);
-        setError(null);
+    // Fixed forgotPassword: sends phone_number, not email
+    const forgotPassword = useCallback(async (phone) => {
         try {
-            const response = await apiClient.post('/accounts/register/', userData);
-            const { access, refresh, user: newUser } = response.data;
-            if (access) {
-                storeTokens(access, refresh);
-                storeUser(newUser);
-                setUser(newUser);
-            }
+            const response = await apiClient.post('/accounts/forgot-password/', { phone_number: phone });
             return response.data;
         } catch (err) {
-            const message = err.response?.data?.error || 'Registration failed.';
-            setError(message);
-            throw new Error(message);
-        } finally {
-            setLoginLoading(false);
-        }
-    }, []);
-
-    const updateProfile = useCallback(async (profileData) => {
-        try {
-            const response = await apiClient.patch('/accounts/profile/', profileData);
-            const updatedUser = { ...user, ...response.data };
-            setUser(updatedUser);
-            storeUser(updatedUser);
-            return updatedUser;
-        } catch (err) {
-            const message = err.response?.data?.error || 'Failed to update profile.';
-            throw new Error(message);
-        }
-    }, [user]);
-
-    const updateUser = useCallback((newUserData) => {
-        setUser((prevUser) => {
-            const updated = { ...prevUser, ...newUserData };
-            storeUser(updated);
-            return updated;
-        });
-    }, []);
-
-    const forgotPassword = useCallback(async (email) => {
-        try {
-            const response = await apiClient.post('/accounts/forgot-password/', { email });
-            return response.data;
-        } catch (err) {
-            const message = err.response?.data?.error || 'Failed to send reset email.';
+            const message = err.response?.data?.error || 'Failed to send reset OTP.';
             throw new Error(message);
         }
     }, []);
 
-    const resetPassword = useCallback(async (token, newPassword) => {
+    // Fixed resetPassword: expects phone, otp, new_password
+    const resetPassword = useCallback(async (phone, otp, newPassword) => {
         try {
-            const response = await apiClient.post('/accounts/reset-password/', { token, password: newPassword });
+            const response = await apiClient.post('/accounts/reset-password/', {
+                phone_number: phone,
+                otp: otp,
+                new_password: newPassword,
+            });
             return response.data;
         } catch (err) {
             const message = err.response?.data?.error || 'Failed to reset password.';
@@ -338,40 +289,38 @@ export function AuthProvider({ children }) {
         }
     }, []);
 
-    const enrollBiometric = useCallback(async (imageData) => {
+    const changePassword = useCallback(async (oldPassword, newPassword) => {
         try {
-            const response = await apiClient.post('/accounts/biometric/enroll/', { image_data: imageData });
-            try {
-                const { offlineStorage } = await import('../utils/storage');
-                await offlineStorage.saveBiometricStatus({ enrolled: true });
-            } catch (e) { console.error("Offline storage access failed:", e); }
+            const response = await apiClient.post('/accounts/change-password/', {
+                old_password: oldPassword,
+                new_password: newPassword,
+            });
             return response.data;
         } catch (err) {
-            const message = err.response?.data?.error || 'Failed to enroll biometric data.';
+            const message = err.response?.data?.error || 'Failed to change password.';
             throw new Error(message);
         }
     }, []);
 
-    const biometricLogin = useCallback(async (phone, imageData) => {
-        setLoginLoading(true);
-        setError(null);
+    const updateProfile = useCallback(async (profileData) => {
         try {
-            const response = await apiClient.post('/accounts/biometric/login/', {
-                phone_number: phone,
-                image_data: imageData
-            });
-            const { access, refresh, user: userData } = response.data;
-            storeTokens(access, refresh);
-            storeUser(userData);
-            setUser(userData);
-            return userData;
+            const response = await apiClient.put('/accounts/profile/', profileData);
+            const updatedUser = response.data;
+            setUser(updatedUser);
+            storeUser(updatedUser);
+            return updatedUser;
         } catch (err) {
-            const message = err.response?.data?.error || 'Biometric login failed.';
-            setError(message);
+            const message = err.response?.data?.error || 'Failed to update profile.';
             throw new Error(message);
-        } finally {
-            setLoginLoading(false);
         }
+    }, []);
+
+    const updateUser = useCallback((newUserData) => {
+        setUser((prev) => {
+            const updated = { ...prev, ...newUserData };
+            storeUser(updated);
+            return updated;
+        });
     }, []);
 
     const refreshAuth = useCallback(async () => {
@@ -387,86 +336,129 @@ export function AuthProvider({ children }) {
         }
     }, [logout]);
 
-    // ── Role Helpers ────────────────────────────────────────────
+    const enrollBiometric = useCallback(async (imageData) => {
+        try {
+            const response = await apiClient.post('/accounts/biometric/enroll/', { image_data: imageData });
+            updateUser({ biometric_enabled: true });
+            return response.data;
+        } catch (err) {
+            const message = err.response?.data?.error || 'Failed to enroll biometric.';
+            throw new Error(message);
+        }
+    }, [updateUser]);
+
+    const disableBiometric = useCallback(async () => {
+        try {
+            const response = await apiClient.post('/accounts/biometric/disable/');
+            updateUser({ biometric_enabled: false });
+            return response.data;
+        } catch (err) {
+            const message = err.response?.data?.error || 'Failed to disable biometric.';
+            throw new Error(message);
+        }
+    }, [updateUser]);
+
+    const biometricLogin = useCallback(async (phone, imageData) => {
+        setLoginLoading(true);
+        setError(null);
+        try {
+            const response = await apiClient.post('/accounts/biometric/login/', {
+                phone_number: phone,
+                image_data: imageData
+            });
+            const data = response.data;
+            if (data.require_2fa) {
+                localStorage.setItem('2fa_temp_token', data.temp_token);
+                localStorage.setItem('2fa_phone', phone);
+                return { require_2fa: true, temp_token: data.temp_token };
+            }
+            const { access, refresh, user: userData } = data;
+            storeTokens(access, refresh);
+            storeUser(userData);
+            setUser(userData);
+            return userData;
+        } catch (err) {
+            const message = err.response?.data?.error || 'Biometric login failed.';
+            setError(message);
+            throw new Error(message);
+        } finally {
+            setLoginLoading(false);
+        }
+    }, []);
+
+    const setup2FA = useCallback(async () => {
+        const response = await accountsApi.setup2FA();
+        return response.data;
+    }, []);
+
+    const verify2FASetup = useCallback(async (code) => {
+        const response = await accountsApi.verify2FASetup(code);
+        updateUser({ two_factor_enabled: true });
+        return response.data;
+    }, [updateUser]);
+
+    const disable2FA = useCallback(async (code) => {
+        const response = await accountsApi.disable2FA(code);
+        updateUser({ two_factor_enabled: false });
+        return response.data;
+    }, [updateUser]);
+
+    const get2FAStatus = useCallback(async () => {
+        const response = await accountsApi.get2FAStatus();
+        return response.data;
+    }, []);
+
     const isAdmin = user?.role === 'admin' || user?.is_superuser;
     const isTeacher = user?.role === 'teacher' || user?.role === 'faculty';
     const isStudent = user?.role === 'student';
     const isStudentLeader = user?.role === 'student_leader' || user?.role === 'faculty_rep';
     const isClassRep = user?.role === 'class_rep';
 
-    const hasRole = useCallback(
-        (...roles) => {
-            if (!user) return false;
-            if (isAdmin) return true;
-            return roles.includes(user?.role);
-        },
-        [user, isAdmin]
-    );
+    const hasRole = useCallback((...roles) => {
+        if (!user) return false;
+        if (isAdmin) return true;
+        return roles.includes(user?.role);
+    }, [user, isAdmin]);
 
-    const hasPermission = useCallback(
-        (action, resource) => {
-            if (!user) return false;
-            if (isAdmin) return true;
-            const permissions = user?.permissions || [];
-            return permissions.some(
-                (p) =>
-                    (p.action === action || p.action === '*') &&
-                    (p.resource === resource || p.resource === '*')
-            );
-        },
-        [user, isAdmin]
-    );
+    const hasPermission = useCallback((action, resource) => {
+        if (!user) return false;
+        if (isAdmin) return true;
+        const permissions = user?.permissions || [];
+        return permissions.some(p => (p.action === action || p.action === '*') && (p.resource === resource || p.resource === '*'));
+    }, [user, isAdmin]);
 
-    // ── Initialize Auth (run once on mount) ────────────────────
     useEffect(() => {
-        // Set up Axios interceptors with the mutable logout ref
         cleanupInterceptorsRef.current = setupAxiosInterceptors(logoutRef);
-        // Run the initial authentication check
         checkAuth();
-
         return () => {
-            if (cleanupInterceptorsRef.current) {
-                cleanupInterceptorsRef.current();
-            }
+            if (cleanupInterceptorsRef.current) cleanupInterceptorsRef.current();
         };
-    }, []); // empty dependencies → runs only on mount/unmount
+    }, []);
 
-    // ── Activity timer & broadcast channel (user‑aware) ─────────
     useEffect(() => {
-        if (!user) return; // don't run timer for guests
-
+        if (!user) return;
         const resetIdleTimer = () => {
             if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-            idleTimerRef.current = setTimeout(() => {
-                console.log('Session timed out due to inactivity');
-                logout();
-            }, SESSION_TIMEOUT);
+            idleTimerRef.current = setTimeout(() => logout(), SESSION_TIMEOUT);
         };
-
-        const activityEvents = ['mousedown', 'keydown', 'scroll', 'touchstart'];
-        activityEvents.forEach(event => window.addEventListener(event, resetIdleTimer));
-        resetIdleTimer(); // start the timer immediately
-
-        // BroadcastChannel for cross‑tab logout/login
-        let authChannel;
+        const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
+        events.forEach(ev => window.addEventListener(ev, resetIdleTimer));
+        resetIdleTimer();
+        let channel;
         try {
-            authChannel = new BroadcastChannel('auth_channel');
-            authChannel.onmessage = (event) => {
+            channel = new BroadcastChannel('auth_channel');
+            channel.onmessage = (event) => {
                 if (event.data.type === 'LOGOUT') logout();
                 else if (event.data.type === 'LOGIN') checkAuth();
             };
-        } catch { /* BroadcastChannel not supported */ }
-
+        } catch { /* ignore */ }
         return () => {
             if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-            activityEvents.forEach(event =>
-                window.removeEventListener(event, resetIdleTimer)
-            );
-            if (authChannel) authChannel.close();
+            events.forEach(ev => window.removeEventListener(ev, resetIdleTimer));
+            if (channel) channel.close();
         };
-    }, [user, logout, checkAuth]); // re‑bind when user/logout/checkAuth change
+    }, [user, logout, checkAuth]);
 
-    // ── Context Value ───────────────────────────────────────────
     const value = {
         user,
         loading,
@@ -490,7 +482,14 @@ export function AuthProvider({ children }) {
         refreshAuth,
         checkAuth,
         enrollBiometric,
+        disableBiometric,
         biometricLogin,
+        changePassword,
+        setup2FA,
+        verify2FALogin,
+        verify2FASetup,
+        disable2FA,
+        get2FAStatus,
         hasRole,
         hasPermission,
         clearError: () => setError(null),

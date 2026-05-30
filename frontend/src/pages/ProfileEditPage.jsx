@@ -12,7 +12,7 @@ export default function ProfileEditPage() {
     const [form, setForm] = useState({
         full_name: user?.full_name || '',
         email: user?.email || '',
-        // Phone number is not editable via this form
+        class_name: user?.class_name || '',
     });
     const [saving, setSaving] = useState(false);
 
@@ -26,17 +26,16 @@ export default function ProfileEditPage() {
         }
         setSaving(true);
         try {
-            // Update profile via API
+            // Send full_name, email, and class_name to backend
             await accountsApi.updateProfile({
                 full_name: form.full_name,
                 email: form.email,
+                class_name: form.class_name,
             });
-
-            // Refetch the full profile to get updated data and update context
+            // Refetch the full profile to get updated data
             const response = await accountsApi.getProfile();
             const updatedUser = response.data || response;
             updateUser(updatedUser);
-
             toast.success('Profile updated!');
             navigate('/profile');
         } catch (err) {
@@ -74,6 +73,18 @@ export default function ProfileEditPage() {
                                 type="email"
                                 value={form.email}
                                 onChange={(e) => setForm({ ...form, email: e.target.value })}
+                                className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+
+                        {/* NEW: class_name field */}
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Class / Year of Study</label>
+                            <input
+                                type="text"
+                                value={form.class_name}
+                                onChange={(e) => setForm({ ...form, class_name: e.target.value })}
+                                placeholder="e.g. 3rd year Microbiology"
                                 className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                             />
                         </div>

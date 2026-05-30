@@ -23,7 +23,7 @@ const STEPS = [
 ];
 
 export default function ClaimDetail() {
-  const { id: itemId } = useParams();  // item ID
+  const { id: itemId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -54,20 +54,25 @@ export default function ClaimDetail() {
         if (data.claim_id) {
           setClaimId(data.claim_id);
           setStep(data.next_step);
-          if (data.next_step === 'claim') setStep('claim');
-          if (data.next_step === 'security') setStep('security');
-          if (data.next_step === 'evidence') setStep('evidence');
-          if (data.next_step === 'payment') setStep('payment');
-          if (data.next_step === 'confirm') setStep('confirm');
-          if (data.next_step === 'done') setStep('done');
+        } else {
+          // No claim yet. Backend may return 'ownership_verify' or 'claim'.
+          // Map 'ownership_verify' to 'claim' because the user already verified ownership on detail page.
+          if (data.next_step === 'ownership_verify') {
+            setStep('claim');
+          } else {
+            setStep(data.next_step || 'claim');
+          }
         }
-      } catch (e) { /* no claim yet */ }
+      } catch (e) {
+        // No claim – default to claim step
+        setStep('claim');
+      }
     })();
   }, [itemId]);
 
   const { status: blurStatus } = useImageBlur(itemId, { interval: 5000 });
 
-  // ── Mutations ──
+  // Mutations
   const claimMutation = useMutation({
     mutationFn: () => foundItemsApi.claimItem(itemId),
     onSuccess: (res) => {
@@ -105,7 +110,7 @@ export default function ClaimDetail() {
       formData.append('description', evidenceDescription);
       return foundItemsApi.submitEvidence(claimId, formData);
     },
-    onSuccess: (res) => {
+    onSuccess: () => {
       toast.success('Evidence submitted!');
       if (item?.is_fee_required) setStep('payment');
       else setStep('confirm');
@@ -115,9 +120,8 @@ export default function ClaimDetail() {
 
   const paymentMutation = useMutation({
     mutationFn: () => foundItemsApi.initiatePayment(claimId),
-    onSuccess: (res) => {
+    onSuccess: () => {
       toast.success('STK Push sent. Check your phone.');
-      setStep('payment');
       setPaymentPolling(true);
       pollPaymentStatus();
     },
@@ -139,7 +143,7 @@ export default function ClaimDetail() {
     try {
       await foundItemsApi.cancelClaim(claimId);
       toast.success('Claim cancelled');
-      navigate('/found-items');
+      navigate(`/found-items/${itemId}`);
     } catch { toast.error('Failed to cancel'); }
   };
 

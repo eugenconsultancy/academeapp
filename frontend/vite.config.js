@@ -5,7 +5,7 @@ import { visualizer } from 'rollup-plugin-visualizer';
 import viteCompression from 'vite-plugin-compression';
 import path from 'path';
 
-// https://vitejs.dev/config/ fo the app front.end
+// https://vitejs.dev/config/
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const isProduction = mode === 'production';
@@ -207,8 +207,19 @@ export default defineConfig(({ command, mode }) => {
         output: {
           manualChunks: (id) => {
             if (id.includes('node_modules')) {
-              if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
+              if (
+                id.includes('react') ||
+                id.includes('react-dom') ||
+                id.includes('react-router-dom') ||
+                id.includes('scheduler')
+              ) {
                 return 'vendor-core';
+              }
+              if (id.includes('three') || id.includes('@react-three/fiber') || id.includes('@react-three/drei')) {
+                return 'vendor-three';
+              }
+              if (id.includes('react-icons')) {
+                return 'vendor-icons';
               }
               if (id.includes('@tanstack/react-query')) {
                 return 'vendor-query';
@@ -246,7 +257,6 @@ export default defineConfig(({ command, mode }) => {
           ? '[name]__[local]___[hash:base64:5]'
           : '[hash:base64:8]',
       },
-      // ✅ CRITICAL FIX: Explicitly tell Vite where the PostCSS config is
       postcss: './postcss.config.js',
       devSourcemap: isDevelopment,
     },
@@ -261,6 +271,7 @@ export default defineConfig(({ command, mode }) => {
         'date-fns',
         'clsx',
       ],
+      exclude: ['three', '@react-three/fiber', '@react-three/drei'],
     },
 
     define: {

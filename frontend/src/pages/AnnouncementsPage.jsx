@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { announcementsApi } from '../api/announcementsApi';
@@ -8,6 +8,7 @@ import ReportButton from '../components/ui/ReportButton';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
 import { getRelativeTime } from '../utils/time';
 import toast from 'react-hot-toast';
+import apiClient from '../api/client';
 import {
   FiBell, FiAlertCircle, FiUser, FiCalendar,
   FiX, FiSend, FiPlus, FiInfo, FiEdit3, FiTrash2,
@@ -77,7 +78,6 @@ function AnnouncementCard({ a, onReport, onDelete, onEdit, isAdmin }) {
                 </button>
               </>
             )}
-            {/* FIXED: onReport now only receives the ID */}
             <ReportButton onReport={() => onReport(a.id)} />
           </div>
         </div>
@@ -136,14 +136,33 @@ export default function AnnouncementsPage() {
   });
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
 
   const isAdmin = user?.role === 'admin';
   const isLeader = isAdmin || ['student_leader', 'faculty_rep', 'class_rep'].includes(user?.role);
 
-  // Fetch announcements
-  const { data: announcements, isLoading, refetch } = useQuery({
+  // Force token refresh when the page loads (fixes expired token)
+  useEffect(() => {
+    const refreshTokenIfNeeded = async () => {
+      const token = localStorage.getItem('access_token');
+      const refresh = localStorage.getItem('refresh_token');
+      if (!token && refresh) {
+        try {
+          const res = await apiClient.post('/accounts/refresh-token/', { refresh });
+          localStorage.setItem('access_token', res.data.access);
+          apiClient.defaults.headers.common['Authorization'] = `Bearer ${res.data.access}`;
+          toast.success('Session refreshed');
+        } catch (err) {
+          console.error('Token refresh failed', err);
+        }
+      }
+    };
+    refreshTokenIfNeeded();
+  }, []);
+
+  // Fetch announcements with error toast
+  const { data: announcements, isLoading, error, refetch } = useQuery({
     queryKey: ['announcements', filter],
     queryFn: async () => {
       const params = {};
@@ -152,9 +171,15 @@ export default function AnnouncementsPage() {
       const res = await announcementsApi.list(params);
       return Array.isArray(res.data) ? res.data : res.data?.results || [];
     },
+    retry: 1,
+    staleTime: 60000,
+    onError: (err) => {
+      console.error('Fetch error:', err);
+      toast.error('Failed to load announcements. Please refresh the page.');
+    },
   });
 
-  // Request mutation – FIXED: use announcementsApi.createRequest
+  // Request mutation
   const requestMutation = useMutation({
     mutationFn: (data) => announcementsApi.createRequest(data),
     onSuccess: () => {
@@ -165,16 +190,30 @@ export default function AnnouncementsPage() {
     onError: () => toast.error('Failed to submit request'),
   });
 
-  // Create mutation (admin/leaders)
+  // Create mutation – payload now matches backend AnnouncementIn schema
   const createMutation = useMutation({
-    mutationFn: (data) => announcementsApi.create(data),
+    mutationFn: (data) => {
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + data.expires_in_days);
+      const payload = {
+        title: data.title,
+        content: data.content,
+        target: data.target,
+        is_urgent: data.is_urgent,
+        expires_at: expiresAt.toISOString(),
+      };
+      return announcementsApi.create(payload);
+    },
     onSuccess: () => {
       toast.success('Announcement published!');
       setShowCreateModal(false);
       setCreateForm({ title: '', content: '', target: 'entire_institution', is_urgent: false, expires_in_days: 21 });
       queryClient.invalidateQueries({ queryKey: ['announcements'] });
     },
-    onError: () => toast.error('Failed to publish announcement'),
+    onError: (err) => {
+      console.error(err);
+      toast.error('Failed to publish announcement');
+    },
   });
 
   // Delete mutation
@@ -187,7 +226,7 @@ export default function AnnouncementsPage() {
     onError: () => toast.error('Failed to delete'),
   });
 
-  // Report mutation – FIXED: pass an object { reason, description }
+  // Report mutation
   const reportMutation = useMutation({
     mutationFn: ({ id, reason, description }) =>
       announcementsApi.report(id, { reason, description }),
@@ -246,6 +285,19 @@ export default function AnnouncementsPage() {
     { value: 'outdated', label: 'Outdated Information', icon: FiClock, color: '#6b7280' },
     { value: 'other', label: 'Other', icon: FiFlag, color: '#6366f1' },
   ];
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="text-center">
+          <FiBell className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Please log in</h2>
+          <p className="text-gray-500 dark:text-gray-400">You need to be logged in to view announcements.</p>
+          <Link to="/login" className="mt-4 inline-block px-6 py-2 bg-indigo-600 text-white rounded-xl">Go to Login</Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -837,13 +889,11 @@ export default function AnnouncementsPage() {
             <p>Stay updated with campus news and notices</p>
           </div>
           <div className="ann-header-btns">
-            {/* Create announcement (leaders only) */}
             {isLeader && (
               <button className="ann-cta-create" onClick={() => setShowCreateModal(true)}>
                 <FiPlus size={15} /> Create
               </button>
             )}
-            {/* Request announcement (all users) */}
             <button className="ann-cta" onClick={() => setShowModal(true)}>
               <FiSend size={15} /> Request
             </button>
@@ -906,9 +956,7 @@ export default function AnnouncementsPage() {
                 <AnnouncementCard
                   a={a}
                   isAdmin={isAdmin}
-                  onReport={(id) => {
-                    handleReportClick(id);
-                  }}
+                  onReport={handleReportClick}
                   onDelete={handleDelete}
                   onEdit={handleEdit}
                 />
@@ -1042,6 +1090,17 @@ export default function AnnouncementsPage() {
                   Mark as Urgent
                 </label>
               </div>
+              <div>
+                <label className="ann-label">Expires in (days)</label>
+                <input
+                  type="number"
+                  className="ann-input"
+                  value={createForm.expires_in_days}
+                  onChange={e => setCreateForm({ ...createForm, expires_in_days: parseInt(e.target.value) || 21 })}
+                  min={1}
+                  max={90}
+                />
+              </div>
             </div>
             <div className="ann-modal-footer">
               <button className="ann-btn-cancel" onClick={() => setShowCreateModal(false)}>
@@ -1066,7 +1125,6 @@ export default function AnnouncementsPage() {
         <div className="ann-modal-overlay">
           <div className="ann-modal-backdrop" onClick={() => setShowReportModal(false)} />
           <div className="ann-modal report-modal">
-            {/* Header */}
             <div className="report-modal-header">
               <div className="report-modal-title-group">
                 <div className="report-modal-icon">
@@ -1082,9 +1140,7 @@ export default function AnnouncementsPage() {
               </button>
             </div>
 
-            {/* Body */}
             <div className="report-modal-body">
-              {/* Reason selection */}
               <div>
                 <label className="report-description-label" style={{ marginBottom: 10, display: 'block' }}>
                   Reason for Report
@@ -1115,7 +1171,6 @@ export default function AnnouncementsPage() {
                 </div>
               </div>
 
-              {/* Description */}
               <div>
                 <label className="report-description-label" style={{ marginBottom: 8, display: 'block' }}>
                   Additional Details
@@ -1141,7 +1196,6 @@ export default function AnnouncementsPage() {
               </div>
             </div>
 
-            {/* Footer */}
             <div className="report-modal-footer">
               <button
                 className="report-btn-cancel"

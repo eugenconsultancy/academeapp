@@ -1,21 +1,51 @@
 from typing import List
 from django.shortcuts import get_object_or_404
 from django.conf import settings
-from ninja import Router, Query, File
+from django.utils import timezone
+from ninja import Router, Query, File, Schema
 from ninja.files import UploadedFile
 
 from common.auth import PhoneOTPAuth
 from common.jwt_auth import JWTAuth, create_token_pair
-from .models import User, Badge, DataExport
+from .models import User, Badge, DataExport, UserSession, StudentRole
 from .schema import (
     SignupIn, OTPRequestIn, OTPVerifyIn, ProfileUpdateIn
 )
 from .schema import ResetPasswordIn
 from .permissions import IsAdmin
 from .schema import BiometricEnrollIn, BiometricLoginIn
-from .services import AccountService
+from .services import AccountService, TwoFactorService
+
+# Import AuditLog from governance app (safe fallback)
+try:
+    from apps.governance.models import AuditLog
+    AUDIT_LOG_AVAILABLE = True
+except ImportError:
+    AUDIT_LOG_AVAILABLE = False
+    class AuditLog:
+        objects = None
+
+# Import NotificationService
+try:
+    from apps.notifications.services import NotificationService
+    NOTIFICATION_AVAILABLE = True
+except ImportError:
+    NOTIFICATION_AVAILABLE = False
+    class NotificationService:
+        @staticmethod
+        def send(*args, **kwargs):
+            pass
 
 router = Router()
+
+# Inline schema for role update
+class RoleUpdateIn(Schema):
+    role: str
+
+# Inline schema for 2FA verify-login
+class TwoFactorVerifyLoginIn(Schema):
+    temp_token: str
+    code: str
 
 # ============================================
 # AUTHENTICATION
@@ -104,18 +134,13 @@ def forgot_password(request, data: OTPRequestIn):
 def reset_password(request, data: ResetPasswordIn):
     """Step 2: Verify OTP and set new password with strict validation"""
 
-    # 1. Verify OTP using the validated data
     if not PhoneOTPAuth.verify_otp(data.phone_number, data.otp):
         return {"error": "Invalid OTP"}
 
-    # 2. Get user and set password
     user = get_object_or_404(User, phone_number=data.phone_number)
     user.set_password(data.new_password)
     user.save()
 
-    # 3. Revoke all existing sessions for security
-    from .models import UserSession
-    from django.utils import timezone
     UserSession.objects.filter(user=user, is_active=True).update(
         is_active=False,
         revoked_at=timezone.now()
@@ -142,7 +167,7 @@ def get_profile(request):
         "profile_pic": user.profile_pic or "",
         "role": user.role,
         "badges": [b.badge_type for b in user.badges.all()],
-        "is_online": user.is_online,          # Now uses the model property (cache-based)
+        "is_online": user.is_online,
         "login_count": user.login_count,
         "two_factor_enabled": user.two_factor_enabled,
         "biometric_enabled": user.biometric_enabled,
@@ -168,7 +193,6 @@ def update_profile(request, data: ProfileUpdateIn):
 
 @router.post("/profile/upload-pic/", auth=JWTAuth())
 def upload_profile_pic(request, file: UploadedFile = None):
-    """Upload profile picture - accepts multipart form data with 'file' field"""
     user = request.auth
 
     if file:
@@ -224,7 +248,6 @@ def delete_account(request):
 
 @router.get("/roles/", auth=JWTAuth())
 def list_my_roles(request):
-    """Get the authenticated user's active and past roles"""
     user = request.auth
 
     active_roles = user.student_roles.filter(is_active=True)
@@ -256,9 +279,6 @@ def list_my_roles(request):
 
 @router.post("/roles/assign/", auth=JWTAuth())
 def assign_role(request, data: dict):
-    """Assign a leadership role to a student."""
-    from .models import StudentRole, AuditLog
-
     user = request.auth
 
     if user.role not in ['admin', 'faculty_officer']:
@@ -293,21 +313,31 @@ def assign_role(request, data: dict):
         target_user.role = role_type
         target_user.save(update_fields=['role'])
 
-    AuditLog.objects.create(
-        action='ROLE_ASSIGNED', performed_by=user, target_user=target_user,
-        target_type='StudentRole', target_id=str(student_role.id),
-        after_state={'role': role_type, 'scope_name': scope_name, 'start_date': str(start_date), 'end_date': str(end_date)},
-        ip_address=request.META.get('REMOTE_ADDR'),
-    )
+    if AUDIT_LOG_AVAILABLE:
+        AuditLog.objects.create(
+            action='ROLE_ASSIGNED',
+            performed_by=user,
+            target_user=target_user,
+            target_type='StudentRole',
+            target_id=str(student_role.id),
+            after_state={'role': role_type, 'scope_name': scope_name, 'start_date': str(start_date), 'end_date': str(end_date)},
+            ip_address=request.META.get('REMOTE_ADDR'),
+        )
+
+    if NOTIFICATION_AVAILABLE:
+        NotificationService.send(
+            user=target_user,
+            title="New Leadership Role",
+            message=f"You have been assigned as {student_role.get_role_display()} for {scope_name}.",
+            notification_type="governance",
+            link="/governance"
+        )
 
     return {"id": str(student_role.id), "message": f"{target_user.full_name} assigned as {student_role.get_role_display()}"}
 
 
 @router.post("/roles/{role_id}/revoke/", auth=JWTAuth())
 def revoke_role(request, role_id: str, data: dict = None):
-    """Manually revoke a role before its end_date"""
-    from .models import StudentRole, AuditLog
-
     user = request.auth
 
     if user.role not in ['admin', 'faculty_officer']:
@@ -317,12 +347,26 @@ def revoke_role(request, role_id: str, data: dict = None):
     reason = (data or {}).get('reason', 'Manually revoked by administrator')
     role.expire(reason=reason, revoked_by=user)
 
-    AuditLog.objects.create(
-        action='ROLE_REVOKED', performed_by=user, target_user=role.user,
-        target_type='StudentRole', target_id=str(role.id),
-        before_state={'is_active': True}, after_state={'is_active': False, 'revocation_reason': reason},
-        ip_address=request.META.get('REMOTE_ADDR'),
-    )
+    if AUDIT_LOG_AVAILABLE:
+        AuditLog.objects.create(
+            action='ROLE_REVOKED',
+            performed_by=user,
+            target_user=role.user,
+            target_type='StudentRole',
+            target_id=str(role.id),
+            before_state={'is_active': True},
+            after_state={'is_active': False, 'revocation_reason': reason},
+            ip_address=request.META.get('REMOTE_ADDR'),
+        )
+
+    if NOTIFICATION_AVAILABLE:
+        NotificationService.send(
+            user=role.user,
+            title="Role Revoked",
+            message=f"Your role as {role.get_role_display()} for {role.scope_name} has been revoked.",
+            notification_type="governance",
+            link="/governance"
+        )
 
     return {"message": f"Role revoked: {role.get_role_display()} for {role.user.full_name}"}
 
@@ -333,10 +377,6 @@ def revoke_role(request, role_id: str, data: dict = None):
 
 @router.get("/sessions/", auth=JWTAuth())
 def list_sessions(request):
-    """List all active sessions for the authenticated user."""
-    from .models import UserSession
-    from django.utils import timezone
-
     sessions = UserSession.objects.filter(
         user=request.auth,
         is_active=True,
@@ -360,13 +400,9 @@ def list_sessions(request):
 
 @router.post("/sessions/{session_id}/revoke/", auth=JWTAuth())
 def revoke_session(request, session_id: str):
-    """Revoke a specific session."""
-    from .models import UserSession
-
     session = get_object_or_404(UserSession, id=session_id, user=request.auth)
 
     if session.is_active:
-        from django.utils import timezone
         session.is_active = False
         session.revoked_at = timezone.now()
         session.revoked_by = request.auth
@@ -378,10 +414,6 @@ def revoke_session(request, session_id: str):
 
 @router.post("/sessions/revoke-all/", auth=JWTAuth())
 def revoke_all_sessions(request):
-    """Revoke all active sessions except the current one."""
-    from .models import UserSession
-    from django.utils import timezone
-
     current_token = request.headers.get('Authorization', '').replace('Bearer ', '')
 
     revoked_count = UserSession.objects.filter(
@@ -403,7 +435,6 @@ def revoke_all_sessions(request):
 
 @router.post("/refresh-token/", auth=None)
 def refresh_token(request):
-    """Refresh the JWT access token using a valid refresh token."""
     import json
     try:
         body = json.loads(request.body)
@@ -432,15 +463,10 @@ def refresh_token(request):
         return {"error": f"Invalid refresh token: {str(e)}"}
 
 
-
 @router.post("/biometric/enroll/", auth=JWTAuth())
 def enroll_biometric(request, data: BiometricEnrollIn):
-    """
-    Enroll user's face in the Cloud provider (e.g., AWS Rekognition).
-    """
     user = request.auth
 
-    # Pass the image data to your service which now handles the cloud SDK call
     success, message = AccountService.enroll_face_cloud(user, data.image_data)
 
     if not success:
@@ -450,21 +476,16 @@ def enroll_biometric(request, data: BiometricEnrollIn):
 
 @router.post("/biometric/login/", auth=None)
 def biometric_login(request, data: BiometricLoginIn):
-    """
-    Verify identity via Cloud face comparison and issue new JWT tokens.
-    """
     user = User.objects.filter(phone_number=data.phone_number).first()
 
     if not user:
         return {"error": "User not found."}
 
-    # Verify against Cloud provider
     is_match, message = AccountService.verify_face_cloud(user, data.image_data)
 
     if not is_match:
         return {"error": message}
 
-    # If match is successful, issue tokens
     tokens = create_token_pair(user)
     AccountService.increment_login_count(user)
 
@@ -481,23 +502,206 @@ def biometric_login(request, data: BiometricLoginIn):
     }
 
 # ============================================
-# TWO-FACTOR AUTHENTICATION (NEW)
+# TWO-FACTOR AUTHENTICATION (FULL TOTP)
 # ============================================
-@router.post("/2fa/toggle/", auth=JWTAuth())
-def toggle_2fa(request):
-    """Toggle two-factor authentication for the authenticated user."""
+
+@router.get("/2fa/setup/", auth=JWTAuth())
+def two_factor_setup(request):
+    """Generate QR code and secret for TOTP setup."""
     user = request.auth
-    user.two_factor_enabled = not user.two_factor_enabled
+    secret, qr_code = TwoFactorService.generate_qr_code(user)
+    # Store secret temporarily in cache (5 minutes)
+    from django.core.cache import cache
+    cache.set(f"2fa_secret_{user.id}", secret, timeout=300)
+    return {"qr_code": qr_code, "secret": secret}
+
+@router.post("/2fa/verify-setup/", auth=JWTAuth())
+def verify_two_factor_setup(request, data: Schema):  # data: { code: str }
+    """Verify TOTP code and enable 2FA for the user."""
+    from ninja import Schema as NinjaSchema
+    class VerifySetupIn(NinjaSchema):
+        code: str
+    verify_data = VerifySetupIn(**data.dict())
+    user = request.auth
+    from django.core.cache import cache
+    secret = cache.get(f"2fa_secret_{user.id}")
+    if not secret:
+        return {"error": "Setup session expired, please restart"}
+    if not TwoFactorService.verify_totp_code(secret, verify_data.code):
+        return {"error": "Invalid verification code"}
+    # Enable 2FA for user
+    user.two_factor_enabled = True
     user.save(update_fields=['two_factor_enabled'])
+    # Generate backup codes
+    backup_codes = TwoFactorService.generate_backup_codes(user)
+    cache.delete(f"2fa_secret_{user.id}")
+    return {"message": "2FA enabled", "backup_codes": backup_codes}
+
+@router.post("/2fa/disable/", auth=JWTAuth())
+def disable_two_factor(request, data: Schema):
+    """Disable 2FA after verifying a TOTP code."""
+    from ninja import Schema as NinjaSchema
+    class DisableIn(NinjaSchema):
+        code: str
+    disable_data = DisableIn(**data.dict())
+    user = request.auth
+    if not TwoFactorService.verify_totp(user, disable_data.code):
+        return {"error": "Invalid 2FA code"}
+    user.two_factor_enabled = False
+    user.save(update_fields=['two_factor_enabled'])
+    # Clear backup codes
+    from django.core.cache import cache
+    cache.delete(f"backup_codes_{user.id}")
+    return {"message": "2FA disabled"}
+
+@router.get("/2fa/status/", auth=JWTAuth())
+def two_factor_status(request):
+    """Return whether 2FA is enabled for the user."""
+    user = request.auth
     return {"two_factor_enabled": user.two_factor_enabled}
 
+@router.post("/2fa/verify-login/", auth=None)
+def verify_2fa_login(request, data: TwoFactorVerifyLoginIn):
+    """Second step after OTP verification: validate TOTP code and issue tokens."""
+    temp_token = data.temp_token
+    code = data.code
+    user = AccountService.get_user_from_temp_token(temp_token)
+    if not user:
+        return {"error": "Invalid or expired 2FA session"}
+    if not TwoFactorService.verify_totp(user, code):
+        return {"error": "Invalid 2FA code"}
+    tokens = create_token_pair(user)
+    AccountService.increment_login_count(user)
+    return {
+        "access": tokens["access"],
+        "refresh": tokens["refresh"],
+        "user": {
+            "id": str(user.id),
+            "phone_number": user.phone_number,
+            "admission_number": user.admission_number,
+            "full_name": user.full_name,
+            "email": user.email or "",
+            "class_name": user.class_name,
+            "institution": user.institution,
+            "profile_pic": user.profile_pic or "",
+            "role": user.role,
+            "badges": [b.badge_type for b in user.badges.all()],
+            "is_online": user.is_online,
+            "login_count": user.login_count,
+            "two_factor_enabled": user.two_factor_enabled,
+            "biometric_enabled": user.biometric_enabled,
+            "last_login": user.last_login.isoformat() if user.last_login else None,
+        }
+    }
+
 
 # ============================================
-# ADMIN: LIST ALL USERS (NEW)
+# ADMIN: LIST ALL USERS
 # ============================================
 @router.get("/users/", auth=JWTAuth())
 def list_all_users(request):
-    """Admin only: return a list of all users (id, full_name, email, role)."""
     if request.auth.role != 'admin':
         return []
     return list(User.objects.all().values('id', 'full_name', 'email', 'role'))
+
+
+# ============================================
+# ADMIN: UPDATE USER ROLE
+# ============================================
+@router.put("/users/{user_id}/role/", auth=JWTAuth())
+def admin_update_user_role(request, user_id: str, data: RoleUpdateIn):
+    admin_user = request.auth
+    if admin_user.role != 'admin':
+        return {"error": "Permission denied. Admin access required."}
+    
+    new_role = data.role
+    if new_role not in ['student', 'class_rep', 'student_leader', 'faculty_rep', 'admin']:
+        return {"error": "Invalid role"}
+    
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return {"error": "User not found"}
+    
+    if user.is_system_user and new_role != 'admin':
+        return {"error": "Cannot change system user role"}
+    
+    old_role = user.role
+    user.role = new_role
+    user.save(update_fields=['role'])
+    
+    if AUDIT_LOG_AVAILABLE:
+        AuditLog.objects.create(
+            action='USER_ROLE_CHANGED',
+            performed_by=admin_user,
+            target_user=user,
+            target_type='User',
+            target_id=str(user.id),
+            before_state={'role': old_role},
+            after_state={'role': new_role},
+            ip_address=request.META.get('REMOTE_ADDR'),
+        )
+    
+    if NOTIFICATION_AVAILABLE and old_role != new_role:
+        NotificationService.send(
+            user=user,
+            title="Your Role Has Been Updated",
+            message=f"Your account role has been changed from {old_role} to {new_role} by an administrator.",
+            notification_type="governance",
+            link="/profile"
+        )
+    
+    return {"message": f"User role updated from {old_role} to {new_role}"}
+
+
+# ============================================
+# ADMIN: USER DEACTIVATION
+# ============================================
+@router.post("/users/{user_id}/deactivate/", auth=JWTAuth())
+def admin_deactivate_user(request, user_id: str):
+    admin_user = request.auth
+    if admin_user.role != 'admin':
+        return {"error": "Permission denied. Admin access required."}
+    
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return {"error": "User not found"}
+    
+    if user.is_system_user:
+        return {"error": "Cannot deactivate system user"}
+    
+    if not user.is_active:
+        return {"error": "User is already deactivated"}
+    
+    user.is_active = False
+    user.save(update_fields=['is_active'])
+    
+    # Revoke all active sessions
+    UserSession.objects.filter(user=user, is_active=True).update(
+        is_active=False,
+        revoked_at=timezone.now(),
+        revoked_by=admin_user
+    )
+    
+    if AUDIT_LOG_AVAILABLE:
+        AuditLog.objects.create(
+            action='USER_DEACTIVATED',
+            performed_by=admin_user,
+            target_user=user,
+            target_type='User',
+            target_id=str(user.id),
+            after_state={'is_active': False},
+            ip_address=request.META.get('REMOTE_ADDR'),
+        )
+    
+    if NOTIFICATION_AVAILABLE:
+        NotificationService.send(
+            user=user,
+            title="Account Deactivated",
+            message="Your account has been deactivated by an administrator. Please contact support if you believe this is an error.",
+            notification_type="governance",
+            link="/contact"
+        )
+    
+    return {"message": f"User {user.full_name} has been deactivated."}

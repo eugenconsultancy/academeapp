@@ -32,3 +32,4 @@ ipython==8.15.0
 
 geopy==2.4.1
 bleach==6.0.0
+pyotp qrcode[pil]==7.0.0

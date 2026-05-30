@@ -7,7 +7,7 @@ class OpportunityIn(Schema):
     description: str
     link: Optional[str] = None
     category: str
-    expires_in_days: int = 120  # Default 4 months
+    expires_in_days: int = 120  # Default 4 months though can be adjusted when needed
 
 class OpportunityOut(Schema):
     id: str

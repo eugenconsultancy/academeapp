@@ -1,46 +1,72 @@
 import boto3
-import logging
 from django.conf import settings
-from botocore.exceptions import ClientError
+import logging
 
 logger = logging.getLogger(__name__)
 
-s3_client = boto3.client(
-    's3',
-    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-    region_name=settings.AWS_S3_REGION_NAME
-)
-
-class S3Storage:
+class DualBucketStorage:
+    """
+    Enforces physical separation of sensitive and public data.
+    PRIVATE_BUCKET: Raw ID images, no public access policy
+    PUBLIC_BUCKET: Blurred images, CDN-enabled
+    """
+    
     def __init__(self):
-        self.bucket_name = settings.AWS_STORAGE_BUCKET_NAME
-
-    def get_presigned_post(self, key, expiration=3600):
+        if not settings.AWS_PRIVATE_BUCKET_NAME or not settings.AWS_PUBLIC_BUCKET_NAME:
+            raise ValueError("AWS bucket names must be defined in settings")
+        self.s3 = boto3.client('s3')
+        self.private_bucket = settings.AWS_PRIVATE_BUCKET_NAME
+        self.public_bucket = settings.AWS_PUBLIC_BUCKET_NAME
+    
+    def upload_raw_image(self, file_obj, key):
+        """Upload to PRIVATE bucket - NEVER publicly accessible"""
         try:
-            return s3_client.generate_presigned_post(
-                Bucket=self.bucket_name,
-                Key=key,
+            self.s3.upload_fileobj(
+                file_obj,
+                self.private_bucket,
+                key,
+                ExtraArgs={
+                    'ACL': 'private',
+                    'ServerSideEncryption': 'AES256'
+                }
+            )
+            return f"https://{self.private_bucket}.s3.amazonaws.com/{key}"
+        except Exception as e:
+            logger.error(f"Failed to upload raw image {key}: {e}")
+            raise
+    
+    def upload_blurred_image(self, file_obj, key):
+        """Upload to PUBLIC bucket - safe for student viewing"""
+        try:
+            self.s3.upload_fileobj(
+                file_obj,
+                self.public_bucket,
+                key,
+                ExtraArgs={
+                    'ACL': 'public-read',
+                    'CacheControl': 'max-age=86400'
+                }
+            )
+            return f"https://{self.public_bucket}.s3.amazonaws.com/{key}"
+        except Exception as e:
+            logger.error(f"Failed to upload blurred image {key}: {e}")
+            raise
+    
+    def delete_raw_image(self, key):
+        """Permanently delete raw image from private bucket"""
+        try:
+            self.s3.delete_object(Bucket=self.private_bucket, Key=key)
+        except Exception as e:
+            logger.error(f"Failed to delete raw image {key}: {e}")
+    
+    def generate_presigned_url(self, key, expiration=300):
+        """Generate temporary access URL for admin review (5 min default)"""
+        try:
+            return self.s3.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': self.private_bucket, 'Key': key},
                 ExpiresIn=expiration
             )
-        except ClientError as e:
-            logger.error(f"Failed to generate presigned post: {e}")
+        except Exception as e:
+            logger.error(f"Failed to generate presigned URL for {key}: {e}")
             return None
-
-    def upload_file(self, file_obj, key, public=False):
-        try:
-            extra_args = {'ServerSideEncryption': 'AES256'}
-            if public:
-                extra_args['ACL'] = 'public-read'
-            s3_client.upload_fileobj(file_obj, self.bucket_name, key, ExtraArgs=extra_args)
-            return f"https://{self.bucket_name}.s3.amazonaws.com/{key}"
-        except ClientError as e:
-            logger.error(f"Failed to upload file: {e}")
-            raise
-
-    def generate_presigned_url(self, key, expiration=3600):
-        return s3_client.generate_presigned_url(
-            'get_object',
-            Params={'Bucket': self.bucket_name, 'Key': key},
-            ExpiresIn=expiration
-        )

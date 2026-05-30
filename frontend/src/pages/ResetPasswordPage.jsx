@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { accountsApi } from '../api/accountsApi';
 import toast from 'react-hot-toast';
@@ -16,6 +16,30 @@ export default function ResetPasswordPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [resetComplete, setResetComplete] = useState(false);
+    const [resendTimer, setResendTimer] = useState(0);
+    const [resending, setResending] = useState(false);
+
+    // Countdown effect
+    useEffect(() => {
+        if (resendTimer > 0) {
+            const interval = setInterval(() => setResendTimer(t => t - 1), 1000);
+            return () => clearInterval(interval);
+        }
+    }, [resendTimer]);
+
+    const handleResendOTP = async () => {
+        if (resendTimer > 0 || !phone.trim()) return;
+        setResending(true);
+        try {
+            await accountsApi.forgotPassword(phone);
+            setResendTimer(30);
+            toast.success('OTP resent to your phone');
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Failed to resend OTP');
+        } finally {
+            setResending(false);
+        }
+    };
 
     const handleReset = async (e) => {
         e.preventDefault();
@@ -82,7 +106,6 @@ export default function ResetPasswordPage() {
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center px-4 py-12">
             <div className="w-full max-w-md">
-                {/* Back link */}
                 <Link
                     to="/forgot-password"
                     className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 mb-8 transition-colors"
@@ -91,7 +114,6 @@ export default function ResetPasswordPage() {
                     Back
                 </Link>
 
-                {/* Card */}
                 <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 p-8">
                     <div className="w-16 h-16 bg-purple-100 dark:bg-purple-900/30 rounded-2xl flex items-center justify-center mx-auto mb-6">
                         <FiLock className="w-8 h-8 text-purple-600 dark:text-purple-400" />
@@ -120,20 +142,31 @@ export default function ResetPasswordPage() {
                             />
                         </div>
 
-                        {/* OTP */}
+                        {/* OTP with resend button */}
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                 OTP Code
                             </label>
-                            <input
-                                type="text"
-                                value={otp}
-                                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                                placeholder="Enter 6-digit OTP"
-                                maxLength={6}
-                                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-center text-2xl tracking-widest font-mono"
-                                required
-                            />
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={otp}
+                                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                    placeholder="6-digit OTP"
+                                    maxLength={6}
+                                    className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-center text-2xl tracking-widest font-mono"
+                                    required
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handleResendOTP}
+                                    disabled={resendTimer > 0 || resending}
+                                    className="px-4 py-2 rounded-xl bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 font-semibold text-sm disabled:opacity-50 hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors"
+                                >
+                                    {resendTimer > 0 ? `${resendTimer}s` : (resending ? '...' : 'Resend')}
+                                </button>
+                            </div>
+                            <p className="text-xs text-gray-400 mt-1">Didn't receive? Click Resend.</p>
                         </div>
 
                         {/* New Password */}
@@ -172,8 +205,8 @@ export default function ResetPasswordPage() {
                                 onChange={(e) => setConfirmPassword(e.target.value)}
                                 placeholder="Re-enter new password"
                                 className={`w-full px-4 py-3 border rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all ${confirmPassword && newPassword !== confirmPassword
-                                        ? 'border-red-500 dark:border-red-500'
-                                        : 'border-gray-300 dark:border-gray-600'
+                                    ? 'border-red-500 dark:border-red-500'
+                                    : 'border-gray-300 dark:border-gray-600'
                                     }`}
                                 required
                             />
