@@ -257,6 +257,24 @@ export default function ManageTimetablePage() {
         .mt-stat-label { font-size: 0.7rem; color: #94a3b8; font-weight: 600; text-transform: uppercase; margin-top: 4px; }
         .mt-content-card { background: rgba(255,255,255,0.9); border: 1px solid rgba(0,0,0,0.05); border-radius: 20px; padding: 24px; backdrop-filter: blur(16px); box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 32px rgba(0,0,0,0.06); }
         .dark .mt-content-card { background: rgba(12,16,24,0.9); border-color: rgba(255,255,255,0.05); }
+
+        /* Additional fix for select options in dark mode */
+        select.dark-select {
+          background-color: #1e293b;
+          color: #f8fafc;
+        }
+        select.dark-select option {
+          background-color: #1e293b;
+          color: #f8fafc;
+        }
+        .dark select {
+          background-color: #1e293b;
+          color: #f8fafc;
+        }
+        .dark select option {
+          background-color: #1e293b;
+          color: #f8fafc;
+        }
       `}</style>
 
             <div className="mt-root">

@@ -11,7 +11,7 @@ import ErrorBoundary from './components/shared/ErrorBoundary';
 // ── No AppLayout needed ──
 
 // ═══════════════════════════════════════════════════════════════
-// LAZY-LOADED PAGES (unchanged)
+// LAZY-LOADED PAGES
 // ═══════════════════════════════════════════════════════════════
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const SignupPage = lazy(() => import('./pages/SignupPage'));
@@ -62,9 +62,12 @@ const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const SearchResultsPage = lazy(() => import('./pages/SearchResultsPage'));
 const ResourceUploadPage = lazy(() => import('./pages/ResourceUploadPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+// ── New Support Pages ──────────────────────────────────────────
+const MyTicketsPage = lazy(() => import('./pages/MyTicketsPage'));
+const AdminTicketsPage = lazy(() => import('./pages/AdminTicketsPage'));
 
 // ═══════════════════════════════════════════════════════════════
-// CONSTANTS (unchanged)
+// CONSTANTS
 // ═══════════════════════════════════════════════════════════════
 const MOBILE_BREAKPOINT = 768;
 const SIDEBAR_BREAKPOINT = 1024;
@@ -96,10 +99,12 @@ const ROUTE_TITLES = {
   '/notifications': 'Notifications',
   '/search': 'Search',
   '/resources/upload': 'Upload Resource',
+  '/my-tickets': 'My Tickets',
+  '/admin/tickets': 'Admin Tickets',
 };
 
 // ═══════════════════════════════════════════════════════════════
-// HELPERS (unchanged)
+// HELPERS
 // ═══════════════════════════════════════════════════════════════
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -272,12 +277,12 @@ export default function App() {
       {/* ── Main Content ────────────────────────────── */}
       <main id="main-content"
         className={`min-h-screen transition-[padding] duration-300 ${showChrome
-            ? [
-              'pt-16',
-              'pb-20 md:pb-8',
-              sidebarCollapsed ? 'md:pl-[66px]' : 'md:pl-[238px]',
-            ].join(' ')
-            : ''
+          ? [
+            'pt-16',
+            'pb-20 md:pb-8',
+            sidebarCollapsed ? 'md:pl-[66px]' : 'md:pl-[238px]',
+          ].join(' ')
+          : ''
           }`}>
         <ErrorBoundary>
           <Suspense fallback={<div className="flex items-center justify-center min-h-[60vh]"><SkeletonLoader type="page" brandName="" loadingText="Loading page..." /></div>}>
@@ -363,6 +368,10 @@ export default function App() {
                 {/* Governance */}
                 <Route path="/governance" element={<ProtectedRoute allowedRoles={['student_leader', 'faculty_rep']}><GovernanceDashboard /></ProtectedRoute>} />
                 <Route path="/governance/stats" element={<ProtectedRoute allowedRoles={['student_leader', 'faculty_rep']}><GovernanceStats /></ProtectedRoute>} />
+
+                {/* Support Tickets */}
+                <Route path="/my-tickets" element={<ProtectedRoute><MyTicketsPage /></ProtectedRoute>} />
+                <Route path="/admin/tickets" element={<ProtectedRoute allowedRoles={['admin']}><AdminTicketsPage /></ProtectedRoute>} />
 
                 {/* 404 */}
                 <Route path="*" element={<NotFoundPage />} />

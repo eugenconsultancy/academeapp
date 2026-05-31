@@ -1,169 +1,124 @@
-import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { announcementsApi } from '../api/announcementsApi';
 import { useAuth } from '../contexts/AuthContext';
-import SkeletonLoader from '../components/shared/SkeletonLoader';
+import Card from '../components/ui/Card';
 import toast from 'react-hot-toast';
-import {
-    FiPlus,
-    FiClock,
-    FiCheckCircle,
-    FiXCircle,
-    FiEye,
-    FiChevronRight,
-} from 'react-icons/fi';
+import { FiArrowLeft, FiSend, FiInfo } from 'react-icons/fi';
 
-const STATUS_STYLES = {
-    pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-    seen: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    read: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400',
-    approved: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-};
-
-export default function AnnouncementRequestsPage() {
+export default function CreateAnnouncementRequestPage() {
     const navigate = useNavigate();
     const { user } = useAuth();
-    const [requests, setRequests] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [filter, setFilter] = useState('all');
+    const [form, setForm] = useState({
+        title: '',
+        content: '',
+        target: 'class_rep',
+    });
+    const [submitting, setSubmitting] = useState(false);
 
-    const isLeader = ['student_leader', 'faculty_rep', 'class_rep', 'admin'].includes(
-        user?.role
-    );
-
-    // Fetch requests whenever the filter changes
-    useEffect(() => {
-        fetchRequests();
-    }, [filter]);
-
-    const fetchRequests = async () => {
-        setLoading(true);
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!form.title.trim() || !form.content.trim()) {
+            toast.error('Please fill in all fields');
+            return;
+        }
+        setSubmitting(true);
         try {
-            const params = filter !== 'all' ? { status: filter } : {};
-            const response = await announcementsApi.listRequests(params);
-            // Axios wraps the backend array in response.data
-            const data = response.data || [];
-            setRequests(Array.isArray(data) ? data : []);
+            await announcementsApi.createRequest(form);
+            toast.success('Request submitted successfully!');
+            navigate('/announcements/requests');
         } catch (err) {
-            toast.error('Failed to load requests');
-            setRequests([]); // ensure it's an array even on failure
+            toast.error('Failed to submit request');
         } finally {
-            setLoading(false);
+            setSubmitting(false);
         }
     };
-
-    const handleApprove = async (id) => {
-        try {
-            await announcementsApi.approveRequest(id, 'Approved');
-            toast.success('Request approved');
-            fetchRequests();
-        } catch (err) {
-            toast.error('Failed to approve');
-        }
-    };
-
-    const handleReject = async (id) => {
-        const note = prompt('Reason for rejection (optional):');
-        try {
-            await announcementsApi.rejectRequest(id, note || '');
-            toast.success('Request rejected');
-            fetchRequests();
-        } catch (err) {
-            toast.error('Failed to reject');
-        }
-    };
-
-    if (loading) return <SkeletonLoader type="list" count={4} />;
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-8 px-4">
-            <div className="max-w-3xl mx-auto">
-                <div className="flex items-center justify-between mb-6">
-                    <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
-                        Announcement Requests
+            <div className="max-w-2xl mx-auto">
+                <Link
+                    to="/announcements/requests"
+                    className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 mb-6"
+                >
+                    <FiArrowLeft className="w-4 h-4" /> Back to Requests
+                </Link>
+
+                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 p-6 md:p-8">
+                    <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-6">
+                        Request an Announcement
                     </h1>
-                    <Link
-                        to="/announcements/requests/new"
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-sm font-medium shadow-md hover:shadow-lg transition-all"
-                    >
-                        <FiPlus className="w-4 h-4" /> New Request
-                    </Link>
-                </div>
 
-                {/* Filter tabs */}
-                {isLeader && (
-                    <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-                        {['all', 'pending', 'approved', 'rejected'].map((f) => (
-                            <button
-                                key={f}
-                                onClick={() => setFilter(f)}
-                                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${filter === f
-                                        ? 'bg-blue-500 text-white'
-                                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                                    }`}
+                    <p className="text-gray-600 dark:text-gray-400 mb-6">
+                        Your request will be reviewed by the selected recipient(s). Once approved, it will be published as an announcement.
+                    </p>
+
+                    <form onSubmit={handleSubmit} className="space-y-5">
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                                Title *
+                            </label>
+                            <input
+                                type="text"
+                                value={form.title}
+                                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                                className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                                placeholder="e.g., Important Update on Exam Schedule"
+                                required
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                                Message *
+                            </label>
+                            <textarea
+                                rows={5}
+                                value={form.content}
+                                onChange={(e) => setForm({ ...form, content: e.target.value })}
+                                className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                                placeholder="Describe the announcement you'd like to share..."
+                                required
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                                Send To *
+                            </label>
+                            <select
+                                value={form.target}
+                                onChange={(e) => setForm({ ...form, target: e.target.value })}
+                                className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                             >
-                                {f.charAt(0).toUpperCase() + f.slice(1)}
-                            </button>
-                        ))}
-                    </div>
-                )}
-
-                {requests.length === 0 && (
-                    <div className="text-center py-16">
-                        <FiClock className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
-                        <p className="text-gray-500 dark:text-gray-400 text-lg">No requests found</p>
-                    </div>
-                )}
-
-                <div className="space-y-4">
-                    {requests.map((req) => (
-                        <div
-                            key={req.id}
-                            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5"
-                        >
-                            <div className="flex items-start justify-between gap-4">
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <span
-                                            className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLES[req.status] || STATUS_STYLES.pending
-                                                }`}
-                                        >
-                                            {req.status}
-                                        </span>
-                                    </div>
-                                    <h3 className="font-semibold text-gray-900 dark:text-white">
-                                        {req.title}
-                                    </h3>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
-                                        {req.content}
-                                    </p>
-                                    <p className="text-xs text-gray-400 mt-2">
-                                        {new Date(req.created_at).toLocaleDateString()}
-                                    </p>
-                                </div>
-
-                                {isLeader && req.status === 'pending' && (
-                                    <div className="flex gap-2 flex-shrink-0">
-                                        <button
-                                            onClick={() => handleApprove(req.id)}
-                                            className="p-2 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg hover:bg-green-200 transition-colors"
-                                            title="Approve"
-                                        >
-                                            <FiCheckCircle className="w-4 h-4" />
-                                        </button>
-                                        <button
-                                            onClick={() => handleReject(req.id)}
-                                            className="p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-200 transition-colors"
-                                            title="Reject"
-                                        >
-                                            <FiXCircle className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                )}
+                                <option value="class_rep">Class Representative</option>
+                                <option value="student_leaders">Student Leaders</option>
+                                <option value="both">Both (Class Rep & Student Leaders)</option>
+                                <option value="admin">Admin</option>   {/* NEW OPTION */}
+                            </select>
+                            <div className="mt-2 flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400">
+                                <FiInfo className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                                <span>If you select "Admin", your request will go directly to the platform administrators.</span>
                             </div>
                         </div>
-                    ))}
+
+                        <div className="flex justify-end gap-4 pt-4">
+                            <button
+                                type="button"
+                                onClick={() => navigate('/announcements/requests')}
+                                className="px-6 py-3 border border-gray-300 dark:border-gray-600 rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={submitting}
+                                className="px-8 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-sm font-semibold shadow-md transition-colors disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {submitting ? 'Submitting...' : <><FiSend className="w-4 h-4" /> Submit Request</>}
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>

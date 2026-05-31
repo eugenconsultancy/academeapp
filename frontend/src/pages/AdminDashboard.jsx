@@ -62,7 +62,7 @@ export default function AdminDashboard() {
     return null;
   }
 
-  // ── Queries (all original endpoints, assuming they exist in your backend apps) ──
+  // ── Queries ──────────────────────────────────────────
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['admin-stats'],
     queryFn: () => apiClient.get('/governance/stats/').then(r => r.data),
@@ -106,9 +106,10 @@ export default function AdminDashboard() {
     enabled: activeTab === 'opportunities',
   });
 
+  // ── UPDATED: Use admin endpoint for all classes ──
   const { data: classes, isLoading: classesLoading } = useQuery({
-    queryKey: ['admin-classes'],
-    queryFn: () => apiClient.get('/classes/timetable/').then(r => safeArray(r.data)),
+    queryKey: ['admin-all-classes'],
+    queryFn: () => apiClient.get('/classes/admin/timetable/').then(r => safeArray(r.data)),
     enabled: activeTab === 'classes',
   });
 
@@ -192,7 +193,6 @@ export default function AdminDashboard() {
     onError: (err) => toast.error(err?.response?.data?.detail || 'Failed to update role'),
   });
 
-  // Find the deactivateUserMutation section and replace with:
   const deactivateUserMutation = useMutation({
     mutationFn: (userId) => accountsApi.deactivateUser(userId),
     onSuccess: () => {
@@ -384,19 +384,27 @@ export default function AdminDashboard() {
             {activeTab === 'users' && (
               <div>
                 <div className="ad-search">
-                  <input placeholder="Search users by name..." value={search} onChange={e => setSearch(e.target.value)} />
+                  <input placeholder="Search users by name, email or phone..." value={search} onChange={e => setSearch(e.target.value)} />
                 </div>
                 {users && users.length > 0 ? (
-                  users.filter(u => !search || u.full_name?.toLowerCase().includes(search.toLowerCase())).map(u => (
+                  users.filter(u => !search ||
+                    u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
+                    u.email?.toLowerCase().includes(search.toLowerCase()) ||
+                    u.phone_number?.includes(search)
+                  ).map(u => (
                     <div key={u.id} className="ad-card">
                       <div className="ad-card-row">
                         <div className="ad-card-info">
                           <div className="ad-card-title">{u.full_name || 'N/A'}</div>
                           <div className="ad-card-meta">
-                            {u.email || 'No email'} · <span className="ad-badge ad-badge-blue">{u.role}</span>
+                            {u.email || 'No email'} · {u.phone_number || 'No phone'} · {u.institution || 'No institution'} · {u.class_name || 'No class'}
                           </div>
                         </div>
                         <div className="ad-card-actions">
+                          <span className="ad-badge ad-badge-blue">{u.role}</span>
+                          <span className={`ad-badge ${u.is_active ? 'ad-badge-green' : 'ad-badge-red'}`}>
+                            {u.is_active ? 'Active' : 'Inactive'}
+                          </span>
                           <select
                             className="role-select"
                             defaultValue={u.role}
@@ -413,7 +421,7 @@ export default function AdminDashboard() {
                             className="ad-btn-sm ad-btn-delete"
                             onClick={() => deactivateUserMutation.mutate(u.id)}
                             disabled={deactivateUserMutation.isPending}
-                            title="Deactivation API not yet implemented. Use Django Admin."
+                            title="Deactivate user"
                           >
                             <FiSlash size={12} /> Deactivate
                           </button>
@@ -550,7 +558,7 @@ export default function AdminDashboard() {
             {activeTab === 'classes' && (
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                  <h3 style={{ fontWeight: 700, margin: 0 }}>Timetable Entries</h3>
+                  <h3 style={{ fontWeight: 700, margin: 0 }}>All Timetable Entries (Admin View)</h3>
                   <Link to="/classes/manage" className="ad-link">Manage Timetable <FiExternalLink size={12} /></Link>
                 </div>
                 {classes && classes.length > 0 ? classes.map(entry => (
@@ -559,15 +567,17 @@ export default function AdminDashboard() {
                       <div className="ad-card-info">
                         <div className="ad-card-title">{safeStr(entry.unit_name)}</div>
                         <div className="ad-card-meta">
-                          <span>{safeStr(entry.day_of_week)}</span><span>•</span>
-                          <span>{safeStr(entry.start_time)} – {safeStr(entry.end_time)}</span><span>•</span>
-                          <span>{safeStr(entry.venue)}</span><span>•</span>
-                          <span>{safeStr(entry.lecturer)}</span>
+                          <span>Day: {entry.day_of_week}</span><span>•</span>
+                          <span>{entry.start_time} – {entry.end_time}</span><span>•</span>
+                          <span>Venue: {entry.venue}</span><span>•</span>
+                          <span>Lecturer: {entry.lecturer}</span><span>•</span>
+                          <span>Class: {entry.class_group_name}</span><span>•</span>
+                          <span>Institution: {entry.institution}</span>
                         </div>
                       </div>
                     </div>
                   </div>
-                )) : <div className="ad-empty"><FiBook size={32} style={{ opacity: 0.4 }} /><p>No classes found</p></div>}
+                )) : <div className="ad-empty"><FiBook size={32} style={{ opacity: 0.4 }} /><p>No timetable entries found across the platform.</p></div>}
               </div>
             )}
 

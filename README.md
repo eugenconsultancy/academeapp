@@ -1181,7 +1181,7 @@ annaoucment request i should also include the admin as an option aprt from stude
 
 upon admin approving the user request, it should automatically post iteslf apon approval. 
 
-user ability to ceate post should be limited to admin only and editor, others should even have a view of the create view.rolebased.
+user ability To ceate post should be limited to admin only and editor, others should even have a view of the create view.rolebased.
 
 
 resolve; SyntaxError: The requested module '/node_modules/@react-three/fiber/node_modules/react-reconciler/constants.js?v=402c4976' does not provide an export named 'ConcurrentRoot'

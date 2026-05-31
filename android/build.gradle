@@ -2,16 +2,12 @@
 
 buildscript {
     repositories {
-        google()
+        maven { url 'https://maven.google.com' }
         mavenCentral()
     }
     dependencies {
-        // Use a stable version that is widely cached and compatible with Capacitor
-        classpath 'com.android.tools.build:gradle:7.4.2'
-        classpath 'com.google.gms:google-services:4.3.15'  // keep if you use Firebase
-
-        // NOTE: Do not place your application dependencies here; they belong
-        // in the individual module build.gradle files
+        classpath 'com.android.tools.build:gradle:8.4.0'
+        classpath 'com.google.gms:google-services:4.4.1'
     }
 }
 
@@ -19,11 +15,54 @@ apply from: "variables.gradle"
 
 allprojects {
     repositories {
-        google()
+        maven { url 'https://maven.google.com' }
         mavenCentral()
+    }
+
+    // Force all modules to use a unified Kotlin version to prevent duplicate class errors
+    configurations.all {
+        resolutionStrategy {
+            eachDependency { details ->
+                if (details.requested.group == 'org.jetbrains.kotlin' && details.requested.name.startsWith('kotlin-stdlib')) {
+                    details.useVersion '1.8.22'
+                }
+            }
+        }
     }
 }
 
-task clean(type: Delete) {
-    delete rootProject.buildDir
+subprojects {
+    afterEvaluate { project ->
+        if (project.hasProperty('android')) {
+            project.android {
+                compileSdkVersion 35
+                
+                compileOptions {
+                    sourceCompatibility JavaVersion.VERSION_17
+                    targetCompatibility JavaVersion.VERSION_17
+                }
+                
+                defaultConfig {
+                    targetSdkVersion 35
+                }
+            }
+        }
+        
+        tasks.withType(JavaCompile).configureEach {
+            sourceCompatibility = JavaVersion.VERSION_17
+            targetCompatibility = JavaVersion.VERSION_17
+        }
+        
+        if (project.tasks.findByPath('compileDebugKotlin')) {
+            project.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+                kotlinOptions {
+                    jvmTarget = '17'
+                }
+            }
+        }
+    }
+}
+
+tasks.register('clean', Delete) {
+    delete rootProject.layout.buildDirectory
 }

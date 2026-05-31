@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useGeolocation } from '../hooks/useGeolocation';
 import GeoService from '../api/geoService';
@@ -10,7 +10,7 @@ import {
     FiTarget, FiArrowUp, FiAlertCircle, FiStar, FiShare2,
     FiList, FiMap, FiCopy
 } from 'react-icons/fi';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
@@ -48,6 +48,17 @@ function formatDistance(meters) {
     return `${(meters / 1000).toFixed(1)}km`;
 }
 
+// Component to control map view when location changes
+function ChangeMapView({ center, zoom }) {
+    const map = useMap();
+    useEffect(() => {
+        if (center && center[0] !== 0 && center[1] !== 0) {
+            map.setView(center, zoom);
+        }
+    }, [center, zoom, map]);
+    return null;
+}
+
 export default function CampusMapPage() {
     const { location, error: geoError, loading: geoLoading, getLocation } = useGeolocation();
     const [venues, setVenues] = useState([]);
@@ -71,14 +82,24 @@ export default function CampusMapPage() {
     });
     const [showShareToast, setShowShareToast] = useState(false);
 
-    useEffect(() => { getLocation(); fetchAllVenues(); }, []);
+    useEffect(() => {
+        getLocation();        // request location on mount
+        fetchAllVenues();
+    }, []);
+
     useEffect(() => {
         const handleScroll = () => setShowBackToTop(window.scrollY > 400);
         window.addEventListener('scroll', handleScroll, { passive: true });
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
-    useEffect(() => { localStorage.setItem('campus_favorites', JSON.stringify(favorites)); }, [favorites]);
-    useEffect(() => { sessionStorage.setItem('campus_recent_searches', JSON.stringify(recentSearches)); }, [recentSearches]);
+
+    useEffect(() => {
+        localStorage.setItem('campus_favorites', JSON.stringify(favorites));
+    }, [favorites]);
+
+    useEffect(() => {
+        sessionStorage.setItem('campus_recent_searches', JSON.stringify(recentSearches));
+    }, [recentSearches]);
 
     const fetchAllVenues = async () => {
         setLoading(true); setFetchError(null);
@@ -91,7 +112,10 @@ export default function CampusMapPage() {
     };
 
     const fetchNearbyVenues = async () => {
-        if (!location) return;
+        if (!location) {
+            toast.error('Please enable location first');
+            return;
+        }
         setLoading(true); setFetchError(null);
         try {
             const data = await GeoService.getNearbyVenues(location.latitude, location.longitude, { limit: 30 });
@@ -168,7 +192,6 @@ export default function CampusMapPage() {
     };
     const clearRecentSearches = () => setRecentSearches([]);
 
-    // ✅ FIXED: share URL now correctly points to /venues/:id
     const handleShareVenue = (venue) => {
         const url = `${window.location.origin}/venues/${venue.id}`;
         navigator.clipboard.writeText(url).then(() => {
@@ -179,7 +202,19 @@ export default function CampusMapPage() {
 
     const closeDirections = () => { setDirections(null); setSelectedVenue(null); };
 
+    const handleLocateMe = async () => {
+        await getLocation();
+        if (location) {
+            toast.success('Location updated');
+        } else if (geoError) {
+            toast.error(`Location error: ${geoError}`);
+        } else {
+            toast.error('Could not get your location. Please check GPS permissions.');
+        }
+    };
+
     const centerMap = location ? [location.latitude, location.longitude] : [0, 0];
+    const mapZoom = location ? 16 : 13;
 
     return (
         <>
@@ -272,7 +307,7 @@ export default function CampusMapPage() {
                             <button className={`cm-view-btn ${viewMode === 'list' ? 'active' : ''}`} onClick={() => setViewMode('list')} aria-pressed={viewMode === 'list'}><FiList size={14} /> List</button>
                             <button className={`cm-view-btn ${viewMode === 'map' ? 'active' : ''}`} onClick={() => setViewMode('map')} aria-pressed={viewMode === 'map'}><FiMap size={14} /> Map</button>
                         </div>
-                        <button onClick={getLocation} disabled={geoLoading} className="cm-btn cm-btn-outline"><FiTarget size={14} /> {geoLoading ? 'Locating...' : 'Locate Me'}</button>
+                        <button onClick={handleLocateMe} disabled={geoLoading} className="cm-btn cm-btn-outline"><FiTarget size={14} /> {geoLoading ? 'Locating...' : 'Locate Me'}</button>
                         <button onClick={fetchAllVenues} className="cm-btn cm-btn-outline"><FiRefreshCw size={14} /> Refresh</button>
                     </div>
                 </div>
@@ -294,7 +329,7 @@ export default function CampusMapPage() {
                         {location.accuracy && ` (±${Math.round(location.accuracy)}m)`}
                     </div>
                 )}
-                {geoError && (<div className="cm-alert cm-alert-warning"><FiAlertCircle size={16} /> {geoError}<button onClick={getLocation} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#d97706', cursor: 'pointer', fontWeight: 700 }}>Retry</button></div>)}
+                {geoError && (<div className="cm-alert cm-alert-warning"><FiAlertCircle size={16} /> {geoError}<button onClick={handleLocateMe} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#d97706', cursor: 'pointer', fontWeight: 700 }}>Retry</button></div>)}
                 {fetchError && (<div className="cm-alert cm-alert-error"><FiAlertCircle size={16} /> {fetchError}<button onClick={fetchAllVenues} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontWeight: 700 }}>Retry</button></div>)}
 
                 <form onSubmit={handleSearchSubmit} className="cm-bar">
@@ -333,7 +368,8 @@ export default function CampusMapPage() {
 
                 {!loading && viewMode === 'map' && (
                     <div className="cm-map-wrapper">
-                        <MapContainer center={centerMap} zoom={location ? 16 : 13} className="cm-map-container" scrollWheelZoom={true} aria-label="Interactive campus map">
+                        <MapContainer center={centerMap} zoom={mapZoom} className="cm-map-container" scrollWheelZoom={true} aria-label="Interactive campus map">
+                            <ChangeMapView center={centerMap} zoom={mapZoom} />
                             <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                             {location && <Marker position={[location.latitude, location.longitude]}><Popup>You are here</Popup></Marker>}
                             {filteredVenues.map((venue) => (
@@ -411,7 +447,6 @@ export default function CampusMapPage() {
                 </div>
             )}
 
-            {/* ✅ FIXED: Directions modal now shows simple distance info instead of non-existent step-by-step */}
             {directions && selectedVenue && (
                 <div className="cm-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="directions-title">
                     <div className="cm-modal-backdrop" onClick={closeDirections} />

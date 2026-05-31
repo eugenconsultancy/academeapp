@@ -1,9 +1,10 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supportApi } from '../api/supportApi';
 import Card from '../components/ui/Card';
 import toast from 'react-hot-toast';
-import { 
-  FiMail, FiPhone, FiMapPin, FiClock, FiSend, 
+import {
+  FiMail, FiPhone, FiMapPin, FiClock, FiSend,
   FiMessageSquare, FiHeadphones, FiUsers, FiCheckCircle,
   FiChevronDown, FiZap
 } from 'react-icons/fi';
@@ -31,7 +32,7 @@ export default function ContactPage() {
       toast.error('Please fill in all fields');
       return;
     }
-    
+
     setLoading(true);
     try {
       await supportApi.createTicket(formData);
@@ -57,7 +58,10 @@ export default function ContactPage() {
             We've received your request and will get back to you within 24 hours.
           </p>
           <div className="flex gap-3 justify-center">
-            <button onClick={() => setSubmitted(false)} className="btn-primary">
+            <Link to="/my-tickets" className="btn-primary">
+              View My Tickets
+            </Link>
+            <button onClick={() => setSubmitted(false)} className="btn-secondary">
               Submit Another
             </button>
             <button onClick={() => window.history.back()} className="btn-secondary">
@@ -426,9 +430,9 @@ export default function ContactPage() {
                 <span>Trusted by 5,000+ students</span>
               </div>
               <div className="flex justify-center gap-1 mt-2">
-                {[1,2,3,4,5].map(i => (
+                {[1, 2, 3, 4, 5].map(i => (
                   <svg key={i} className="w-4 h-4 text-yellow-400 fill-current" viewBox="0 0 20 20">
-                    <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/>
+                    <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z" />
                   </svg>
                 ))}
                 <span className="text-xs text-gray-400 ml-1">4.8/5</span>
