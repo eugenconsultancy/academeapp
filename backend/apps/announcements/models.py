@@ -29,7 +29,7 @@ class Announcement(BaseModel):
         indexes = [
             models.Index(fields=['expires_at']),
             models.Index(fields=['posted_by', 'is_active']),
-            models.Index(fields=['is_active', 'expires_at']),   # for quick feed filtering
+            models.Index(fields=['is_active', 'expires_at']),
         ]
 
     def __str__(self):
@@ -49,7 +49,8 @@ class AnnouncementRequest(BaseModel):
         choices=[
             ('class_rep', 'Class Representative'),
             ('student_leaders', 'Student Leaders'),
-            ('both', 'Both')
+            ('both', 'Both'),
+            ('admin', 'Admin'),           # NEW: direct to admin
         ],
         default='class_rep'
     )
@@ -113,5 +114,5 @@ class Report(BaseModel):
     class Meta:
         unique_together = ['reported_by', 'announcement']
         indexes = [
-            models.Index(fields=['is_resolved', 'created_at']),  # admin dash optimization
+            models.Index(fields=['is_resolved', 'created_at']),
         ]

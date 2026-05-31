@@ -96,6 +96,35 @@ def list_class_groups(request):
     return [{"id": str(g.id), "name": g.name, "institution": g.institution} for g in groups]
 
 
+# ============================================
+# ADMIN: LIST ALL TIMETABLE ENTRIES (NEW)
+# ============================================
+@router.get("/admin/timetable/", auth=JWTAuth())
+def admin_list_all_timetable(request):
+    """
+    Admin only: list all timetable entries across all class groups.
+    Includes class group name and institution for context.
+    """
+    if request.auth.role != "admin":
+        raise HttpError(403, "Only admins can view all timetable entries")
+    
+    entries = TimetableEntry.objects.select_related('class_group').all().order_by('day_of_week', 'start_time')
+    return [{
+        "id": str(e.id),
+        "unit_name": e.unit_name,
+        "day_of_week": e.day_of_week,
+        "start_time": str(e.start_time),
+        "end_time": str(e.end_time),
+        "venue": e.venue,
+        "lecturer": e.lecturer,
+        "class_group_name": e.class_group.name if e.class_group else None,
+        "institution": e.class_group.institution if e.class_group else None,
+        "is_active": e.is_active,
+        "latitude": float(e.latitude) if e.latitude else None,
+        "longitude": float(e.longitude) if e.longitude else None,
+    } for e in entries]
+
+
 # ========== CRUD ENDPOINTS FOR TIMETABLE MANAGEMENT (CLASS REP / ADMIN) ==========
 
 @router.get("/timetable/class/{class_group_id}/", auth=JWTAuth(), response=List[TimetableEntryOutDetail])

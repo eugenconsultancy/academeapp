@@ -597,12 +597,15 @@ def verify_2fa_login(request, data: TwoFactorVerifyLoginIn):
 
 # ============================================
 # ADMIN: LIST ALL USERS
-# ============================================
+# ============================================S
 @router.get("/users/", auth=JWTAuth())
 def list_all_users(request):
+    """Admin only: return a list of all users with detailed info."""
     if request.auth.role != 'admin':
         return []
-    return list(User.objects.all().values('id', 'full_name', 'email', 'role'))
+    return list(User.objects.all().values(
+        'id', 'full_name', 'email', 'phone_number', 'institution', 'class_name', 'role', 'is_active'
+    ))
 
 
 # ============================================
