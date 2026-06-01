@@ -1,17 +1,15 @@
-/ use the below on github and ensure to delete after pasted to github
-
 name: Build Android APK
 
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch:      # allows manual trigger
+  workflow_dispatch:
 
 jobs:
   build-apk:
     runs-on: ubuntu-latest
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # Opt into Node 24 (fixes deprecation)
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout code
@@ -20,7 +18,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24              # Up‑to‑date Node.js version
+          node-version: 24
           cache: 'npm'
 
       - name: Install dependencies
@@ -41,7 +39,7 @@ jobs:
           java-version: '17'
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3   # ← Required to provide the Android build tools
+        uses: android-actions/setup-android@v3
 
       - name: Make Gradle wrapper executable
         run: chmod +x android/gradlew
