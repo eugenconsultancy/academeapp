@@ -32,7 +32,7 @@ const ACADEME_THEME = {
 };
 
 /* ═══════════════════════════════════════════════════════════════
-   TORUS ARC – RESEARCH RING
+   TORUS ARC – RESEARCH RING (unused now, kept for reference)
 ═══════════════════════════════════════════════════════════════ */
 function TorusArc({ progress, isDark }) {
     const ringRef = useRef();
@@ -41,7 +41,6 @@ function TorusArc({ progress, isDark }) {
     const animProgress = useRef(0);
     const theme = isDark ? ACADEME_THEME.dark : ACADEME_THEME.light;
 
-    // Pre‑build static geometries to avoid re‑creation on each render
     const trackGeo = useMemo(() => new THREE.TorusGeometry(0.9, 0.12, 12, 64, 0, Math.PI * 2), []);
     const arcBaseGeo = useMemo(() => new THREE.TorusGeometry(0.9, 0.12, 12, 64), []);
     const glowBaseGeo = useMemo(() => new THREE.TorusGeometry(0.92, 0.18, 12, 64), []);
@@ -50,7 +49,6 @@ function TorusArc({ progress, isDark }) {
         animProgress.current = THREE.MathUtils.lerp(animProgress.current, progress, delta * 2.2);
         const p = animProgress.current;
 
-        // Update ring geometry dynamically only when progress changes significantly
         if (ringRef.current && ringRef.current.geometry) {
             const newSegments = Math.max(3, Math.floor(64 * p));
             const newGeo = new THREE.TorusGeometry(0.9, 0.12, 12, newSegments, 0, p * Math.PI * 2);
@@ -65,7 +63,6 @@ function TorusArc({ progress, isDark }) {
             glowRef.current.geometry = newGeo;
         }
 
-        // Gentle rotation of the entire ring group
         if (ringRef.current?.parent) {
             ringRef.current.parent.rotation.z += delta * 0.12;
         }
@@ -73,7 +70,6 @@ function TorusArc({ progress, isDark }) {
 
     return (
         <group rotation={[0, 0, Math.PI / 2]}>
-            {/* Track ring – always full circle */}
             <mesh ref={trackRef} geometry={trackGeo}>
                 <meshStandardMaterial
                     color={isDark ? theme.ringTrack : theme.ringTrack}
@@ -85,7 +81,6 @@ function TorusArc({ progress, isDark }) {
                 />
             </mesh>
 
-            {/* Glow arc – behind the main ring */}
             <mesh ref={glowRef} geometry={glowBaseGeo}>
                 <meshStandardMaterial
                     color={theme.secondary}
@@ -100,7 +95,6 @@ function TorusArc({ progress, isDark }) {
                 />
             </mesh>
 
-            {/* Main progress arc */}
             <mesh ref={ringRef} geometry={arcBaseGeo}>
                 <meshStandardMaterial
                     color={theme.primary}
@@ -116,7 +110,7 @@ function TorusArc({ progress, isDark }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   KNOWLEDGE CRYSTAL – ICOSAHEDRON CENTRE ORB
+   KNOWLEDGE CRYSTAL – ICOSAHEDRON CENTRE ORB (unused)
 ═══════════════════════════════════════════════════════════════ */
 function KnowledgeCrystal({ allDone, isDark }) {
     const ref = useRef();
@@ -150,7 +144,7 @@ function KnowledgeCrystal({ allDone, isDark }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   COUNT‑UP ANIMATION HOOK
+   COUNT‑UP ANIMATION HOOK (still useful)
 ═══════════════════════════════════════════════════════════════ */
 function useCountUp(target, duration = 800) {
     const [value, setValue] = useState(0);
@@ -170,7 +164,8 @@ function useCountUp(target, duration = 800) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   SVG FALLBACK – ACADEMIC THEMED (for mobile & reduced motion)
+   SVG FALLBACK (kept, but not used because the main component
+   always returns the placeholder div now)
 ═══════════════════════════════════════════════════════════════ */
 function SVGRingFallback({ attended, total, size, isDark }) {
     const theme = isDark ? ACADEME_THEME.dark : ACADEME_THEME.light;
@@ -217,41 +212,22 @@ function SVGRingFallback({ attended, total, size, isDark }) {
                     style={{ transition: 'stroke-dasharray 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)' }}
                 />
             </svg>
-            <div
-                style={{
-                    position: 'absolute',
-                    inset: 0,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 2,
-                    pointerEvents: 'none',
-                }}
-            >
-                <span
-                    style={{
-                        fontFamily: "'IBM Plex Sans', 'Inter', sans-serif",
-                        fontSize: size * 0.22,
-                        fontWeight: 700,
-                        color: theme.text,
-                        lineHeight: 1,
-                        letterSpacing: '-0.02em',
-                        textShadow: isDark ? `0 0 8px ${theme.glow}` : 'none',
-                    }}
-                >
+            <div style={{
+                position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center', gap: 2, pointerEvents: 'none'
+            }}>
+                <span style={{
+                    fontFamily: "'IBM Plex Sans', 'Inter', sans-serif", fontSize: size * 0.22,
+                    fontWeight: 700, color: theme.text, lineHeight: 1, letterSpacing: '-0.02em',
+                    textShadow: isDark ? `0 0 8px ${theme.glow}` : 'none'
+                }}>
                     {count}/{total}
                 </span>
-                <span
-                    style={{
-                        fontSize: size * 0.095,
-                        fontWeight: 600,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.08em',
-                        color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(15,23,42,0.6)',
-                        marginTop: 2,
-                    }}
-                >
+                <span style={{
+                    fontSize: size * 0.095, fontWeight: 600, textTransform: 'uppercase',
+                    letterSpacing: '0.08em', color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(15,23,42,0.6)',
+                    marginTop: 2
+                }}>
                     Classes
                 </span>
             </div>
@@ -260,7 +236,8 @@ function SVGRingFallback({ attended, total, size, isDark }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   MAIN EXPORT – ATTENDANCE RING 3D
+   MAIN EXPORT – NOW A STATIC CIRCULAR PLACEHOLDER
+   (original 3D ring code left intact for future re-enablement)
 ═══════════════════════════════════════════════════════════════ */
 export default function AttendanceRing3D({
     attended = 0,
@@ -268,34 +245,34 @@ export default function AttendanceRing3D({
     size = 96,
     isDark = true,
 }) {
+    // ── PLACEHOLDER: always returns a simple circle ──
+    return (
+        <div
+            style={{
+                width: size,
+                height: size,
+                borderRadius: '50%',
+                background: isDark ? '#1f2937' : '#e2e8f0',
+                flexShrink: 0,
+            }}
+        />
+    );
+
+    /* ── ORIGINAL 3D ATTENDANCE RING (commented out) ──
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
     const progress = total > 0 ? attended / total : 0;
     const allDone = total > 0 && attended >= total;
     const count = useCountUp(attended);
 
-    // On mobile or reduced motion, use SVG fallback – no WebGL crashes
     if (prefersReduced || isMobile) {
-        return (
-            <SVGRingFallback
-                attended={attended}
-                total={total}
-                size={size}
-                isDark={isDark}
-            />
-        );
+        return <SVGRingFallback attended={attended} total={total} size={size} isDark={isDark} />;
     }
 
     const theme = isDark ? ACADEME_THEME.dark : ACADEME_THEME.light;
-
     return (
         <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
-            <Canvas
-                camera={{ position: [0, 0, 2.8], fov: 45 }}
-                gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
-                dpr={Math.min(window.devicePixelRatio, 1.5)}
-                style={{ width: '100%', height: '100%' }}
-            >
+            <Canvas camera={{ position: [0, 0, 2.8], fov: 45 }} gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }} dpr={Math.min(window.devicePixelRatio, 1.5)} style={{ width: '100%', height: '100%' }}>
                 <ambientLight intensity={isDark ? 0.5 : 0.7} color={theme.tertiary} />
                 <pointLight position={[2, 2, 2.5]} intensity={isDark ? 1.6 : 1.2} color={theme.secondary} />
                 <pointLight position={[-2, -1, 1.5]} intensity={isDark ? 0.6 : 0.4} color={theme.primary} />
@@ -303,44 +280,15 @@ export default function AttendanceRing3D({
                 <TorusArc progress={progress} isDark={isDark} />
                 <KnowledgeCrystal allDone={allDone} isDark={isDark} />
             </Canvas>
-            <div
-                style={{
-                    position: 'absolute',
-                    inset: 0,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    pointerEvents: 'none',
-                    gap: 2,
-                }}
-            >
-                <span
-                    style={{
-                        fontFamily: "'IBM Plex Sans', 'Inter', sans-serif",
-                        fontSize: size * 0.21,
-                        fontWeight: 700,
-                        color: theme.text,
-                        lineHeight: 1,
-                        letterSpacing: '-0.02em',
-                        textShadow: isDark ? `0 0 10px ${theme.glow}` : 'none',
-                    }}
-                >
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', gap: 2 }}>
+                <span style={{ fontFamily: "'IBM Plex Sans', 'Inter', sans-serif", fontSize: size * 0.21, fontWeight: 700, color: theme.text, lineHeight: 1, letterSpacing: '-0.02em', textShadow: isDark ? `0 0 10px ${theme.glow}` : 'none' }}>
                     {count}/{total}
                 </span>
-                <span
-                    style={{
-                        fontSize: size * 0.095,
-                        fontWeight: 600,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.08em',
-                        color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(15,23,42,0.6)',
-                        marginTop: 2,
-                    }}
-                >
+                <span style={{ fontSize: size * 0.095, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(15,23,42,0.6)', marginTop: 2 }}>
                     Classes
                 </span>
             </div>
         </div>
     );
+    ── END ORIGINAL 3D RING ── */
 }

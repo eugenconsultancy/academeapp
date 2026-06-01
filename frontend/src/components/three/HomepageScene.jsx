@@ -33,7 +33,7 @@ const ACADEME_THEME = {
 };
 
 /* ═══════════════════════════════════════════════════════════════
-   KNOWLEDGE CONSTELLATION NODES
+   KNOWLEDGE CONSTELLATION NODES (unused now, kept for reference)
 ═══════════════════════════════════════════════════════════════ */
 function KnowledgeNode({ position, size = 0.08, delay = 0, isDark }) {
     const ref = useRef();
@@ -138,7 +138,7 @@ function KnowledgeConstellation({ scrollProgress, isDark }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   LAYERED PARTICLE FIELD
+   LAYERED PARTICLE FIELD (unused, kept for reference)
 ═══════════════════════════════════════════════════════════════ */
 function AcademicStarfield({ count = 2500, scrollProgress, isDark }) {
     const ref = useRef();
@@ -228,7 +228,7 @@ function ResearchParticles({ count = 300, scrollProgress, isDark }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   ANIMATED ACADEME WORDMARK (without external font)
+   ANIMATED ACADEME WORDMARK (unused)
 ═══════════════════════════════════════════════════════════════ */
 function AnimatedAcademe({ scrollProgress, isDark }) {
     const groupRef = useRef();
@@ -253,7 +253,6 @@ function AnimatedAcademe({ scrollProgress, isDark }) {
                 />
             </mesh>
 
-            {/* Use a fallback geometry instead of external text to avoid font loading errors */}
             <mesh position={[0, 0, 0]}>
                 <boxGeometry args={[4.5, 0.35, 0.05]} />
                 <meshStandardMaterial color={theme.primary} emissive={theme.primary} emissiveIntensity={0.3} />
@@ -273,7 +272,7 @@ function AnimatedAcademe({ scrollProgress, isDark }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   RESEARCH BLUEPRINT GRID
+   RESEARCH BLUEPRINT GRID (unused)
 ═══════════════════════════════════════════════════════════════ */
 function AcademicGrid({ scrollProgress, isDark }) {
     const ref = useRef();
@@ -304,7 +303,7 @@ function AcademicGrid({ scrollProgress, isDark }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   CAMERA RIG
+   CAMERA RIG (unused)
 ═══════════════════════════════════════════════════════════════ */
 function CameraRig({ scrollProgress }) {
     const { camera } = useThree();
@@ -336,7 +335,7 @@ function CameraRig({ scrollProgress }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   ACADEMIC LIGHTING
+   ACADEMIC LIGHTING (unused)
 ═══════════════════════════════════════════════════════════════ */
 function AcademicLights({ scrollProgress, isDark }) {
     const ambRef = useRef();
@@ -377,7 +376,7 @@ function AcademicLights({ scrollProgress, isDark }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   SCROLL PROGRESS HOOK
+   SCROLL PROGRESS HOOK (kept for potential future use)
 ═══════════════════════════════════════════════════════════════ */
 function useScrollProgress() {
     const [progress, setProgress] = useState(0);
@@ -394,100 +393,51 @@ function useScrollProgress() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   MAIN EXPORT – with error boundary fallback
+   MAIN EXPORT – NOW A STATIC PLACEHOLDER DIV
+   (original 3D scene code left intact for future re-enablement)
 ═══════════════════════════════════════════════════════════════ */
 export default function HomepageScene({ isMobile = false, isDark = true }) {
-    const scrollProgress = useScrollProgress();
-    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const theme = isDark ? ACADEME_THEME.dark : ACADEME_THEME.light;
-
-    // If the user prefers reduced motion, do not render the 3D scene at all
-    if (prefersReduced) return null;
-
-    // On small mobile devices, reduce complexity to avoid crashes
-    const isMobileDevice = isMobile || window.innerWidth < 640;
-
-    const bgGradient = isDark
-        ? `
-        radial-gradient(ellipse at 20% 20%, ${theme.accent} 0%, transparent 50%),
-        radial-gradient(ellipse at 80% 70%, rgba(30,58,138,0.08) 0%, transparent 45%),
-        linear-gradient(160deg, ${theme.bg} 0%, ${theme.surface} ${40 + scrollProgress * 15}%, ${theme.tertiary} ${75 + scrollProgress * 15}%)
-      `
-        : `
-        radial-gradient(ellipse at 20% 20%, ${theme.accent} 0%, transparent 50%),
-        radial-gradient(ellipse at 80% 70%, rgba(238,242,255,0.6) 0%, transparent 45%),
-        linear-gradient(160deg, ${theme.bg} 0%, #EEF2FF ${40 + scrollProgress * 15}%, #F8FAFC ${75 + scrollProgress * 15}%)
-      `;
-
+    // ── PLACEHOLDER: always returns a simple background div ──
     return (
         <div
             style={{
                 position: 'fixed',
                 inset: 0,
                 zIndex: 0,
-                pointerEvents: 'none',
-                background: bgGradient,
-                transition: 'background 0.8s ease',
+                background: isDark ? '#071226' : '#FAFBFD',
             }}
-        >
-            <Canvas
-                camera={{ position: [0, 0, 6.5], fov: 50 }}
-                gl={{
-                    antialias: !isMobileDevice,
-                    alpha: true,
-                    powerPreference: 'high-performance',
-                }}
-                dpr={isMobileDevice ? 1 : Math.min(window.devicePixelRatio, 1.5)}
-                style={{ width: '100%', height: '100%' }}
-                frameloop="always"
-            >
-                <fog
-                    attach="fog"
-                    args={[isDark ? theme.surface : '#E8EEF8', 10, 32]}
-                />
+        />
+    );
 
-                <AcademicLights scrollProgress={scrollProgress} isDark={isDark} />
-                <CameraRig scrollProgress={scrollProgress} />
-
+    /* ── ORIGINAL 3D SCENE (commented out) ──
+    const scrollProgress = useScrollProgress();
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const theme = isDark ? ACADEME_THEME.dark : ACADEME_THEME.light;
+    if (prefersReduced) return null;
+    const isMobileDevice = isMobile || window.innerWidth < 640;
+    const bgGradient = ...;
+    return (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', background: bgGradient, transition: 'background 0.8s ease' }}>
+            <Canvas ...>
+                <fog ... />
+                <AcademicLights ... />
+                <CameraRig ... />
                 {isMobileDevice ? (
                     <>
-                        <AcademicStarfield
-                            count={1200}
-                            scrollProgress={scrollProgress}
-                            isDark={isDark}
-                        />
-                        <AnimatedAcademe
-                            scrollProgress={scrollProgress}
-                            isDark={isDark}
-                        />
+                        <AcademicStarfield count={1200} ... />
+                        <AnimatedAcademe ... />
                     </>
                 ) : (
                     <>
-                        <AcademicStarfield
-                            count={2500}
-                            scrollProgress={scrollProgress}
-                            isDark={isDark}
-                        />
-                        <ResearchParticles
-                            count={300}
-                            scrollProgress={scrollProgress}
-                            isDark={isDark}
-                        />
-                        <KnowledgeConstellation
-                            scrollProgress={scrollProgress}
-                            isDark={isDark}
-                        />
-                        <AnimatedAcademe
-                            scrollProgress={scrollProgress}
-                            isDark={isDark}
-                        />
-                        <AcademicGrid
-                            scrollProgress={scrollProgress}
-                            isDark={isDark}
-                        />
+                        <AcademicStarfield count={2500} ... />
+                        <ResearchParticles ... />
+                        <KnowledgeConstellation ... />
+                        <AnimatedAcademe ... />
+                        <AcademicGrid ... />
                     </>
                 )}
             </Canvas>
         </div>
     );
+    ── END ORIGINAL 3D SCENE ── */
 }

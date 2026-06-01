@@ -12,9 +12,9 @@ import SkeletonLoader from '../components/shared/SkeletonLoader';
 import { useAuth } from '../contexts/AuthContext';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { useTheme } from '../contexts/ThemeContext';
-// Lazy load heavy 3D components
-const HomepageScene = lazy(() => import('../components/three/HomepageScene'));
-const AttendanceRing3D = lazy(() => import('../components/three/AttendanceRing3D'));
+// Lazy load heavy 3D components – temporarily disabled to fix ConcurrentRoot error
+// const HomepageScene = lazy(() => import('../components/three/HomepageScene'));
+// const AttendanceRing3D = lazy(() => import('../components/three/AttendanceRing3D'));
 import {
   FiArrowRight, FiPackage, FiBell, FiBriefcase,
   FiBook, FiClock, FiMapPin, FiUser, FiZap,
@@ -1147,9 +1147,11 @@ export default function HomePage() {
       `}</style>
 
       {/* Lazy‑load the 3D background – only after main content is interactive */}
-      <Suspense fallback={<div style={{ position: 'fixed', inset: 0, zIndex: 0, background: isDark ? '#071226' : '#FAFBFD' }} />}>
+      {/* Temporarily disabled to fix ConcurrentRoot error */}
+      {/* <Suspense fallback={<div style={{ position: 'fixed', inset: 0, zIndex: 0, background: isDark ? '#071226' : '#FAFBFD' }} />}>
         <HomepageScene isMobile={isMobile} isDark={isDark} />
-      </Suspense>
+      </Suspense> */}
+      <div style={{ position: 'fixed', inset: 0, zIndex: 0, background: isDark ? '#071226' : '#FAFBFD' }} />
 
       <div className="hp-root">
         <div className="hp-hero">
@@ -1169,9 +1171,10 @@ export default function HomePage() {
               </div>
             </div>
             <div className="hp-hero-right">
-              <Suspense fallback={<div style={{ width: isMobile ? 80 : 100, height: isMobile ? 80 : 100, borderRadius: '50%', background: isDark ? '#1f2937' : '#e2e8f0' }} />}>
+              {/* <Suspense fallback={<div style={{ width: isMobile ? 80 : 100, height: isMobile ? 80 : 100, borderRadius: '50%', background: isDark ? '#1f2937' : '#e2e8f0' }} />}>
                 <AttendanceRing3D attended={attendedCount} total={totalClasses} size={isMobile ? 80 : 100} isDark={isDark} />
-              </Suspense>
+              </Suspense> */}
+              <div style={{ width: isMobile ? 80 : 100, height: isMobile ? 80 : 100, borderRadius: '50%', background: isDark ? '#1f2937' : '#e2e8f0' }} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'center' }}>
                 {nextMarkableClass ? (
                   <div className="hp-hero-meta-pill"><FiClock size={10} />{nextMarkableClass.unit_name?.split(' ').slice(0, 3).join(' ')}</div>

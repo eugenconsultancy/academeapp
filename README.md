@@ -1197,3 +1197,81 @@ also the amin dashbaord should fetach classess fro the entire platform , for dif
 the manage classes dropdown tt, should be visble in dark mode.
 
 the campus map locate me fucntionality should be fucntional8
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+You have two `package.json` files – one in the project root (`~/academe/package.json`) and one in `~/academe/frontend/package.json`. The root one is causing confusion because it has different (newer) React versions. The correct one is inside `frontend/`.  
+
+## ✅ Step‑by‑step to fix both issues
+
+### 1. Remove the duplicate root `package.json` (optional but recommended)
+```bash
+rm ~/academe/package.json
+rm ~/academe/package-lock.json   # if it exists
+```
+
+### 2. Clean and reinstall the frontend dependencies
+```bash
+cd ~/academe/frontend
+rm -rf node_modules package-lock.json
+npm install --legacy-peer-deps
+rm -rf node_modules/.vite
+```
+
+### 3. Start the dev server
+```bash
+npm run dev
+```
+The `ConcurrentRoot` error will be gone.
+
+### 4. Fix the duplicate Android project error
+The error shows you have an `android` folder **inside** `frontend/` as well as at the project root. Keep only the one at the root.
+
+```bash
+# Remove the misplaced android folder
+rm -rf ~/academe/frontend/android
+
+# Re‑sync Capacitor (regenerates the android folder at the correct location)
+cd ~/academe/frontend
+npx cap sync android
+
+# Build the APK
+cd ~/academe/android
+./gradlew.bat clean
+./gradlew.bat assembleDebug
+```
+
+## 📦 Your final `frontend/package.json` (already correct) – no further changes needed.
+It already contains the `overrides` block and pinned versions. After running the commands above, everything will work.
+
+If you still see the `ConcurrentRoot` error after these steps, also delete the root `node_modules` (if any) and restart your terminal. The error is solely due to React 19 being loaded from somewhere – removing the duplicate root `package.json` guarantees that only the frontend `package.json` is used.
