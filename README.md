@@ -1275,3 +1275,13 @@ cd ~/academe/android
 It already contains the `overrides` block and pinned versions. After running the commands above, everything will work.
 
 If you still see the `ConcurrentRoot` error after these steps, also delete the root `node_modules` (if any) and restart your terminal. The error is solely due to React 19 being loaded from somewhere – removing the duplicate root `package.json` guarantees that only the frontend `package.json` is used.
+
+
+
+
+
+
+/*********************************************************************
+ * The Android SDK of the device under debug has API level 29.
+ * Android SDK source code for this API level cannot be found.
+ ********************************************************************
