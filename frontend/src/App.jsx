@@ -1,3 +1,5 @@
+// C:\Users\GATARA-BJTU\academe\frontend\src\App.jsx
+
 import { useState, Suspense, lazy, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
@@ -8,7 +10,7 @@ import BottomNav from './components/layout/BottomNav';
 import FAB from './components/layout/FAB';
 import SkeletonLoader from './components/shared/SkeletonLoader';
 import ErrorBoundary from './components/shared/ErrorBoundary';
-// ── No AppLayout needed ──
+import { useChatStore } from './stores/useChatStore';
 
 // ═══════════════════════════════════════════════════════════════
 // LAZY-LOADED PAGES
@@ -62,9 +64,12 @@ const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const SearchResultsPage = lazy(() => import('./pages/SearchResultsPage'));
 const ResourceUploadPage = lazy(() => import('./pages/ResourceUploadPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
-// ── New Support Pages ──────────────────────────────────────────
+// ── Support Pages ──────────────────────────────────────────
 const MyTicketsPage = lazy(() => import('./pages/MyTicketsPage'));
 const AdminTicketsPage = lazy(() => import('./pages/AdminTicketsPage'));
+// ── New Chat Pages ────────────────────────────────────────
+const ChatsPage = lazy(() => import('./pages/ChatsPage'));
+const ChatDetail = lazy(() => import('./pages/ChatDetail'));
 
 // ═══════════════════════════════════════════════════════════════
 // CONSTANTS
@@ -101,6 +106,8 @@ const ROUTE_TITLES = {
   '/resources/upload': 'Upload Resource',
   '/my-tickets': 'My Tickets',
   '/admin/tickets': 'Admin Tickets',
+  '/chats': 'My Chats',
+  '/chat': 'Chat',
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -126,6 +133,7 @@ function usePageTitle() {
       else if (pathname.startsWith('/claims/')) title = 'Claim Details';
       else if (pathname.startsWith('/admin/')) title = 'Admin Panel';
       else if (pathname.startsWith('/governance/')) title = 'Governance';
+      else if (pathname.startsWith('/chat')) title = 'Chat';
       else title = 'Academe';
     }
     document.title = title ? `${title} | Academe` : 'Academe';
@@ -170,6 +178,14 @@ export default function App() {
   const { user, loading } = useAuth();
   const { isDark } = useTheme();
   const location = useLocation();
+  const setChatUser = useChatStore((s) => s.setUser);
+
+  // Keep chat store's user in sync with auth user
+  useEffect(() => {
+    if (user) {
+      setChatUser(user);
+    }
+  }, [user, setChatUser]);
 
   const isAuthPage = ['/login', '/signup', '/forgot-password', '/reset-password'].includes(location.pathname);
 
@@ -187,7 +203,6 @@ export default function App() {
 
   const handleCloseMobileSidebar = useCallback(() => setMobileSidebarOpen(false), []);
 
-  // Effects (unchanged)
   useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < MOBILE_BREAKPOINT;
@@ -240,29 +255,22 @@ export default function App() {
     <div className="app min-h-screen transition-colors duration-300 bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
       <ScrollToTop />
 
-      {/* ════════════════════════════════════════════
-          GLOBAL WATERMARK – faint, non-interactive
-      ════════════════════════════════════════════ */}
       <div className="watermark-overlay">
         <span className="watermark-text">ACADEME</span>
       </div>
 
-      {/* Skip to main content */}
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:bg-indigo-600 focus:text-white focus:rounded-lg focus:shadow-lg">
         Skip to main content
       </a>
 
-      {/* ── Navbar ─────────────────────────────────── */}
       {showChrome && <Navbar onToggleSidebar={handleToggleSidebar} />}
 
-      {/* ── Desktop Sidebar ────────────────────────── */}
       {showChrome && (
         <div className="hidden md:block">
           <Sidebar collapsed={sidebarCollapsed} onToggle={handleToggleSidebar} />
         </div>
       )}
 
-      {/* ── Mobile Sidebar Overlay ──────────────────── */}
       {showChrome && isMobile && (
         <>
           <div aria-hidden="true" onClick={handleCloseMobileSidebar}
@@ -274,7 +282,6 @@ export default function App() {
         </>
       )}
 
-      {/* ── Main Content ────────────────────────────── */}
       <main id="main-content"
         className={`min-h-screen transition-[padding] duration-300 ${showChrome
           ? [
@@ -373,6 +380,11 @@ export default function App() {
                 <Route path="/my-tickets" element={<ProtectedRoute><MyTicketsPage /></ProtectedRoute>} />
                 <Route path="/admin/tickets" element={<ProtectedRoute allowedRoles={['admin']}><AdminTicketsPage /></ProtectedRoute>} />
 
+                {/* Chat – new open chat routes */}
+                <Route path="/chat" element={<Navigate to="/chats" replace />} />   {/* redirect base /chat to list */}
+                <Route path="/chats" element={<ProtectedRoute><ChatsPage /></ProtectedRoute>} />
+                <Route path="/chat/:conversationId" element={<ProtectedRoute><ChatDetail /></ProtectedRoute>} />
+
                 {/* 404 */}
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
@@ -381,7 +393,6 @@ export default function App() {
         </ErrorBoundary>
       </main>
 
-      {/* ── Bottom Nav & FAB ── */}
       {showChrome && (
         <>
           <BottomNav />
@@ -389,7 +400,6 @@ export default function App() {
         </>
       )}
 
-      {/* ── Global Styles ──────────────────────── */}
       <style>{`
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(8px); }

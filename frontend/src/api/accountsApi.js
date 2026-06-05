@@ -43,7 +43,7 @@ export const accountsApi = {
   listSessions: () => apiClient.get('/accounts/sessions/'),
   revokeSession: (sessionId) => apiClient.post(`/accounts/sessions/${sessionId}/revoke/`),
   revokeAllSessions: () => apiClient.post('/accounts/sessions/revoke-all/'),
-  refreshToken: (refreshToken) => apiClient.post('/accounts/refresh-token/', { refresh: refreshToken }),
+  // refreshToken is intentionally removed – handled automatically by the interceptor
 
   // Two-Factor Authentication (TOTP)
   setup2FA: () => apiClient.get('/accounts/2fa/setup/'),
@@ -57,6 +57,6 @@ export const accountsApi = {
   revokeRole: (roleId, reason) => apiClient.post(`/accounts/roles/${roleId}/revoke/`, { reason }),
   listAllUsers: () => apiClient.get('/accounts/users/'),
 
-  // Admin: User Deactivation (NEW)
+  // Admin: User Deactivation
   deactivateUser: (userId) => apiClient.post(`/accounts/users/${userId}/deactivate/`),
 };

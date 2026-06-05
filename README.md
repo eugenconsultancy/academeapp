@@ -1285,3 +1285,134 @@ If you still see the `ConcurrentRoot` error after these steps, also delete the r
  * The Android SDK of the device under debug has API level 29.
  * Android SDK source code for this API level cannot be found.
  ********************************************************************
+
+
+
+
+
+
+
+ [{
+	"resource": "/C:/Users/GATARA-BJTU/academe/android/build.gradle",
+	"owner": "_generated_diagnostic_collection_name_#5",
+	"code": "0",
+	"severity": 8,
+	"message": "org.eclipse.core.internal.resources.ResourceException: Failed to read the project description file (.project) for 'capacitor-android'.  The file has been changed on disk, and it now contains invalid information.  The project will not function properly until the description file is restored to a valid state.\r\nFailed to read the project description file (.project) for 'capacitor-android'.  The file has been changed on disk, and it now contains invalid information.  The project will not function properly until the description file is restored to a valid state.",
+	"source": "Java",
+	"startLineNumber": 1,
+	"startColumn": 1,
+	"endLineNumber": 1,
+	"endColumn": 1,
+	"origin": "extHost1"
+}]
+
+
+[{
+	"resource": "/C:/Users/GATARA-BJTU/academe/frontend/android/",
+	"owner": "_generated_diagnostic_collection_name_#5",
+	"code": "0",
+	"severity": 8,
+	"message": "A project with the name android already exists.\r\nThe supplied phased action failed with an exception.\r\nDuplicate root element android",
+	"source": "Java",
+	"startLineNumber": 1,
+	"startColumn": 1,
+	"endLineNumber": 1,
+	"endColumn": 1,
+	"origin": "extHost1"
+}]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+the navabar dropdown should be scrollable and collapsible when a user touches any part of
+the screen from the dropdown. also the navbar notifications are not accurate and do not resolve uupon opening an the notifications are not fetched accurately and timely.
+
+opprotunities edit page should integrate reactulll for enhacned editing like in the blog page and also the renering should not include the html tags.
+
+payments in the founditems page: Bad Request: /found-items/claims/ffb551e4-ec96-42c9-bd6b-457b3a4c721f/initiate-payment/
+[04/Jun/2026 08:59:43] "POST /found-items/claims/ffb551e4-ec96-42c9-bd6b-457b3a4c721f/initiate-payment/ HTTP/1.1" 400 57
+Bad Request: /found-items/claims/ffb551e4-ec96-42c9-bd6b-457b3a4c721f/initiate-payment/
+[04/Jun/2026 08:59:44] "POST /found-items/claims/ffb551e4-ec96-42c9-bd6b-457b3a4c721f/initiate-payment/ HTTP/1.1" 400 57
+[04/Jun/2026 08:59:44] "HEAD /api/health/ HTTP/1.1" 200 0
+
+
+
+
+
+[04/Jun/2026 09:02:25] "HEAD /api/health/ HTTP/1.1" 200 0
+'Settings' object has no attribute 'AWS_PRIVATE_BUCKET_NAME'
+Traceback (most recent call last):
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 216, in run
+    result = self.view_func(request, **values)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\GATARA-BJTU\academe\backend\apps\found_items\api.py", line 122, in delete_item
+    storage = DualBucketStorage()
+              ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\GATARA-BJTU\academe\backend\common\storage.py", line 15, in __init__
+    if not settings.AWS_PRIVATE_BUCKET_NAME or not settings.AWS_PUBLIC_BUCKET_NAME:
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\conf\__init__.py", line 104, in __getattr__    val = getattr(_wrapped, name)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Settings' object has no attribute 'AWS_PRIVATE_BUCKET_NAME'
+Internal Server Error: /found-items/items/602712bc-5b0b-4e4e-ae1a-dbcf9069c7a7/
+[04/Jun/2026 09:02:35] "DELETE /found-items/items/602712bc-5b0b-4e4e-ae1a-dbcf9069c7a7/ HTTP/1.1" 500 877
+'Settings' object has no attribute 'AWS_PRIVATE_BUCKET_NAME'
+Traceback (most recent call last):
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 216, in run
+    result = self.view_func(request, **values)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\GATARA-BJTU\academe\backend\apps\found_items\api.py", line 122, in delete_item
+    storage = DualBucketStorage()
+              ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\GATARA-BJTU\academe\backend\common\storage.py", line 15, in __init__
+    if not settings.AWS_PRIVATE_BUCKET_NAME or not settings.AWS_PUBLIC_BUCKET_NAME:
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\conf\__init__.py", line 104, in __getattr__    val = getattr(_wrapped, name)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Settings' object has no attribute 'AWS_PRIVATE_BUCKET_NAME'
+Internal Server Error: /found-items/items/602712bc-5b0b-4e4e-ae1a-dbcf9069c7a7/
+[04/Jun/2026 09:02:36] "DELETE /found-items/items/602712bc-5b0b-4e4e-ae1a-dbcf9069c7a7/ HTTP/1.1" 500 877
+
+
+
+the admin attendance summary should fetch for all users in the website and not the admin himself attaendance data.
+
+
+the admin roles is not fetching right correct data across all users and even the histroy of users roles.
+
+the selct class group fucntion doesnt fetch all the classes thus limiting the admin on modifying spefific classes so modify to ensure the admin can.
+
+
+
+
+
+
+
+
+daphne academe.asgi:application --port 8000 --bind 0.0.0.0
+
+
+
+
+commands to run when internet gets back:
+# Remove node_modules and the lock file
+rm -rf node_modules package-lock.json
+
+# Clear the cache
+npm cache clean --force
+
+# Perform a fresh installation
+npm install

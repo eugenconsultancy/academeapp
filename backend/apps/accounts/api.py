@@ -6,7 +6,7 @@ from ninja import Router, Query, File, Schema
 from ninja.files import UploadedFile
 
 from common.auth import PhoneOTPAuth
-from common.jwt_auth import JWTAuth, create_token_pair
+from common.jwt_auth import JWTAuth, create_token_pair  # added decode_token helper
 from .models import User, Badge, DataExport, UserSession, StudentRole
 from .schema import (
     SignupIn, OTPRequestIn, OTPVerifyIn, ProfileUpdateIn
@@ -33,7 +33,7 @@ except ImportError:
     NOTIFICATION_AVAILABLE = False
     class NotificationService:
         @staticmethod
-        def send(*args, **kwargs):
+        def create_and_push(*args, **kwargs):
             pass
 
 router = Router()
@@ -325,7 +325,7 @@ def assign_role(request, data: dict):
         )
 
     if NOTIFICATION_AVAILABLE:
-        NotificationService.send(
+        NotificationService.create_and_push(
             user=target_user,
             title="New Leadership Role",
             message=f"You have been assigned as {student_role.get_role_display()} for {scope_name}.",
@@ -360,7 +360,7 @@ def revoke_role(request, role_id: str, data: dict = None):
         )
 
     if NOTIFICATION_AVAILABLE:
-        NotificationService.send(
+        NotificationService.create_and_push(
             user=role.user,
             title="Role Revoked",
             message=f"Your role as {role.get_role_display()} for {role.scope_name} has been revoked.",
@@ -436,31 +436,48 @@ def revoke_all_sessions(request):
 @router.post("/refresh-token/", auth=None)
 def refresh_token(request):
     import json
+    import jwt
+    from django.conf import settings
+    from common.jwt_auth import decode_token
+
     try:
         body = json.loads(request.body)
-        refresh_token_value = body.get('refresh')
     except (json.JSONDecodeError, AttributeError):
-        refresh_token_value = None
+        return {"error": "Invalid JSON body"}, 400
 
+    refresh_token_value = body.get('refresh')
     if not refresh_token_value:
-        return {"error": "Refresh token required"}
+        return {"error": "Refresh token required"}, 400
 
     try:
-        from rest_framework_simplejwt.tokens import RefreshToken
-        from django.contrib.auth import get_user_model
+        # Decode using the same method as your JWTAuth class
+        secret = getattr(settings, 'JWT_SECRET_KEY', settings.SECRET_KEY)
+        payload = jwt.decode(refresh_token_value, secret, algorithms=["HS256"])
 
-        User = get_user_model()
-        token = RefreshToken(refresh_token_value)
-        user_id = token.get('user_id')
-        user = User.objects.get(id=user_id)
+        # Verify it is actually a refresh token
+        if payload.get("type") != "refresh":
+            return {"error": "Invalid token type"}, 403
+
+        user_id = payload.get("user_id")
+        if not user_id:
+            return {"error": "Invalid token"}, 403
+
+        user = User.objects.get(id=user_id, is_active=True)
+
+        # Optional: check that the token hasn't been revoked (e.g., by session management)
+        # but for now just issue new tokens
 
         new_tokens = create_token_pair(user)
-        return {
-            "access": new_tokens["access"],
-            "refresh": new_tokens["refresh"],
-        }
+        return new_tokens
+
+    except jwt.ExpiredSignatureError:
+        return {"error": "Refresh token expired"}, 401
+    except jwt.InvalidTokenError:
+        return {"error": "Invalid refresh token"}, 403
+    except User.DoesNotExist:
+        return {"error": "User not found or inactive"}, 403
     except Exception as e:
-        return {"error": f"Invalid refresh token: {str(e)}"}
+        return {"error": f"Token refresh failed: {str(e)}"}, 500
 
 
 @router.post("/biometric/enroll/", auth=JWTAuth())
@@ -516,7 +533,7 @@ def two_factor_setup(request):
     return {"qr_code": qr_code, "secret": secret}
 
 @router.post("/2fa/verify-setup/", auth=JWTAuth())
-def verify_two_factor_setup(request, data: Schema):  # data: { code: str }
+def verify_two_factor_setup(request, data: Schema):
     """Verify TOTP code and enable 2FA for the user."""
     from ninja import Schema as NinjaSchema
     class VerifySetupIn(NinjaSchema):
@@ -597,15 +614,38 @@ def verify_2fa_login(request, data: TwoFactorVerifyLoginIn):
 
 # ============================================
 # ADMIN: LIST ALL USERS
-# ============================================S
+# ============================================
 @router.get("/users/", auth=JWTAuth())
 def list_all_users(request):
-    """Admin only: return a list of all users with detailed info."""
+    """Admin only: return a list of all users with detailed info and active roles."""
     if request.auth.role != 'admin':
         return []
-    return list(User.objects.all().values(
-        'id', 'full_name', 'email', 'phone_number', 'institution', 'class_name', 'role', 'is_active'
-    ))
+
+    users = User.objects.prefetch_related('student_roles').all()
+    result = []
+    for u in users:
+        active_roles = u.student_roles.filter(is_active=True)
+        past_roles_count = u.student_roles.filter(is_active=False).count()
+
+        result.append({
+            'id': str(u.id),
+            'full_name': u.full_name,
+            'email': u.email or '',
+            'phone_number': u.phone_number,
+            'institution': u.institution,
+            'class_name': u.class_name,
+            'role': u.role,                 # base role
+            'is_active': u.is_active,
+            'active_roles': [{
+                'id': str(r.id),
+                'role': r.role,
+                'scope_type': r.scope_type,
+                'scope_name': r.scope_name,
+                'scope_id': str(r.scope_id),
+            } for r in active_roles],
+            'past_roles_count': past_roles_count,
+        })
+    return result
 
 
 # ============================================
@@ -618,7 +658,7 @@ def admin_update_user_role(request, user_id: str, data: RoleUpdateIn):
         return {"error": "Permission denied. Admin access required."}
     
     new_role = data.role
-    if new_role not in ['student', 'class_rep', 'student_leader', 'faculty_rep', 'admin']:
+    if new_role not in ['student', 'class_rep', 'student_leader', 'faculty_rep', 'faculty_officer', 'admin']:
         return {"error": "Invalid role"}
     
     try:
@@ -646,7 +686,7 @@ def admin_update_user_role(request, user_id: str, data: RoleUpdateIn):
         )
     
     if NOTIFICATION_AVAILABLE and old_role != new_role:
-        NotificationService.send(
+        NotificationService.create_and_push(
             user=user,
             title="Your Role Has Been Updated",
             message=f"Your account role has been changed from {old_role} to {new_role} by an administrator.",
@@ -699,7 +739,7 @@ def admin_deactivate_user(request, user_id: str):
         )
     
     if NOTIFICATION_AVAILABLE:
-        NotificationService.send(
+        NotificationService.create_and_push(
             user=user,
             title="Account Deactivated",
             message="Your account has been deactivated by an administrator. Please contact support if you believe this is an error.",

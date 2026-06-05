@@ -1,3 +1,5 @@
+# C:\Users\GATARA-BJTU\academe\backend\academe\urls.py
+
 from django.contrib import admin
 from django.urls import path
 from ninja import NinjaAPI
@@ -16,7 +18,8 @@ from apps.blog.api import router as blog_router
 from apps.search.api import router as search_router
 from apps.geoservice.api import router as geoservice_router
 from apps.governance.api import router as governance_router
-from apps.notifications.api import router as notifications_router   # <-- NEW
+from apps.notifications.api import router as notifications_router
+from apps.chat.api import router as chat_router
 
 api = NinjaAPI(
     title="Academe API",
@@ -31,10 +34,10 @@ api.add_router("/opportunities/", opportunities_router, tags=["Opportunities"])
 api.add_router("/support/", support_router, tags=["Support"])
 api.add_router("/search/", search_router, tags=["Search"])
 api.add_router("/blog/", blog_router, tags=["Blog"])
-api.add_router("/geo/", geoservice_router, tags=["Geoservice"]) 
+api.add_router("/geo/", geoservice_router, tags=["Geoservice"])
 api.add_router("/governance/", governance_router, tags=["Governance"])
-api.add_router("/notifications/", notifications_router, tags=["Notifications"])  # <-- NEW
-
+api.add_router("/notifications/", notifications_router, tags=["Notifications"])
+api.add_router("/chat/", chat_router, tags=["Chat"])
 
 # Health check
 from django.http import JsonResponse
@@ -42,13 +45,12 @@ from django.http import JsonResponse
 def health_check(request):
     return JsonResponse({'status': 'ok', 'version': '1.0.0'})
 
-
 urlpatterns = [
-    path('api/health/', health_check),
+    path('health/', health_check),   # ← changed from 'api/health/' to match the proxy-stripped path
     path('admin/', admin.site.urls),
     path('', api.urls),
 ]
 
-# APPEND THIS BLOCK AT THE VERY BOTTOM OF THE FILE:
+# Serve media files in development
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

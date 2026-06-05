@@ -3,6 +3,7 @@ from django.dispatch import receiver
 from apps.accounts.models import User, StudentRole
 from apps.announcements.models import Announcement
 from apps.governance.services.audit_service import AuditService
+from apps.notifications.services import NotificationService
 
 
 @receiver(post_save, sender=User)
@@ -56,4 +57,34 @@ def log_announcement_deletion(sender, instance, **kwargs):
             'target': instance.target,
         },
         severity='warning',
+    )
+
+
+# ── Notification signals for governance role changes ──────────
+@receiver(post_save, sender=StudentRole)
+def role_assigned_notify(sender, instance, created, **kwargs):
+    """Notify user when a governance role is assigned."""
+    if created:
+        NotificationService.create_and_push(
+            user=instance.user,
+            title="Role Assigned",
+            message=f"You have been assigned the role of {instance.get_role_display()}.",
+            notification_type="role_assigned",
+            link="/governance",
+            source_type="governance",
+            source_id=instance.id,
+        )
+
+
+@receiver(post_delete, sender=StudentRole)
+def role_revoked_notify(sender, instance, **kwargs):
+    """Notify user when a governance role is revoked."""
+    NotificationService.create_and_push(
+        user=instance.user,
+        title="Role Revoked",
+        message=f"Your role {instance.get_role_display()} has been revoked.",
+        notification_type="system",
+        link="/governance",
+        source_type="governance",
+        source_id=None,
     )

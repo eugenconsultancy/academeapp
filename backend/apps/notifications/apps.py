@@ -4,3 +4,10 @@ class NotificationsConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.notifications'
     verbose_name = 'Notifications'
+
+    def ready(self):
+        import apps.announcements.signals  # noqa
+        import apps.found_items.signals
+        import apps.opportunities.signals
+        import apps.support.signals
+        import apps.governance.signals

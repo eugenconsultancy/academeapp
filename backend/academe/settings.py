@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     # Third party
     'corsheaders',
     'storages',
+    'channels',                # <-- ADD THIS
     
     # Local apps
     'apps.accounts',
@@ -39,6 +40,7 @@ INSTALLED_APPS = [
     'apps.geoservice',
     'apps.governance',
     'apps.notifications',
+    'apps.chat',               # <-- ADD THIS
     'common',
 ]
 
@@ -84,6 +86,17 @@ DATABASES = {
             'timeout': 20,  # Max seconds o wait for a database lock to clear
         },
     }
+}
+
+
+# Channel layers for WebSocket (using Redis)
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [('127.0.0.1', 6379)],
+        },
+    },
 }
 
 AUTH_USER_MODEL = 'accounts.User'
@@ -141,6 +154,11 @@ AWS_S3_ENCRYPTION = True
 
 if DEBUG and not AWS_ACCESS_KEY_ID:
     DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
+
+# ── Dual‑bucket names (used by found items app) ─────────────
+# Fall back to the main bucket if separate buckets are not configured.
+AWS_PRIVATE_BUCKET_NAME = os.getenv('AWS_PRIVATE_BUCKET_NAME', AWS_STORAGE_BUCKET_NAME)
+AWS_PUBLIC_BUCKET_NAME = os.getenv('AWS_PUBLIC_BUCKET_NAME', AWS_STORAGE_BUCKET_NAME)
 
 # Firebase FOR PUSH NOTIFICATIONS
 FIREBASE_CREDENTIALS = os.getenv('FIREBASE_CREDENTIALS_PATH')

@@ -1,4 +1,4 @@
-// this is our main.jsx file 
+// frontend/src/main.jsx
 import React, { StrictMode, Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
@@ -16,7 +16,7 @@ import { offlineStorage } from './utils/storage';
 import './styles/globals.css';
 import './styles/themes.css';
 import './styles/fonts.css';
-import './index.css';   // ← add this before other style imports
+import './index.css';
 
 // ═══════════════════════════════════════════════════════════════
 // TANSTACK QUERY CONFIGURATION WITH INTELLIGENT ERROR FILTERING
@@ -42,12 +42,20 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 1000 * 60 * 5,
       gcTime: 1000 * 60 * 30,
-      retry: 1,
+      retry: (failureCount, error) => {
+        // Stop retrying on 401 Unauthorized – the user needs to login again
+        if (error?.response?.status === 401) return false;
+        // Retry up to 2 more times for other errors
+        return failureCount < 2;
+      },
       refetchOnWindowFocus: true,
       refetchOnReconnect: true,
     },
     mutations: {
-      retry: 1,
+      retry: (failureCount, error) => {
+        if (error?.response?.status === 401) return false;
+        return failureCount < 1;
+      },
     },
   },
 });
@@ -99,7 +107,7 @@ root.render(
 );
 
 // ═══════════════════════════════════════════════════════════════
-// PWA SERVICE WORKER REGISTRATION (fr mobile apps cmpnent)
+// PWA SERVICE WORKER REGISTRATION
 // ═══════════════════════════════════════════════════════════════
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {

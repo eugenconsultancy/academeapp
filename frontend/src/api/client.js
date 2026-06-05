@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { setTimeOffset } from '../utils/time';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 export const BACKEND_BASE_URL = BASE_URL;
 
 const refreshApi = axios.create({
@@ -38,7 +39,14 @@ const processQueue = (error, token = null) => {
 };
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Synchronize time with server on every response
+    const serverDate = response.headers['date'];
+    if (serverDate) {
+      setTimeOffset(serverDate);
+    }
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config;
 
@@ -48,6 +56,11 @@ apiClient.interceptors.response.use(
       '/accounts/request-otp/', '/accounts/register/', '/accounts/signup/'
     ];
     if (authEndpoints.some(ep => originalRequest.url?.includes(ep))) {
+      return Promise.reject(error);
+    }
+
+    // Skip refresh logic for background sync requests – they should just fail
+    if (originalRequest._syncRequest && error.response?.status === 401) {
       return Promise.reject(error);
     }
 
@@ -76,9 +89,14 @@ apiClient.interceptors.response.use(
         const response = await refreshApi.post('/accounts/refresh-token/', {
           refresh: refreshToken,
         });
+
+        // Validate response content
+        if (!response.data || !response.data.access) {
+          throw new Error('No access token in refresh response');
+        }
+
         const { access } = response.data;
         localStorage.setItem('access_token', access);
-        // ✅ Update default header for all future requests
         apiClient.defaults.headers.common['Authorization'] = `Bearer ${access}`;
         processQueue(null, access);
         originalRequest.headers.Authorization = `Bearer ${access}`;

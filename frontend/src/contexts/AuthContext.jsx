@@ -19,7 +19,7 @@ function getStoredRefreshToken() {
 }
 function storeTokens(access, refresh) {
     try {
-        localStorage.setItem(ACCESS_TOKEN_KEY, access);
+        if (access) localStorage.setItem(ACCESS_TOKEN_KEY, access);
         if (refresh) localStorage.setItem(REFRESH_TOKEN_KEY, refresh);
     } catch { /* ignore */ }
 }
@@ -53,81 +53,6 @@ function storeUser(user) {
     try { localStorage.setItem(USER_KEY, JSON.stringify(user)); } catch { /* ignore */ }
 }
 
-let isRefreshing = false;
-let failedQueue = [];
-function processQueue(error, token = null) {
-    failedQueue.forEach(({ resolve, reject }) => {
-        if (error) reject(error);
-        else resolve(token);
-    });
-    failedQueue = [];
-}
-
-function setupAxiosInterceptors(logoutRef) {
-    const requestInterceptor = apiClient.interceptors.request.use(
-        (config) => {
-            const token = getStoredToken();
-            if (token && !isTokenExpired(token)) {
-                config.headers.Authorization = `Bearer ${token}`;
-            }
-            return config;
-        },
-        (error) => Promise.reject(error)
-    );
-    const responseInterceptor = apiClient.interceptors.response.use(
-        (response) => response,
-        async (error) => {
-            const originalRequest = error.config;
-            if (originalRequest.url?.includes('/accounts/login/') ||
-                originalRequest.url?.includes('/accounts/verify-otp/') ||
-                originalRequest.url?.includes('/accounts/refresh-token/') ||
-                originalRequest.url?.includes('/accounts/request-otp/')) {
-                return Promise.reject(error);
-            }
-            if (error.response?.status === 401 && !originalRequest._retry) {
-                if (isRefreshing) {
-                    return new Promise((resolve, reject) => {
-                        failedQueue.push({ resolve, reject });
-                    }).then((token) => {
-                        originalRequest.headers.Authorization = `Bearer ${token}`;
-                        return apiClient(originalRequest);
-                    }).catch((err) => Promise.reject(err));
-                }
-                originalRequest._retry = true;
-                isRefreshing = true;
-                const refreshToken = getStoredRefreshToken();
-                if (!refreshToken) {
-                    isRefreshing = false;
-                    logoutRef.current?.();
-                    return Promise.reject(error);
-                }
-                try {
-                    const response = await apiClient.post('/accounts/refresh-token/', { refresh: refreshToken });
-                    const { access } = response.data;
-                    storeTokens(access, response.data.refresh || refreshToken);
-                    processQueue(null, access);
-                    originalRequest.headers.Authorization = `Bearer ${access}`;
-                    return apiClient(originalRequest);
-                } catch (refreshError) {
-                    processQueue(refreshError, null);
-                    logoutRef.current?.();
-                    return Promise.reject(refreshError);
-                } finally {
-                    isRefreshing = false;
-                }
-            }
-            if (error.response?.status === 403) {
-                console.warn('Access denied:', error.response?.data);
-            }
-            return Promise.reject(error);
-        }
-    );
-    return () => {
-        apiClient.interceptors.request.eject(requestInterceptor);
-        apiClient.interceptors.response.eject(responseInterceptor);
-    };
-}
-
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(() => getStoredUser());
     const [loading, setLoading] = useState(true);
@@ -135,7 +60,6 @@ export function AuthProvider({ children }) {
     const [error, setError] = useState(null);
     const [isRefreshingToken, setIsRefreshingToken] = useState(false);
     const idleTimerRef = useRef(null);
-    const cleanupInterceptorsRef = useRef(null);
     const logoutRef = useRef(null);
 
     const logout = useCallback(() => {
@@ -191,7 +115,6 @@ export function AuthProvider({ children }) {
         return () => { isCurrent = false; };
     }, [logout]);
 
-    // Fixed register: uses /accounts/signup/
     const register = useCallback(async (userData) => {
         setLoginLoading(true);
         setError(null);
@@ -207,7 +130,6 @@ export function AuthProvider({ children }) {
         }
     }, []);
 
-    // Fixed login with 2FA detection
     const login = useCallback(async (phone, otp) => {
         setLoginLoading(true);
         setError(null);
@@ -220,9 +142,13 @@ export function AuthProvider({ children }) {
                 return { require_2fa: true, temp_token: data.temp_token };
             }
             const { access, refresh, user: userData } = data;
-            storeTokens(access, refresh);
-            storeUser(userData);
-            setUser(userData);
+            if (access) {
+                storeTokens(access, refresh);
+                storeUser(userData);
+                setUser(userData);
+            } else {
+                throw new Error('Login succeeded but no token received.');
+            }
             return userData;
         } catch (err) {
             const message = err.response?.data?.error || err.response?.data?.message || 'Login failed.';
@@ -263,7 +189,6 @@ export function AuthProvider({ children }) {
         }
     }, []);
 
-    // Fixed forgotPassword: sends phone_number, not email
     const forgotPassword = useCallback(async (phone) => {
         try {
             const response = await apiClient.post('/accounts/forgot-password/', { phone_number: phone });
@@ -274,7 +199,6 @@ export function AuthProvider({ children }) {
         }
     }, []);
 
-    // Fixed resetPassword: expects phone, otp, new_password
     const resetPassword = useCallback(async (phone, otp, newPassword) => {
         try {
             const response = await apiClient.post('/accounts/reset-password/', {
@@ -427,14 +351,12 @@ export function AuthProvider({ children }) {
         return permissions.some(p => (p.action === action || p.action === '*') && (p.resource === resource || p.resource === '*'));
     }, [user, isAdmin]);
 
+    // Restore session on mount
     useEffect(() => {
-        cleanupInterceptorsRef.current = setupAxiosInterceptors(logoutRef);
         checkAuth();
-        return () => {
-            if (cleanupInterceptorsRef.current) cleanupInterceptorsRef.current();
-        };
     }, []);
 
+    // Idle session timeout
     useEffect(() => {
         if (!user) return;
         const resetIdleTimer = () => {

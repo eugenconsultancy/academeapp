@@ -1,18 +1,15 @@
 import { openDB } from 'idb';
 
 const DB_NAME = 'AcademeOfflineDB';
-const DB_VERSION = 3; // Incremented for schema migration
+const DB_VERSION = 3;
 
-// ── Module-level sync lock for atomic operations ────────────────────────
 let _syncLock = false;
 let _isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
 
-// ── Network Status Detection ────────────────────────────────────────────
 if (typeof window !== 'undefined') {
     window.addEventListener('online', () => {
         _isOnline = true;
         console.log('🌐 Back online - starting sync...');
-        // Use setTimeout to avoid circular import during module initialization
         setTimeout(() => {
             offlineStorage.processSyncQueue();
         }, 100);
@@ -28,84 +25,46 @@ export function getNetworkStatus() {
     return _isOnline;
 }
 
-// ── Database Initialization ──────────────────────────────────────────────
 export async function getDB() {
     return openDB(DB_NAME, DB_VERSION, {
         upgrade(db, oldVersion, newVersion, transaction) {
-            // Existing stores
             if (!db.objectStoreNames.contains('offlineAttendance')) {
-                db.createObjectStore('offlineAttendance', {
-                    keyPath: 'id',
-                    autoIncrement: true
-                });
+                db.createObjectStore('offlineAttendance', { keyPath: 'id', autoIncrement: true });
             }
-
             if (!db.objectStoreNames.contains('offlineMarks')) {
-                db.createObjectStore('offlineMarks', {
-                    keyPath: 'id',
-                    autoIncrement: true
-                });
+                db.createObjectStore('offlineMarks', { keyPath: 'id', autoIncrement: true });
             }
-
             if (!db.objectStoreNames.contains('syncQueue')) {
-                const syncStore = db.createObjectStore('syncQueue', {
-                    keyPath: 'id',
-                    autoIncrement: true
-                });
+                const syncStore = db.createObjectStore('syncQueue', { keyPath: 'id', autoIncrement: true });
                 syncStore.createIndex('status', 'status');
                 syncStore.createIndex('type', 'type');
                 syncStore.createIndex('createdAt', 'createdAt');
             }
-
             if (!db.objectStoreNames.contains('apiCache')) {
-                const cacheStore = db.createObjectStore('apiCache', {
-                    keyPath: 'url'
-                });
+                const cacheStore = db.createObjectStore('apiCache', { keyPath: 'url' });
                 cacheStore.createIndex('timestamp', 'timestamp');
             }
-
             if (!db.objectStoreNames.contains('settings')) {
-                db.createObjectStore('settings', {
-                    keyPath: 'key'
-                });
+                db.createObjectStore('settings', { keyPath: 'key' });
             }
-
             if (!db.objectStoreNames.contains('formDrafts')) {
-                db.createObjectStore('formDrafts', {
-                    keyPath: 'formId'
-                });
+                db.createObjectStore('formDrafts', { keyPath: 'formId' });
             }
-
             if (!db.objectStoreNames.contains('preferences')) {
-                db.createObjectStore('preferences', {
-                    keyPath: 'key'
-                });
+                db.createObjectStore('preferences', { keyPath: 'key' });
             }
-
-            // Biometrics Store (v3)
             if (!db.objectStoreNames.contains('biometrics')) {
-                db.createObjectStore('biometrics', {
-                    keyPath: 'id'
-                });
+                db.createObjectStore('biometrics', { keyPath: 'id' });
             }
         },
     });
 }
 
-// ── Offline Storage API ──────────────────────────────────────────────────
 export const offlineStorage = {
-    // ═══════════════════════════════════════════════════════════════
-    // ATTENDANCE OPERATIONS
-    // ═══════════════════════════════════════════════════════════════
-
     async saveAttendance(data) {
         try {
             const db = await getDB();
-            const record = {
-                ...data,
-                timestamp: new Date().toISOString(),
-                synced: false,
-            };
+            const record = { ...data, timestamp: new Date().toISOString(), synced: false };
             return db.add('offlineAttendance', record);
         } catch (error) {
             console.error('Failed to save attendance:', error);
@@ -124,13 +83,8 @@ export const offlineStorage = {
     },
 
     async getUnsyncedAttendance() {
-        try {
-            const all = await this.getOfflineAttendance();
-            return all.filter(a => !a.synced);
-        } catch (error) {
-            console.error('Failed to get unsynced attendance:', error);
-            return [];
-        }
+        const all = await this.getOfflineAttendance();
+        return all.filter(a => !a.synced);
     },
 
     async clearOfflineAttendance(id) {
@@ -170,18 +124,10 @@ export const offlineStorage = {
         }
     },
 
-    // ═══════════════════════════════════════════════════════════════
-    // MARKS/GRADES OPERATIONS
-    // ═══════════════════════════════════════════════════════════════
-
     async saveOfflineMarks(marksData) {
         try {
             const db = await getDB();
-            const record = {
-                ...marksData,
-                synced: false,
-                createdAt: new Date().toISOString(),
-            };
+            const record = { ...marksData, synced: false, createdAt: new Date().toISOString() };
             return db.add('offlineMarks', record);
         } catch (error) {
             console.error('Failed to save marks:', error);
@@ -200,13 +146,8 @@ export const offlineStorage = {
     },
 
     async getUnsyncedMarks() {
-        try {
-            const all = await this.getOfflineMarks();
-            return all.filter(m => !m.synced);
-        } catch (error) {
-            console.error('Failed to get unsynced marks:', error);
-            return [];
-        }
+        const all = await this.getOfflineMarks();
+        return all.filter(m => !m.synced);
     },
 
     async markMarksSynced(ids) {
@@ -235,10 +176,6 @@ export const offlineStorage = {
             throw error;
         }
     },
-
-    // ═══════════════════════════════════════════════════════════════
-    // SYNC QUEUE OPERATIONS
-    // ═══════════════════════════════════════════════════════════════
 
     async addToSyncQueue(operation) {
         try {
@@ -275,12 +212,8 @@ export const offlineStorage = {
     },
 
     async getPendingSyncCount() {
-        try {
-            const pending = await this.getSyncQueue('pending');
-            return pending.length;
-        } catch (error) {
-            return 0;
-        }
+        const pending = await this.getSyncQueue('pending');
+        return pending.length;
     },
 
     async updateSyncItem(id, updates) {
@@ -305,30 +238,29 @@ export const offlineStorage = {
         }
     },
 
-    /**
-     * Atomic sync queue processor with collision prevention
-     * Uses module-level _syncLock to prevent concurrent sync operations
-     */
     async processSyncQueue(apiInstance = null) {
-        // Prevent concurrent sync operations
         if (_syncLock) {
             console.warn('⚠️ Sync already in progress, skipping duplicate call');
             return { synced: 0, failed: 0, skipped: true };
         }
 
-        // Check network status
         if (!_isOnline) {
             console.log('📡 Still offline, skipping sync');
             return { synced: 0, failed: 0 };
         }
 
-        // Acquire sync lock
+        // Check if user is logged in (has a valid access token)
+        const accessToken = localStorage.getItem('access_token');
+        if (!accessToken) {
+            console.warn('🔒 No access token, cannot sync. User must login first.');
+            return { synced: 0, failed: 0 };
+        }
+
         _syncLock = true;
         console.log('🔒 Sync lock acquired');
 
         try {
             const pending = await this.getSyncQueue('pending');
-
             if (pending.length === 0) {
                 console.log('✅ No pending items to sync');
                 return { synced: 0, failed: 0 };
@@ -340,7 +272,6 @@ export const offlineStorage = {
 
             for (const item of pending) {
                 try {
-                    // Lazy-load API instance to avoid circular dependency
                     let client = apiInstance;
                     if (!client) {
                         try {
@@ -348,7 +279,6 @@ export const offlineStorage = {
                             client = apiModule.default;
                         } catch (importError) {
                             console.error('Failed to import API client:', importError);
-                            // Skip this item if we can't get the client
                             await this.updateSyncItem(item.id, {
                                 attempts: item.attempts + 1,
                                 status: 'pending',
@@ -359,22 +289,28 @@ export const offlineStorage = {
                         }
                     }
 
+                    // Mark this request as a sync background request
+                    const config = {
+                        headers: {},
+                        _syncRequest: true,   // flag for interceptor
+                    };
+
                     let response;
                     switch (item.method.toUpperCase()) {
                         case 'POST':
-                            response = await client.post(item.endpoint, item.data);
+                            response = await client.post(item.endpoint, item.data, config);
                             break;
                         case 'PUT':
-                            response = await client.put(item.endpoint, item.data);
+                            response = await client.put(item.endpoint, item.data, config);
                             break;
                         case 'PATCH':
-                            response = await client.patch(item.endpoint, item.data);
+                            response = await client.patch(item.endpoint, item.data, config);
                             break;
                         case 'DELETE':
-                            response = await client.delete(item.endpoint);
+                            response = await client.delete(item.endpoint, config);
                             break;
                         default:
-                            response = await client.post(item.endpoint, item.data);
+                            response = await client.post(item.endpoint, item.data, config);
                     }
 
                     if (response?.status >= 200 && response?.status < 300) {
@@ -402,15 +338,11 @@ export const offlineStorage = {
             console.log(`🔄 Sync complete: ${synced} synced, ${failed} failed`);
             return { synced, failed };
         } finally {
-            // Always release the lock
             _syncLock = false;
             console.log('🔓 Sync lock released');
         }
     },
 
-    /**
-     * Atomic sync queue processor (alias for backward compatibility)
-     */
     async processSyncQueueAtomic(apiInstance = null) {
         return this.processSyncQueue(apiInstance);
     },
@@ -426,10 +358,6 @@ export const offlineStorage = {
             console.error('Failed to clear failed items:', error);
         }
     },
-
-    // ═══════════════════════════════════════════════════════════════
-    // API CACHE OPERATIONS
-    // ═══════════════════════════════════════════════════════════════
 
     async cacheApiResponse(url, data, ttlMinutes = 5) {
         try {
@@ -450,14 +378,11 @@ export const offlineStorage = {
         try {
             const db = await getDB();
             const cached = await db.get('apiCache', url);
-
             if (!cached) return null;
-
             if (Date.now() > cached.expiresAt) {
                 await db.delete('apiCache', url);
                 return null;
             }
-
             return cached.data;
         } catch (error) {
             console.error('Failed to get cached response:', error);
@@ -471,17 +396,13 @@ export const offlineStorage = {
             const all = await db.getAll('apiCache');
             const now = Date.now();
             let cleaned = 0;
-
             for (const item of all) {
                 if (now > item.expiresAt) {
                     await db.delete('apiCache', item.url);
                     cleaned++;
                 }
             }
-
-            if (cleaned > 0) {
-                console.log(`🧹 Cleaned ${cleaned} expired cache entries`);
-            }
+            if (cleaned > 0) console.log(`🧹 Cleaned ${cleaned} expired cache entries`);
             return cleaned;
         } catch (error) {
             console.error('Failed to cleanup cache:', error);
@@ -509,10 +430,6 @@ export const offlineStorage = {
         }
     },
 
-    // ═══════════════════════════════════════════════════════════════
-    // SETTINGS & PREFERENCES
-    // ═══════════════════════════════════════════════════════════════
-
     async setSetting(key, value) {
         try {
             const db = await getDB();
@@ -536,11 +453,7 @@ export const offlineStorage = {
     async saveFormDraft(formId, data) {
         try {
             const db = await getDB();
-            return db.put('formDrafts', {
-                formId,
-                data,
-                savedAt: new Date().toISOString(),
-            });
+            return db.put('formDrafts', { formId, data, savedAt: new Date().toISOString() });
         } catch (error) {
             console.error('Failed to save form draft:', error);
         }
@@ -590,9 +503,7 @@ export const offlineStorage = {
             const db = await getDB();
             const all = await db.getAll('preferences');
             const prefs = {};
-            for (const item of all) {
-                prefs[item.key] = item.value;
-            }
+            for (const item of all) prefs[item.key] = item.value;
             return prefs;
         } catch (error) {
             console.error('Failed to get preferences:', error);
@@ -600,18 +511,10 @@ export const offlineStorage = {
         }
     },
 
-    // ═══════════════════════════════════════════════════════════════
-    // BIOMETRIC STORAGE OPERATIONS
-    // ═══════════════════════════════════════════════════════════════
-
     async saveBiometricStatus(status) {
         try {
             const db = await getDB();
-            return db.put('biometrics', {
-                id: 'enrollment_status',
-                ...status,
-                updatedAt: new Date().toISOString()
-            });
+            return db.put('biometrics', { id: 'enrollment_status', ...status, updatedAt: new Date().toISOString() });
         } catch (error) {
             console.error('Failed to save biometric status:', error);
             throw error;
@@ -628,18 +531,12 @@ export const offlineStorage = {
         }
     },
 
-    // ═══════════════════════════════════════════════════════════════
-    // DATABASE MAINTENANCE
-    // ═══════════════════════════════════════════════════════════════
-
     async clearAllOfflineData() {
         try {
             const db = await getDB();
             const stores = ['offlineAttendance', 'offlineMarks', 'syncQueue', 'formDrafts', 'biometrics'];
             for (const store of stores) {
-                if (db.objectStoreNames.contains(store)) {
-                    await db.clear(store);
-                }
+                if (db.objectStoreNames.contains(store)) await db.clear(store);
             }
             console.log('🧹 Cleared all offline data including biometrics');
         } catch (error) {
@@ -651,12 +548,9 @@ export const offlineStorage = {
         try {
             const db = await getDB();
             const stats = {};
-
             for (const storeName of db.objectStoreNames) {
-                const count = await db.count(storeName);
-                stats[storeName] = count;
+                stats[storeName] = await db.count(storeName);
             }
-
             return stats;
         } catch (error) {
             console.error('Failed to get DB stats:', error);

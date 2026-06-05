@@ -60,7 +60,7 @@ class DualBucketStorage:
             logger.error(f"Failed to delete raw image {key}: {e}")
     
     def generate_presigned_url(self, key, expiration=300):
-        """Generate temporary access URL for admin review (5 min default)"""
+        """Generate temporary access URL for admin review (5 min default). Note: This URL will expire and must be refreshed."""
         try:
             return self.s3.generate_presigned_url(
                 'get_object',

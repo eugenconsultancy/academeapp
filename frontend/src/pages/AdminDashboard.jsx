@@ -1,3 +1,5 @@
+// C:\Users\GATARA-BJTU\academe\frontend\src\pages\AdminDashboard.jsx
+
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -6,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
 import toast from 'react-hot-toast';
 import { accountsApi } from '../api/accountsApi';
+import { classesApi } from '../api/classesApi';
 import {
   FiPackage, FiCheckCircle, FiFlag, FiUsers, FiBell,
   FiBriefcase, FiActivity, FiBarChart2, FiShield,
@@ -14,6 +17,7 @@ import {
   FiTrash2, FiAlertTriangle, FiX, FiCheck,
   FiUserCheck, FiBook, FiClipboard, FiServer,
   FiEdit2, FiSlash, FiEyeOff, FiEye as FiEyeShow,
+  FiUserPlus, FiLayers,
 } from 'react-icons/fi';
 
 const TABS = [
@@ -53,6 +57,10 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('overview');
   const [search, setSearch] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [selectedUserForRole, setSelectedUserForRole] = useState(null);
+  const [classGroups, setClassGroups] = useState([]);
+  const [classGroupsLoading, setClassGroupsLoading] = useState(false);
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -106,7 +114,6 @@ export default function AdminDashboard() {
     enabled: activeTab === 'opportunities',
   });
 
-  // ── UPDATED: Use admin endpoint for all classes ──
   const { data: classes, isLoading: classesLoading } = useQuery({
     queryKey: ['admin-all-classes'],
     queryFn: () => apiClient.get('/classes/admin/timetable/').then(r => safeArray(r.data)),
@@ -223,6 +230,17 @@ export default function AdminDashboard() {
     onError: (err) => toast.error(err?.response?.data?.detail || 'Failed to delete post'),
   });
 
+  const assignRoleMutation = useMutation({
+    mutationFn: (data) => apiClient.post('/accounts/roles/assign/', data),
+    onSuccess: () => {
+      toast.success('Role assigned');
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+      setAssignModalOpen(false);
+      setSelectedUserForRole(null);
+    },
+    onError: (err) => toast.error(err?.response?.data?.error || 'Failed to assign role'),
+  });
+
   const handleDeleteClick = (item, type) => {
     setDeleteConfirm({ id: item.id, title: item.title || item.name, type });
   };
@@ -233,6 +251,24 @@ export default function AdminDashboard() {
     } else if (deleteConfirm.type === 'blog') {
       deleteBlogMutation.mutate(deleteConfirm.id);
     }
+  };
+
+  const loadClassGroups = async () => {
+    setClassGroupsLoading(true);
+    try {
+      const res = await classesApi.listClassGroups();
+      setClassGroups(res.data);
+    } catch (err) {
+      toast.error('Failed to load class groups');
+    } finally {
+      setClassGroupsLoading(false);
+    }
+  };
+
+  const openAssignModal = (user) => {
+    setSelectedUserForRole(user);
+    setAssignModalOpen(true);
+    loadClassGroups();
   };
 
   return (
@@ -304,6 +340,7 @@ export default function AdminDashboard() {
         .ad-btn-view { background: rgba(255,255,255,0.6); border: 1.5px solid #e2e8f0; color: #64748b; backdrop-filter: blur(12px); }
         .ad-btn-view:hover { background: rgba(99,102,241,0.08); border-color: #6366f1; color: #6366f1; }
         .dark .ad-btn-view { background: rgba(15,23,42,0.6); border-color: #334155; color: #94a3b8; }
+        .ad-btn-assign { background: linear-gradient(135deg, #6366f1, #4f46e5); box-shadow: 0 4px 12px rgba(99,102,241,0.25); }
 
         .role-select { padding: 6px 10px; border-radius: 8px; border: 1px solid #e2e8f0; background: rgba(255,255,255,0.8); font-family: 'Outfit', sans-serif; font-size: 0.8rem; color: #0f172a; margin-right: 6px; }
         .dark .role-select { background: #1e293b; border-color: #334155; color: #f8fafc; }
@@ -313,13 +350,12 @@ export default function AdminDashboard() {
         .ad-modal { position: relative; z-index: 71; width: 100%; max-width: 420px; background: rgba(255,255,255,0.98); border: 1px solid rgba(255,255,255,0.6); border-radius: 24px; backdrop-filter: blur(28px); box-shadow: 0 24px 64px rgba(0,0,0,0.18); animation: slideIn 0.25s cubic-bezier(0.16,1,0.3,1); overflow: hidden; }
         .dark .ad-modal { background: rgba(15,23,42,0.98); border-color: rgba(255,255,255,0.07); }
         .ad-modal-header { display: flex; align-items: center; gap: 12px; padding: 20px 24px 16px; border-bottom: 1px solid rgba(0,0,0,0.06); }
-        .ad-modal-icon { width: 44px; height: 44px; border-radius: 14px; background: rgba(239,68,68,0.1); display: flex; align-items: center; justify-content: center; color: #ef4444; flex-shrink: 0; }
+        .ad-modal-icon { width: 44px; height: 44px; border-radius: 14px; background: rgba(99,102,241,0.1); display: flex; align-items: center; justify-content: center; color: #6366f1; flex-shrink: 0; }
         .ad-modal-title { font-size: 1rem; font-weight: 800; letter-spacing: -0.02em; color: #0f172a; }
         .dark .ad-modal-title { color: #f8fafc; }
         .ad-modal-body { padding: 20px 24px; }
         .ad-modal-body p { font-size: 0.85rem; color: #64748b; line-height: 1.5; margin-bottom: 12px; }
         .dark .ad-modal-body p { color: #94a3b8; }
-        .ad-modal-highlight { display: block; padding: 10px 14px; background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.15); border-radius: 10px; font-size: 0.88rem; font-weight: 700; color: #dc2626; word-break: break-word; }
         .ad-modal-footer { padding: 16px 24px 20px; display: flex; gap: 10px; border-top: 1px solid rgba(0,0,0,0.06); }
         .dark .ad-modal-footer { border-top-color: rgba(255,255,255,0.06); }
         .ad-modal-btn { flex: 1; padding: 11px; border-radius: 12px; font-family: 'Outfit', sans-serif; font-size: 0.84rem; font-weight: 700; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px; }
@@ -332,6 +368,9 @@ export default function AdminDashboard() {
 
         .ad-empty { text-align: center; padding: 48px 24px; color: #94a3b8; }
         .ad-empty-icon { font-size: 2.5rem; margin-bottom: 12px; display: block; margin-left: auto; margin-right: auto; }
+
+        .role-scope-list { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+        .role-scope-item { background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.15); border-radius: 6px; padding: 2px 8px; font-size: 0.7rem; font-weight: 600; color: #6366f1; }
       `}</style>
 
       <div className="ad-root">
@@ -399,6 +438,20 @@ export default function AdminDashboard() {
                           <div className="ad-card-meta">
                             {u.email || 'No email'} · {u.phone_number || 'No phone'} · {u.institution || 'No institution'} · {u.class_name || 'No class'}
                           </div>
+                          {u.active_roles && u.active_roles.length > 0 && (
+                            <div className="role-scope-list" style={{ marginTop: 6 }}>
+                              {u.active_roles.map(r => (
+                                <span key={r.id} className="role-scope-item" title={r.scope_name}>
+                                  {r.role.replace('_', ' ')} – {r.scope_name || 'All'}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {u.past_roles_count > 0 && (
+                            <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 4 }}>
+                              +{u.past_roles_count} past role(s)
+                            </div>
+                          )}
                         </div>
                         <div className="ad-card-actions">
                           <span className="ad-badge ad-badge-blue">{u.role}</span>
@@ -415,8 +468,17 @@ export default function AdminDashboard() {
                             <option value="class_rep">Class Rep</option>
                             <option value="student_leader">Student Leader</option>
                             <option value="faculty_rep">Faculty Rep</option>
+                            <option value="faculty_officer">Faculty Officer</option>
                             <option value="admin">Admin</option>
                           </select>
+                          <button
+                            className="ad-btn-sm ad-btn-assign"
+                            onClick={() => openAssignModal(u)}
+                            disabled={assignRoleMutation.isPending}
+                            title="Assign scoped role"
+                          >
+                            <FiUserPlus size={12} /> Assign
+                          </button>
                           <button
                             className="ad-btn-sm ad-btn-delete"
                             onClick={() => deactivateUserMutation.mutate(u.id)}
@@ -432,6 +494,76 @@ export default function AdminDashboard() {
                 ) : (
                   <div className="ad-empty"><FiUsers size={32} style={{ opacity: 0.4 }} /><p>No users found</p></div>
                 )}
+              </div>
+            )}
+
+            {/* Assign Role Modal */}
+            {assignModalOpen && selectedUserForRole && (
+              <div className="ad-modal-overlay">
+                <div className="ad-modal-backdrop" onClick={() => setAssignModalOpen(false)} />
+                <div className="ad-modal" style={{ maxWidth: 480 }}>
+                  <div className="ad-modal-header">
+                    <div className="ad-modal-icon"><FiUserCheck size={20} /></div>
+                    <div className="ad-modal-title">Assign Role to {selectedUserForRole.full_name}</div>
+                  </div>
+                  <div className="ad-modal-body">
+                    <p>Choose the role and the class group (scope) for this user.</p>
+                    <select
+                      className="role-select"
+                      style={{ width: '100%', marginBottom: 12 }}
+                      id="assign-role-type"
+                      defaultValue="class_rep"
+                    >
+                      <option value="class_rep">Class Representative</option>
+                      <option value="student_leader">Student Leader</option>
+                      <option value="faculty_rep">Faculty Representative</option>
+                    </select>
+                    {classGroupsLoading ? (
+                      <p>Loading class groups...</p>
+                    ) : (
+                      <select
+                        className="role-select"
+                        style={{ width: '100%' }}
+                        id="assign-class-group"
+                        required
+                      >
+                        <option value="">Select a class group...</option>
+                        {classGroups.map(g => (
+                          <option key={g.id} value={g.id}>{g.name} ({g.institution})</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                  <div className="ad-modal-footer">
+                    <button className="ad-modal-btn ad-modal-cancel" onClick={() => setAssignModalOpen(false)}>
+                      Cancel
+                    </button>
+                    <button
+                      className="ad-modal-btn ad-modal-delete"
+                      style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
+                      onClick={() => {
+                        const roleType = document.getElementById('assign-role-type').value;
+                        const classGroupId = document.getElementById('assign-class-group').value;
+                        if (!classGroupId) {
+                          toast.error('Please select a class group');
+                          return;
+                        }
+                        assignRoleMutation.mutate({
+                          user_id: selectedUserForRole.id,
+                          role: roleType,
+                          scope_type: 'class',
+                          scope_id: classGroupId,
+                          scope_name: classGroups.find(g => g.id === classGroupId)?.name || '',
+                          start_date: new Date().toISOString(),
+                          end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+                        });
+                      }}
+                      disabled={assignRoleMutation.isPending}
+                    >
+                      {assignRoleMutation.isPending ? 'Assigning...' : 'Assign Role'}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
