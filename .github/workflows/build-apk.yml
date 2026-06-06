@@ -46,10 +46,11 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Make Gradle wrapper executable
-        run: chmod +x gradlew
-        working-directory: ./frontend/android
+        # Explicit path from root to ensure it is found
+        run: chmod +x frontend/android/gradlew
 
       - name: Build debug APK
+        # Navigation to directory + execution
         run: ./gradlew assembleDebug --no-daemon
         working-directory: ./frontend/android
 
