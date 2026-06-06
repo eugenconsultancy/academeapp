@@ -45,8 +45,12 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Make Gradle wrapper executable
-        run: find . -name "gradlew" -exec chmod +x {} \;
+      - name: Prepare Gradle Wrapper
+        run: |
+          # Ensure permissions
+          find . -name "gradlew" -exec chmod +x {} \;
+          # Force clean the wrapper properties to ignore local/cached overrides
+          find . -name "gradle-wrapper.properties" -exec sed -i 's|file:///.*|https\\://services.gradle.org/distributions/gradle-8.11.1-all.zip|g' {} \;
 
       - name: Build debug APK
         run: |
