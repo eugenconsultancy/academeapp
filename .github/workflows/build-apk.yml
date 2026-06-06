@@ -46,16 +46,15 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Make Gradle wrapper executable
-        # Explicit path from root to ensure it is found
-        run: chmod +x frontend/android/gradlew
+        run: find . -name "gradlew" -exec chmod +x {} \;
 
       - name: Build debug APK
-        # Navigation to directory + execution
-        run: ./gradlew assembleDebug --no-daemon
-        working-directory: ./frontend/android
+        run: |
+          GRADLE_DIR=$(find . -name "gradlew" -exec dirname {} \;)
+          cd $GRADLE_DIR && ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: academe-debug-apk
-          path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          path: "**/app-debug.apk"
