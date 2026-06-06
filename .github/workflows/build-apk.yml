@@ -45,12 +45,16 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Prepare Gradle Wrapper
+      - name: Prepare Gradle Wrapper and Cleanup Assets
         run: |
-          # Ensure permissions
+          # Ensure gradlew is executable
           find . -name "gradlew" -exec chmod +x {} \;
-          # Force clean the wrapper properties to ignore local/cached overrides
+          
+          # Force set the remote Gradle distribution URL
           find . -name "gradle-wrapper.properties" -exec sed -i 's|file:///.*|https\\://services.gradle.org/distributions/gradle-8.11.1-all.zip|g' {} \;
+          
+          # Remove .gz files that cause duplicate resource errors during asset merging
+          find frontend/android/app/src/main/assets/public -name "*.gz" -type f -delete
 
       - name: Build debug APK
         run: |
