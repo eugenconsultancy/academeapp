@@ -49,6 +49,17 @@ function formatDate(date) {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+/**
+ * Safely parse a date string and return a locale‑formatted weekday abbreviation.
+ * Returns "???" if the date string is invalid.
+ */
+function safeWeekday(dateStr) {
+    if (!dateStr) return '???';
+    const d = new Date(dateStr + 'T12:00:00');
+    if (isNaN(d.getTime())) return '???';
+    return d.toLocaleDateString('en-US', { weekday: 'short' });
+}
+
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export default function AttendanceSummary() {
@@ -297,11 +308,10 @@ export default function AttendanceSummary() {
                                     const pct = total > 0 ? (marked / total) * 100 : 0;
                                     const DayIcon = getDayIcon(marked, total);
                                     const color = getDayColor(marked, total);
+                                    const weekday = safeWeekday(date);  // safe date parsing
                                     return (
                                         <div key={date} className="as-day-row">
-                                            <span className="as-day-label">
-                                                {new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' })}
-                                            </span>
+                                            <span className="as-day-label">{weekday}</span>
                                             <span className="as-day-icon" style={{ color }}>
                                                 {DayIcon && <DayIcon size={16} />}
                                             </span>

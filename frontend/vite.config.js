@@ -12,7 +12,6 @@ export default defineConfig(({ command, mode }) => {
   const isProduction = mode === 'production';
   const isDevelopment = mode === 'development';
 
-  // PWA plugin – only active in production builds
   const pwaPlugin = isProduction
     ? VitePWA({
       registerType: 'autoUpdate',
@@ -277,9 +276,14 @@ export default defineConfig(({ command, mode }) => {
         '@tanstack/react-query',
         'date-fns',
         'clsx',
-        'react-window',
+        // 'react-window' is removed from here
       ],
-      exclude: ['three', '@react-three/fiber', '@react-three/drei'],
+      exclude: [
+        'three',
+        '@react-three/fiber',
+        '@react-three/drei',
+        'react-window',               // ← prevent Vite from pre‑bundling it
+      ],
     },
 
     define: {

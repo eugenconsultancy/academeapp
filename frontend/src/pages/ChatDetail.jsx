@@ -1,106 +1,618 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useChatStore } from '../stores/useChatStore';
 import { useAuth } from '../contexts/AuthContext';
 import ChatWindow from '../components/chat/ChatWindow';
 import MessageInput from '../components/chat/MessageInput';
 import { chatApi } from '../api/chatApi';
-import { FiArrowLeft, FiUser, FiPhone, FiInfo } from 'react-icons/fi';
+import { FiArrowLeft, FiSearch, FiMoreVertical, FiX } from 'react-icons/fi';
+
+/* ─── Modern Design System ─── */
+const STYLE = `
+  @import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+
+  :root {
+    /* Light Mode */
+    --chat-bg-light: #ffffff;
+    --chat-surface-light: #f8f9fa;
+    --chat-surface2-light: #eef0f5;
+    --chat-border-light: rgba(0,0,0,0.08);
+    --chat-text-light: #1a1d23;
+    --chat-muted-light: #6b7280;
+    --chat-accent: #3b82f6;
+    --chat-accent-alt: #6366f1;
+    --chat-accent-glow: rgba(59, 130, 246, 0.15);
+    
+    /* Dark Mode */
+    --chat-bg-dark: #0f1419;
+    --chat-surface-dark: #1a2332;
+    --chat-surface2-dark: #243447;
+    --chat-border-dark: rgba(255,255,255,0.08);
+    --chat-text-dark: #e5e7eb;
+    --chat-muted-dark: #9ca3af;
+    
+    /* Status colors */
+    --chat-online: #10b981;
+    --chat-away: #f59e0b;
+    --chat-offline: #6b7280;
+    
+    /* Active theme defaults to dark */
+    --chat-bg: var(--chat-bg-dark);
+    --chat-surface: var(--chat-surface-dark);
+    --chat-surface2: var(--chat-surface2-dark);
+    --chat-border: var(--chat-border-dark);
+    --chat-text: var(--chat-text-dark);
+    --chat-muted: var(--chat-muted-dark);
+  }
+
+  html.light-mode {
+    --chat-bg: var(--chat-bg-light);
+    --chat-surface: var(--chat-surface-light);
+    --chat-surface2: var(--chat-surface2-light);
+    --chat-border: var(--chat-border-light);
+    --chat-text: var(--chat-text-light);
+    --chat-muted: var(--chat-muted-light);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  .cd-container {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--chat-bg);
+    color: var(--chat-text);
+    font-family: 'Geist', system-ui, sans-serif;
+    position: relative;
+    overflow: hidden;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  .cd-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: -40%;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, var(--chat-accent-glow) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  /* ─── Header ─── */
+  .cd-header {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: rgba(var(--chat-surface-rgb), 0.7);
+    backdrop-filter: blur(24px);
+    border-bottom: 1px solid var(--chat-border);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes slideDown {
+    from { opacity: 0; transform: translateY(-12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .cd-back-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--chat-surface2);
+    border: 1px solid var(--chat-border);
+    color: var(--chat-muted);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+  }
+
+  .cd-back-btn:hover {
+    background: var(--chat-accent);
+    border-color: var(--chat-accent);
+    color: #ffffff;
+    transform: translateX(-1px);
+  }
+
+  .cd-header-identity {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .cd-avatar-wrap {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .cd-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--chat-accent), var(--chat-accent-alt));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 700;
+    color: #ffffff;
+    box-shadow: 0 4px 12px var(--chat-accent-glow);
+  }
+
+  .cd-online-ring {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 12px;
+    height: 12px;
+    background: var(--chat-online);
+    border-radius: 50%;
+    border: 2px solid var(--chat-bg);
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
+  }
+
+  .cd-header-text {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .cd-header-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--chat-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+  }
+
+  .cd-header-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--chat-muted);
+    font-family: 'Geist Mono', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cd-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .cd-icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--chat-surface2);
+    border: 1px solid var(--chat-border);
+    color: var(--chat-muted);
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .cd-icon-btn:hover {
+    background: var(--chat-accent);
+    border-color: var(--chat-accent);
+    color: #ffffff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px var(--chat-accent-glow);
+  }
+
+  /* ─── Search Bar ─── */
+  .cd-search-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+    z-index: 40;
+    animation: fadeIn 0.2s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .cd-search-panel {
+    position: absolute;
+    top: 70px;
+    left: 16px;
+    right: 16px;
+    max-width: 500px;
+    background: var(--chat-surface);
+    border: 1px solid var(--chat-border);
+    border-radius: 16px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+    animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 50;
+    max-height: 380px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .cd-search-input-wrap {
+    position: relative;
+    padding: 12px;
+    border-bottom: 1px solid var(--chat-border);
+  }
+
+  .cd-search-icon {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--chat-muted);
+    pointer-events: none;
+  }
+
+  .cd-search-input {
+    width: 100%;
+    padding: 10px 14px 10px 36px;
+    background: var(--chat-surface2);
+    border: 1px solid var(--chat-border);
+    border-radius: 10px;
+    color: var(--chat-text);
+    font-family: 'Geist', sans-serif;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s ease;
+  }
+
+  .cd-search-input::placeholder {
+    color: var(--chat-muted);
+  }
+
+  .cd-search-input:focus {
+    border-color: var(--chat-accent);
+    box-shadow: 0 0 0 3px var(--chat-accent-glow);
+  }
+
+  .cd-search-results {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+
+  .cd-search-result-item {
+    padding: 12px;
+    margin-bottom: 4px;
+    background: var(--chat-surface2);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .cd-search-result-item:hover {
+    background: var(--chat-accent-glow);
+  }
+
+  .cd-search-result-text {
+    font-size: 13px;
+    color: var(--chat-text);
+    margin-bottom: 4px;
+  }
+
+  .cd-search-result-meta {
+    font-size: 11px;
+    color: var(--chat-muted);
+    font-family: 'Geist Mono', monospace;
+  }
+
+  .cd-search-empty {
+    padding: 32px 16px;
+    text-align: center;
+    color: var(--chat-muted);
+    font-size: 13px;
+  }
+
+  .cd-search-results::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .cd-search-results::-webkit-scrollbar-thumb {
+    background: var(--chat-border);
+    border-radius: 2px;
+  }
+
+  /* ─── Messages Container ─── */
+  .cd-messages {
+    position: relative;
+    z-index: 1;
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .cd-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 16px;
+    color: var(--chat-muted);
+  }
+
+  .cd-loading-dots {
+    display: flex;
+    gap: 8px;
+  }
+
+  .cd-loading-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--chat-accent);
+    animation: bounce 1.4s ease-in-out infinite;
+  }
+
+  .cd-loading-dot:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  .cd-loading-dot:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+
+  @keyframes bounce {
+    0%, 80%, 100% {
+      transform: scale(0.8);
+      opacity: 0.4;
+    }
+    40% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  .cd-loading-text {
+    font-size: 13px;
+    font-family: 'Geist Mono', monospace;
+    letter-spacing: 0.05em;
+  }
+
+  /* ─── Responsive ─── */
+  @media (max-width: 640px) {
+    .cd-header {
+      padding: 10px 12px;
+    }
+
+    .cd-back-btn {
+      width: 32px;
+      height: 32px;
+    }
+
+    .cd-avatar {
+      width: 36px;
+      height: 36px;
+      font-size: 14px;
+    }
+
+    .cd-header-name {
+      font-size: 14px;
+    }
+
+    .cd-header-meta {
+      display: none;
+    }
+
+    .cd-search-panel {
+      left: 12px;
+      right: 12px;
+      max-width: none;
+    }
+
+    .cd-icon-btn {
+      width: 32px;
+      height: 32px;
+    }
+  }
+`;
 
 export default function ChatDetail() {
-    const { conversationId } = useParams();
-    const navigate = useNavigate();
-    const { user } = useAuth();
-    const setActiveConversation = useChatStore(s => s.setActiveConversation);
-    const connectWebSocket = useChatStore(s => s.connectWebSocket);
-    const disconnectWebSocket = useChatStore(s => s.disconnectWebSocket);
-    const fetchMessages = useChatStore(s => s.setMessages);
-    const [loading, setLoading] = useState(true);
-    const [otherParticipant, setOtherParticipant] = useState(null);
-    const conversations = useChatStore(s => s.conversations);
+  const { conversationId } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const setActiveConversation = useChatStore(s => s.setActiveConversation);
+  const connectWebSocket = useChatStore(s => s.connectWebSocket);
+  const disconnectWebSocket = useChatStore(s => s.disconnectWebSocket);
+  const fetchMessages = useChatStore(s => s.setMessages);
+  const [loading, setLoading] = useState(true);
+  const [otherParticipant, setOtherParticipant] = useState(null);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const conversations = useChatStore(s => s.conversations);
+  const messages = useChatStore(s => s.messages[conversationId] || []);
 
-    // Determine the other participant from the conversation
-    useEffect(() => {
-        const conv = conversations.find(c => c.id === conversationId);
-        if (conv && user) {
-            const otherId = conv.participants.find(id => id !== user.id);
-            // In a real app you'd fetch user details; here we use a placeholder
-            setOtherParticipant({
-                id: otherId,
-                name: otherId ? `User ${otherId.slice(0, 8)}` : 'Unknown',
-                status: 'online', // could be dynamic
-                avatar: null,
-            });
-        }
-    }, [conversationId, conversations, user]);
+  // Find other participant
+  useEffect(() => {
+    const conv = conversations.find(c => c.id === conversationId);
+    if (conv && user) {
+      const otherId = conv.participants.find(id => id !== user.id);
+      setOtherParticipant({
+        id: otherId,
+        name: otherId ? `User ${otherId.slice(0, 8)}` : 'Unknown',
+        status: 'online',
+        lastActive: '2m ago',
+        messageCount: messages.length,
+      });
+    }
+  }, [conversationId, conversations, user, messages.length]);
 
-    useEffect(() => {
-        setActiveConversation({ id: conversationId });
-        connectWebSocket(conversationId);
+  // Load conversation
+  useEffect(() => {
+    if (!conversationId || conversationId === 'undefined') {
+      setLoading(false);
+      return;
+    }
 
-        chatApi.getMessages(conversationId, null, 30).then(res => {
-            fetchMessages(conversationId, res.data.reverse());
-            setLoading(false);
-        });
+    setActiveConversation({ id: conversationId });
+    connectWebSocket(conversationId);
 
-        return () => {
-            disconnectWebSocket();
-        };
-    }, [conversationId, setActiveConversation, connectWebSocket, disconnectWebSocket, fetchMessages]);
+    chatApi.getMessages(conversationId, null, 30).then(res => {
+      fetchMessages(conversationId, res.data.reverse());
+      setLoading(false);
+    });
 
-    const handleBack = () => {
-        navigate('/chats');
+    return () => {
+      disconnectWebSocket();
     };
+  }, [conversationId, setActiveConversation, connectWebSocket, disconnectWebSocket, fetchMessages]);
 
-    return (
-        <div className="h-screen flex flex-col bg-gradient-to-br from-gray-50 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-            {/* Chat header */}
-            <div className="flex items-center gap-4 px-4 py-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-lg border-b border-gray-200 dark:border-gray-700 shadow-sm">
-                <button
-                    onClick={handleBack}
-                    className="p-2 rounded-xl text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                >
-                    <FiArrowLeft size={20} />
-                </button>
+  // Search functionality
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
 
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="relative">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-bold shadow">
-                            {otherParticipant?.name?.[0] || '?'}
-                        </div>
-                        <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-400 rounded-full border-2 border-white dark:border-gray-800" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <h2 className="font-semibold text-gray-900 dark:text-white truncate">
-                            {otherParticipant?.name || 'Loading...'}
-                        </h2>
-                        <p className="text-xs text-green-500 dark:text-green-400 font-medium">
-                            Online
-                        </p>
-                    </div>
-                </div>
+    const results = messages
+      .filter(msg =>
+        msg.content?.toLowerCase().includes(query.toLowerCase()) &&
+        msg.msg_type === 'TEXT'
+      )
+      .map((msg, idx) => ({
+        ...msg,
+        preview: msg.content.substring(0, 50) + (msg.content.length > 50 ? '...' : ''),
+      }));
 
-                <button className="p-2 rounded-xl text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                    <FiPhone size={18} />
-                </button>
-                <button className="p-2 rounded-xl text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                    <FiInfo size={18} />
-                </button>
+    setSearchResults(results.slice(0, 10));
+  };
+
+  const scrollToMessage = (messageId) => {
+    setShowSearch(false);
+    setSearchQuery('');
+    setSearchResults([]);
+    // Trigger scroll in ChatWindow component
+    const element = document.getElementById(`msg-${messageId}`);
+    element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    element?.classList.add('highlight');
+  };
+
+  return (
+    <>
+      <style>{STYLE}</style>
+      <div className="cd-container">
+        {/* Header */}
+        <header className="cd-header">
+          <button className="cd-back-btn" onClick={() => navigate('/chats')} title="Back">
+            <FiArrowLeft size={18} />
+          </button>
+          <div className="cd-header-identity">
+            <div className="cd-avatar-wrap">
+              <div className="cd-avatar">
+                {otherParticipant?.name?.[0]?.toUpperCase() || '?'}
+              </div>
+              <div className="cd-online-ring" />
             </div>
+            <div className="cd-header-text">
+              <p className="cd-header-name">{otherParticipant?.name || 'Loading…'}</p>
+              <p className="cd-header-meta">
+                Online • Last active {otherParticipant?.lastActive || '—'}
+              </p>
+            </div>
+          </div>
+          <div className="cd-header-actions">
+            <button
+              className="cd-icon-btn"
+              onClick={() => setShowSearch(!showSearch)}
+              title="Search messages"
+            >
+              <FiSearch size={18} />
+            </button>
+            <button className="cd-icon-btn" title="More options">
+              <FiMoreVertical size={18} />
+            </button>
+          </div>
+        </header>
 
-            {/* Messages area */}
-            <div className="flex-1 overflow-hidden relative">
-                {loading ? (
-                    <div className="flex items-center justify-center h-full">
-                        <div className="animate-pulse text-gray-400">Loading messages...</div>
+        {/* Search Modal */}
+        {showSearch && (
+          <>
+            <div
+              className="cd-search-modal"
+              onClick={() => setShowSearch(false)}
+            />
+            <div className="cd-search-panel">
+              <div className="cd-search-input-wrap">
+                <FiSearch className="cd-search-icon" size={16} />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  placeholder="Search messages…"
+                  className="cd-search-input"
+                  autoFocus
+                />
+              </div>
+              <div className="cd-search-results">
+                {searchResults.length > 0 ? (
+                  searchResults.map(result => (
+                    <div
+                      key={result.id}
+                      className="cd-search-result-item"
+                      onClick={() => scrollToMessage(result.id)}
+                    >
+                      <p className="cd-search-result-text">{result.preview}</p>
+                      <p className="cd-search-result-meta">
+                        {new Date(result.created_at).toLocaleString()}
+                      </p>
                     </div>
+                  ))
+                ) : searchQuery ? (
+                  <div className="cd-search-empty">No messages found</div>
                 ) : (
-                    <ChatWindow conversationId={conversationId} />
+                  <div className="cd-search-empty">Type to search messages</div>
                 )}
+              </div>
             </div>
+          </>
+        )}
 
-            {/* Message input */}
-            <MessageInput conversationId={conversationId} />
+        {/* Messages */}
+        <div className="cd-messages">
+          {loading ? (
+            <div className="cd-loading">
+              <div className="cd-loading-dots">
+                <div className="cd-loading-dot" />
+                <div className="cd-loading-dot" />
+                <div className="cd-loading-dot" />
+              </div>
+              <span className="cd-loading-text">loading conversation</span>
+            </div>
+          ) : (
+            <ChatWindow conversationId={conversationId} />
+          )}
         </div>
-    );
+
+        {/* Input */}
+        <MessageInput conversationId={conversationId} />
+      </div>
+    </>
+  );
 }

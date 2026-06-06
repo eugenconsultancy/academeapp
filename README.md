@@ -1402,6 +1402,433 @@ the selct class group fucntion doesnt fetch all the classes thus limiting the ad
 
 
 
+
+FIX EACH AN EVERY ERROR BELOW FULLY:
+
+packages\channels\middleware.py", line 24, in __call__
+
+    return await self.inner(scope, receive, send)
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\channels\routing.py", line 136, in __call__
+
+    raise ValueError("No route found for path %r." % path)
+
+ValueError: No route found for path 'ws/chat/undefined/'.
+
+127.0.0.1:13065 - - [05/Jun/2026:21:58:11] "WSDISCONNECT /ws/chat/undefined/" - -
+
+127.0.0.1:12930 - - [05/Jun/2026:21:58:12] "GET /classes/attendance/02d715f3-caa3-449b-a1a3-63e96fc69280/" 200 1181
+
+127.0.0.1:12930 - - [05/Jun/2026:21:58:12] "GET /classes/attendance/02d715f3-caa3-449b-a1a3-63e96fc69280/" 200 1181
+
+127.0.0.1:13082 - - [05/Jun/2026:21:58:13] "GET /opportunities/unread-count/" 200 12
+
+127.0.0.1:13090 - - [05/Jun/2026:21:58:16] "WSCONNECTING /ws/chat/undefined/" - -
+
+2026-06-05 21:58:16,367 ERROR    Exception inside application: No route found for path 'ws/chat/undefined/'.
+
+Traceback (most recent call last):
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\channels\routing.py", line 48, in __call__
+
+    return await application(scope, receive, send)
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\channels\sessions.py", line 44, in __call__
+
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\channels\sessions.py", line 261, in __call__
+
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+
+    return await super().__call__(scope, receive, send)
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+
+    return await self.inner(scope, receive, send)
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\channels\routing.py", line 136, in __call__
+
+    raise ValueError("No route found for path %r." % path)
+
+ValueError: No route found for path 'ws/chat/undefined/'.
+
+127.0.0.1:13090 - - [05/Jun/2026:21:58:16] "WSDISCONNECT /ws/chat/undefined/" - in/js/vendor/jquery/jquery.js" 404 32269
+
+Not Found: /static/vendor/adminlte/js/adminlte.min.js
+
+2026-06-05 22:06:25,221 WARNING  Not Found: /static/vendor/adminlte/js/adminlte.min.js
+
+127.0.0.1:14515 - - [05/Jun/2026:22:06:25] "GET /static/vendor/adminlte/js/adminlte.min.js" 404 32275
+
+Not Found: /static/jazzmin/js/main.js
+
+2026-06-05 22:06:25,315 WARNING  Not Found: /static/jazzmin/js/main.js
+
+127.0.0.1:14513 - - [05/Jun/2026:22:06:25] "GET /static/jazzmin/js/main.js" 404 32227
+
+Not Found: /static/vendor/bootswatch/darkly/bootstrap.min.css
+
+2026-06-05 22:06:25,386 WARNING  Not Found: /static/vendor/bootswatch/darkly/bootstrap.min.css
+
+Not Found: /static/admin/js/theme_toggle.js
+
+2026-06-05 22:06:25,386 WARNING  Not Found: /static/admin/js/theme_toggle.js
+
+127.0.0.1:14654 - - [05/Jun/2026:22:06:25] "GET /static/vendor/bootswatch/darkly/bootstrap.min.css" 404 32299
+
+127.0.0.1:14507 - - [05/Jun/2026:22:06:25] "GET /static/admin/js/theme_toggle.js" 404 32245
+
+127.0.0.1:14669 - - [05/Jun/2026:22:06:30] "HEAD /health/" 200 -sations" 200 744
+
+127.0.0.1:1176 - - [05/Jun/2026:22:09:56] "OPTIONS /support/" 200 -
+
+'SupportTicket' object has no attribute 'ticket_id'
+
+Traceback (most recent call last):
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 216, in run
+
+    result = self.view_func(request, **values)
+
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\apps\support\api.py", line 27, in create_ticket
+
+    ticket = SupportTicket.objects.create(
+
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\db\models\manager.py", line 87, in manager_method
+
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\db\models\query.py", line 658, in create
+
+    obj.save(force_insert=True, using=self.db)
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\db\models\base.py", line 814, in save
+
+    self.save_base(
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\db\models\base.py", line 892, in save_base
+
+    post_save.send(
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\dispatch\dispatcher.py", line 176, in send
+
+    return [
+
+           ^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\dispatch\dispatcher.py", line 177, in <listcomp>
+
+    (receiver, receiver(signal=self, sender=sender, **named))
+
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\apps\support\signals.py", line 13, in ticket_created_notify
+
+    message=f"Your support ticket #{instance.ticket_id} has been created.",
+
+                                    ^^^^^^^^^^^^^^^^^^
+
+AttributeError: 'SupportTicket' object has no attribute 'ticket_id'
+
+2026-06-05 22:09:56,402 ERROR    'SupportTicket' object has no attribute 'ticket_id'
+
+Traceback (most recent call last):
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 216, in run
+
+    result = self.view_func(request, **values)
+
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\apps\support\api.py", line 27, in create_ticket
+
+    ticket = SupportTicket.objects.create(
+
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\db\models\manager.py", line 87, in manager_method
+
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\db\models\query.py", line 658, in create
+
+    obj.save(force_insert=True, using=self.db)
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\db\models\base.py", line 814, in save
+
+    self.save_base(
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\db\models\base.py", line 892, in save_base
+
+    post_save.send(
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\dispatch\dispatcher.py", line 176, in send
+
+    return [
+
+           ^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\dispatch\dispatcher.py", line 177, in <listcomp>
+
+    (receiver, receiver(signal=self, sender=sender, **named))
+
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\apps\support\signals.py", line 13, in ticket_created_notify
+
+    message=f"Your support ticket #{instance.ticket_id} has been created.",
+
+                                    ^^^^^^^^^^^^^^^^^^
+
+AttributeError: 'SupportTicket' object has no attribute 'ticket_id'
+
+Internal Server Error: /support/
+
+2026-06-05 22:09:56,827 ERROR    Internal Server Error: /support/
+
+127.0.0.1:1176 - - [05/Jun/2026:22:09:57] "POST /support/" 500 1794,,,,,,,,,,,,sations" 200 744
+
+127.0.0.1:1176 - - [05/Jun/2026:22:09:56] "OPTIONS /support/" 200 -
+
+'SupportTicket' object has no attribute 'ticket_id'
+
+Traceback (most recent call last):
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 216, in run
+
+    result = self.view_func(request, **values)
+
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\apps\support\api.py", line 27, in create_ticket
+
+    ticket = SupportTicket.objects.create(
+
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\db\models\manager.py", line 87, in manager_method
+
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\db\models\query.py", line 658, in create
+
+    obj.save(force_insert=True, using=self.db)
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\db\models\base.py", line 814, in save
+
+    self.save_base(
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\db\models\base.py", line 892, in save_base
+
+    post_save.send(
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\dispatch\dispatcher.py", line 176, in send
+
+    return [
+
+           ^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\dispatch\dispatcher.py", line 177, in <listcomp>
+
+    (receiver, receiver(signal=self, sender=sender, **named))
+
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\apps\support\signals.py", line 13, in ticket_created_notify
+
+    message=f"Your support ticket #{instance.ticket_id} has been created.",
+
+                                    ^^^^^^^^^^^^^^^^^^
+
+AttributeError: 'SupportTicket' object has no attribute 'ticket_id'
+
+2026-06-05 22:09:56,402 ERROR    'SupportTicket' object has no attribute 'ticket_id'
+
+Traceback (most recent call last):
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 216, in run
+
+    result = self.view_func(request, **values)
+
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\apps\support\api.py", line 27, in create_ticket
+
+    ticket = SupportTicket.objects.create(
+
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\db\models\manager.py", line 87, in manager_method
+
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\db\models\query.py", line 658, in create
+
+    obj.save(force_insert=True, using=self.db)
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\db\models\base.py", line 814, in save
+
+    self.save_base(
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\db\models\base.py", line 892, in save_base
+
+    post_save.send(
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\dispatch\dispatcher.py", line 176, in send
+
+    return [
+
+           ^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\django\dispatch\dispatcher.py", line 177, in <listcomp>
+
+    (receiver, receiver(signal=self, sender=sender, **named))
+
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\apps\support\signals.py", line 13, in ticket_created_notify
+
+    message=f"Your support ticket #{instance.ticket_id} has been created.",
+
+                                    ^^^^^^^^^^^^^^^^^^
+
+AttributeError: 'SupportTicket' object has no attribute 'ticket_id'
+
+Internal Server Error: /support/
+
+2026-06-05 22:09:56,827 ERROR    Internal Server Error: /support/
+
+127.0.0.1:1176 - - [05/Jun/2026:22:09:57] "POST /support/" 500 1794.......VTraceback (most recent call last):
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 216, in run
+
+    result = self.view_func(request, **values)
+
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\apps\chat\api.py", line 118, in generate_presigned_url
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\botocore\signers.py", line 659, in generate_presigned_url
+
+    params = self._emit_api_params(
+
+             ^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\botocore\client.py", line 1046, in _emit_api_params
+
+    self.meta.events.emit(
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\botocore\hooks.py", line 412, in emit
+
+    return self._emitter.emit(aliased_event_name, **kwargs)           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\botocore\hooks.py", line 256, in emit
+
+    return self._emit(event_name, kwargs)
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\botocore\hooks.py", line 239, in _emit
+
+    response = handler(**kwargs)
+
+               ^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\botocore\handlers.py", line 278, in validate_bucket_name
+
+    if not VALID_BUCKET.search(bucket) and not VALID_S3_ARN.search(bucket):
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+TypeError: expected string or bytes-like object, got 'NoneType'
+
+2026-06-05 23:06:40,100 ERROR    expected string or bytes-like object, got 'NoneType'
+
+Traceback (most recent call last):
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 216, in run
+
+    result = self.view_func(request, **values)
+
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\apps\chat\api.py", line 118, in generate_presigned_url
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\botocore\signers.py", line 659, in generate_presigned_url
+
+    params = self._emit_api_params(
+
+             ^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\botocore\client.py", line 1046, in _emit_api_params
+
+    self.meta.events.emit(
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\botocore\hooks.py", line 412, in emit
+
+    return self._emitter.emit(aliased_event_name, **kwargs)           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\botocore\hooks.py", line 256, in emit
+
+    return self._emit(event_name, kwargs)
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\botocore\hooks.py", line 239, in _emit
+
+    response = handler(**kwargs)
+
+               ^^^^^^^^^^^^^^^^^
+
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\botocore\handlers.py", line 278, in validate_bucket_name
+
+    if not VALID_BUCKET.search(bucket) and not VALID_S3_ARN.search(bucket):
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+TypeError: expected string or bytes-like object, got 'NoneType'
+
+Internal Server Error: /chat/presigned-url
+
+2026-06-05 23:06:40,108 ERROR    Internal Server Error: /chat/presigned-url
+
+
+
+
+
+also implement actual for the below accurately in chat consumers backend: 
+
+
+    async def rate_limit_check(self):
+        # Placeholder for real rate limiting (not implemented)
+        pass
+
+
+
+
 daphne academe.asgi:application --port 8000 --bind 0.0.0.0
 
 

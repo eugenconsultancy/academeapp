@@ -3,19 +3,15 @@ import { produce } from 'immer';
 import { chatApi } from '../api/chatApi';
 
 export const useChatStore = create((set, get) => ({
-    // Conversations list
     conversations: [],
-    // Messages per conversation: { [convId]: Message[] }
     messages: {},
-    // Pagination cursors: { [convId]: { oldestCursor: uuid|null, hasMore: boolean } }
     cursors: {},
     activeConversation: null,
     socket: null,
     isConnected: false,
     reconnectAttempts: 0,
-    user: null,  // set after login
+    user: null,
 
-    // Actions
     setUser: (user) => set({ user }),
     setConversations: (convs) => set({ conversations: convs }),
     setActiveConversation: (conv) => set({ activeConversation: conv }),
@@ -39,17 +35,16 @@ export const useChatStore = create((set, get) => ({
             state.messages[conversationId] = messages;
         })),
 
-    // Load older messages and prepend
     loadOlderMessages: async (convId) => {
         const state = get();
         const cursor = state.cursors?.[convId]?.oldestCursor;
-        // null means no more messages
+        // null means no more messages; do nothing
         if (cursor === null) return;
-        const res = await chatApi.getMessages(convId, cursor, 30);
+        // Pass cursor only if it exists (it's a UUID string)
+        const res = await chatApi.getMessages(convId, cursor || undefined, 30);
         const olderMsgs = res.data;
         set(produce((draft) => {
             const existing = draft.messages[convId] || [];
-            // Backend returns messages in descending order; reverse to chronological
             const reversed = olderMsgs.reverse();
             draft.messages[convId] = [...reversed, ...existing];
             if (!draft.cursors) draft.cursors = {};
@@ -60,14 +55,19 @@ export const useChatStore = create((set, get) => ({
         }));
     },
 
-    // WebSocket connection (unchanged but token read from localStorage)
+    // WebSocket connection – now guarded against undefined conversationId
     connectWebSocket: (conversationId) => {
+        if (!conversationId || conversationId === 'undefined') return;
+
         const store = get();
         const token = localStorage.getItem('access_token');
         if (!token) return;
         if (store.socket && store.socket.readyState === WebSocket.OPEN) return;
 
-        const ws = new WebSocket(`ws://localhost:8000/ws/chat/${conversationId}/?${token}`);
+        const wsBase = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+        const wsUrl = `${wsBase}/ws/chat/${conversationId}/?${token}`;
+
+        const ws = new WebSocket(wsUrl);
         ws.onopen = () => set({ isConnected: true, reconnectAttempts: 0 });
         ws.onmessage = (event) => {
             const message = JSON.parse(event.data);
@@ -84,6 +84,7 @@ export const useChatStore = create((set, get) => ({
                 }
             }, Math.min(1000 * 2 ** attempts, 30000));
         };
+        ws.onerror = () => { };
         set({ socket: ws });
     },
 

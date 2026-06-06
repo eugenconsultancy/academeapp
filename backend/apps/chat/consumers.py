@@ -3,11 +3,9 @@ import uuid
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError
 import jwt
 from django.conf import settings
 from .models import Conversation, Message
-from datetime import datetime
 
 User = get_user_model()
 
@@ -16,27 +14,27 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.conversation_id = self.scope['url_route']['kwargs']['conversation_id']
         self.room_group_name = f'chat_{self.conversation_id}'
 
-        # Authenticate user via JWT from query string
+        # Authenticate via JWT from query string
         token = self.scope.get('query_string', b'').decode()
         if not token:
             await self.close(code=4001)
             return
+
         user = await self.get_user_from_token(token)
         if not user:
             await self.close(code=4002)
             return
-        self.scope['user'] = user
 
-        # Verify user is participant and invitation is ACCEPTED
-        conv = await self.get_conversation()
-        if not conv or not conv.is_active:
+        # Store only the user ID and basic identity – never an ORM object
+        self.user_id = user.id
+        self.scope['user'] = user          # still needed for save_message? We'll avoid lazy loading
+
+        # Validate conversation and participation using primitive IDs only
+        valid = await self.validate_participation()
+        if not valid:
             await self.close(code=4003)
             return
-        if user not in conv.participants.all():
-            await self.close(code=4004)
-            return
 
-        # Join room group
         await self.channel_layer.group_add(self.room_group_name, self.channel_name)
         await self.accept()
 
@@ -45,21 +43,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data):
         data = json.loads(text_data)
-        message_type = data.get('type')
-        if message_type != 'chat_message':
+        if data.get('type') != 'chat_message':
             return
 
-        # Rate limiting (simple: 5 messages per 2 seconds per user)
+        # Rate limit (placeholder)
         await self.rate_limit_check()
 
-        # Validate sender is the authenticated user
-        if data.get('sender_id') != str(self.scope['user'].id):
+        # Validate sender
+        if data.get('sender_id') != str(self.user_id):
             return
 
-        # Save message to DB (async)
+        # Save message without touching any ORM object outside sync_to_async
         message = await self.save_message(data)
 
-        # Broadcast to room group
         await self.channel_layer.group_send(
             self.room_group_name,
             {
@@ -77,7 +73,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     async def chat_message(self, event):
-        """Receive message from room group and send to WebSocket"""
         await self.send(text_data=json.dumps(event['message']))
 
     @database_sync_to_async
@@ -89,33 +84,34 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return None
 
     @database_sync_to_async
-    def get_conversation(self):
-        try:
-            return Conversation.objects.get(id=self.conversation_id)
-        except Conversation.DoesNotExist:
-            return None
+    def validate_participation(self):
+        """
+        Synchronously check if the user is a participant of the conversation.
+        Returns True/False.  No ORM objects are returned or stored as instance attributes.
+        """
+        conv = Conversation.objects.filter(id=self.conversation_id, is_active=True).first()
+        if not conv:
+            return False
+        # Use the user_id we stored earlier, which is a primitive
+        return conv.participants.filter(id=self.user_id).exists()
 
     @database_sync_to_async
     def save_message(self, data):
+        """
+        Creates a message. All database access is inside this sync wrapper.
+        The user is fetched fresh each time (or we could pass user_id) to avoid
+        any reference to a potentially stale ORM object.
+        """
         conversation = Conversation.objects.get(id=self.conversation_id)
+        sender = User.objects.get(id=self.user_id)
         return Message.objects.create(
             conversation=conversation,
-            sender=self.scope['user'],
+            sender=sender,
             content=data.get('content', ''),
             file_url=data.get('file_url', ''),
             msg_type=data.get('msg_type', 'TEXT'),
         )
 
     async def rate_limit_check(self):
-        # Use Redis to implement a sliding window rate limit.
-        # Simplified: we check if the user has sent more than 5 messages in the last 2 seconds.
-        key = f"ratelimit:{self.scope['user'].id}:{self.conversation_id}"
-        from channels.layers import get_channel_layer
-        layer = get_channel_layer()
-        # Not async Redis call; for production, use async Redis client or a dedicated rate limiter.
-        # For demo, we'll use a simple Django cache or omit; but placeholder.
-        # In real implementation, you'd do:
-        # count = await async_redis.incr(key)
-        # if count == 1: await async_redis.expire(key, 2)
-        # if count > 5: close connection
+        # Placeholder for real rate limiting (not implemented)
         pass

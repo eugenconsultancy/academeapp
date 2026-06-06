@@ -22,6 +22,16 @@ const CATEGORY_CONFIG = {
     other: { emoji: '📦', label: 'Other', color: 'from-gray-500 to-gray-600' },
 };
 
+/**
+ * Safely format a date string for display.
+ */
+function safeFormatDate(dateStr) {
+    if (!dateStr) return 'Unknown';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return 'Unknown';
+    return d.toLocaleDateString();
+}
+
 export default function FoundItemsPage() {
     const navigate = useNavigate();
     const [category, setCategory] = useState('');
@@ -124,7 +134,6 @@ export default function FoundItemsPage() {
         .fi-card-btn-view:hover { background: rgba(0,0,0,0.03); }
         .fi-empty { text-align: center; padding: 64px 24px; }
         .fi-empty-icon { font-size: 3rem; margin-bottom: 16px; opacity: 0.6; }
-        /* Modal styles same as before */
         .fi-modal-overlay { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 20px; }
         .fi-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(6px); }
         .fi-modal { position: relative; z-index: 61; width: 100%; max-width: 460px; background: rgba(255,255,255,0.96); border: 1px solid rgba(255,255,255,0.6); border-radius: 24px; backdrop-filter: blur(28px); box-shadow: 0 24px 64px rgba(0,0,0,0.18); animation: fiIn .22s cubic-bezier(0.16,1,0.3,1) both; overflow: hidden; }
@@ -201,7 +210,7 @@ export default function FoundItemsPage() {
                                         </div>
                                         <div className="fi-card-meta">
                                             <span><FiMapPin size={10} />{item.location_found}</span>
-                                            <span><FiClock size={10} />{new Date(item.found_date).toLocaleDateString()}</span>
+                                            <span><FiClock size={10} />{safeFormatDate(item.found_date)}</span>
                                         </div>
                                         <div className="fi-card-actions">
                                             {!item.is_claimed ? (

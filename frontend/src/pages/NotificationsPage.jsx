@@ -4,11 +4,12 @@ import { Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import apiClient from '../api/client';
 import useNotificationWebSocket from '../hooks/useNotificationWebSocket';
+import DOMPurify from 'dompurify';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
 import {
     FiBell, FiAlertCircle, FiMessageSquare, FiCalendar,
     FiMail, FiShield, FiRefreshCw, FiCheck, FiTrash2,
-    FiEye, FiX
+    FiEye, FiX, FiSquare, FiCheckSquare
 } from 'react-icons/fi';
 
 const TYPE_ICONS = {
@@ -31,9 +32,18 @@ const TYPE_ICONS = {
     system: FiRefreshCw,
 };
 
+/** Strip all HTML tags, leaving only plain text */
+function stripHtml(html) {
+    if (!html) return '';
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    return doc.body.textContent || '';
+}
+
 export default function NotificationsPage() {
     const queryClient = useQueryClient();
     const [filter, setFilter] = useState('all');
+    const [selectedIds, setSelectedIds] = useState([]);
+    const [selectionMode, setSelectionMode] = useState(false);
 
     // Infinite query with cursor pagination
     const {
@@ -57,6 +67,7 @@ export default function NotificationsPage() {
         initialPageParam: undefined,
         staleTime: 30000,
         retry: 1,
+        refetchOnWindowFocus: false, // prevent refetch overwriting optimistic update
     });
 
     // Unread count
@@ -73,7 +84,6 @@ export default function NotificationsPage() {
     const markReadMutation = useMutation({
         mutationFn: (id) => apiClient.post(`/notifications/${id}/read/`),
         onMutate: async (id) => {
-            // Optimistic update: mark as read in cache
             await queryClient.cancelQueries({ queryKey: ['notifications', 'infinite', filter] });
             const previousData = queryClient.getQueryData(['notifications', 'infinite', filter]);
             queryClient.setQueryData(['notifications', 'infinite', filter], (old) => {
@@ -94,7 +104,6 @@ export default function NotificationsPage() {
         },
         onSettled: () => {
             queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
-            // No need to invalidate main query because we optimistically updated.
         },
     });
 
@@ -122,6 +131,35 @@ export default function NotificationsPage() {
         },
         onSettled: () => {
             queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+        },
+    });
+
+    // Bulk mark selected as read
+    const bulkMarkReadMutation = useMutation({
+        mutationFn: (ids) => apiClient.post('/notifications/bulk-mark-read/', { notification_ids: ids }),
+        onMutate: async (ids) => {
+            await queryClient.cancelQueries({ queryKey: ['notifications', 'infinite', filter] });
+            const previousData = queryClient.getQueryData(['notifications', 'infinite', filter]);
+            queryClient.setQueryData(['notifications', 'infinite', filter], (old) => {
+                if (!old) return old;
+                return {
+                    ...old,
+                    pages: old.pages.map(page => ({
+                        ...page,
+                        results: page.results.map(n => ids.includes(n.id) ? { ...n, is_read: true } : n),
+                    })),
+                };
+            });
+            return { previousData };
+        },
+        onError: (err, ids, context) => {
+            queryClient.setQueryData(['notifications', 'infinite', filter], context.previousData);
+            toast.error('Failed to mark selected as read');
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+            setSelectionMode(false);
+            setSelectedIds([]);
         },
     });
 
@@ -154,19 +192,21 @@ export default function NotificationsPage() {
 
     // WebSocket integration
     const handleNewNotification = useCallback((notification) => {
-        // Prepend to first page
-        queryClient.setQueryData(['notifications', 'infinite', filter], (old) => {
-            if (!old || !old.pages || old.pages.length === 0) return old;
-            const newPages = [...old.pages];
-            const firstPage = { ...newPages[0], results: [notification, ...newPages[0].results] };
-            newPages[0] = firstPage;
-            return { ...old, pages: newPages };
-        });
+        // Prepend to first page only if filter is 'all' (new notifications are unread)
+        if (filter === 'all') {
+            queryClient.setQueryData(['notifications', 'infinite', filter], (old) => {
+                if (!old || !old.pages || old.pages.length === 0) return old;
+                const newPages = [...old.pages];
+                const firstPage = { ...newPages[0], results: [notification, ...newPages[0].results] };
+                newPages[0] = firstPage;
+                return { ...old, pages: newPages };
+            });
+        }
         queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
         toast.success('New notification');
     }, [filter, queryClient]);
 
-    const { disconnect: wsDisconnect } = useNotificationWebSocket(handleNewNotification);
+    useNotificationWebSocket(handleNewNotification);
 
     // Infinite scroll observer
     const loadMoreRef = useRef(null);
@@ -185,6 +225,15 @@ export default function NotificationsPage() {
 
     const allNotifications = data?.pages?.flatMap(page => page.results) ?? [];
     const unreadCount = unreadCountData ?? 0;
+
+    const toggleSelection = (id) => {
+        setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+    };
+
+    const toggleSelectionMode = () => {
+        setSelectionMode(!selectionMode);
+        setSelectedIds([]);
+    };
 
     if (isLoading) return <SkeletonLoader type="list" count={6} />;
     if (isError) return (
@@ -213,10 +262,10 @@ export default function NotificationsPage() {
                             )}
                         </h1>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <select
                             value={filter}
-                            onChange={(e) => setFilter(e.target.value)}
+                            onChange={(e) => { setFilter(e.target.value); setSelectionMode(false); setSelectedIds([]); }}
                             className="px-3 py-2 border rounded-lg text-sm bg-white dark:bg-gray-800"
                         >
                             <option value="all">All</option>
@@ -229,6 +278,22 @@ export default function NotificationsPage() {
                         >
                             <FiCheck size={16} /> Mark all read
                         </button>
+                        <button
+                            onClick={toggleSelectionMode}
+                            className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 ${selectionMode ? 'bg-gray-600 text-white' : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300'}`}
+                        >
+                            {selectionMode ? <FiX size={16} /> : <FiCheckSquare size={16} />}
+                            {selectionMode ? 'Cancel' : 'Select'}
+                        </button>
+                        {selectionMode && selectedIds.length > 0 && (
+                            <button
+                                onClick={() => bulkMarkReadMutation.mutate(selectedIds)}
+                                disabled={bulkMarkReadMutation.isPending}
+                                className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold flex items-center gap-2"
+                            >
+                                <FiCheck size={16} /> Mark {selectedIds.length} as read
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -237,19 +302,31 @@ export default function NotificationsPage() {
                     <div className="space-y-3">
                         {allNotifications.map((notif) => {
                             const Icon = TYPE_ICONS[notif.type] || FiBell;
+                            const isSelected = selectedIds.includes(notif.id);
+                            const plainMessage = stripHtml(notif.message);
                             return (
                                 <div
                                     key={notif.id}
-                                    className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm border p-5 flex items-start gap-4 transition-all hover:shadow-md ${!notif.is_read ? 'border-l-4 border-l-indigo-500' : 'border-gray-100 dark:border-gray-700'}`}
+                                    className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm border p-5 flex items-start gap-4 transition-all hover:shadow-md ${!notif.is_read ? 'border-l-4 border-l-indigo-500' : 'border-gray-100 dark:border-gray-700'
+                                        } ${isSelected ? 'ring-2 ring-indigo-400' : ''}`}
                                 >
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${!notif.is_read ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600' : 'bg-gray-100 dark:bg-gray-700 text-gray-500'}`}>
+                                    {selectionMode && (
+                                        <button
+                                            onClick={() => toggleSelection(notif.id)}
+                                            className="flex-shrink-0 mt-1 text-indigo-500"
+                                        >
+                                            {isSelected ? <FiCheckSquare size={20} /> : <FiSquare size={20} />}
+                                        </button>
+                                    )}
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${!notif.is_read ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600' : 'bg-gray-100 dark:bg-gray-700 text-gray-500'
+                                        }`}>
                                         <Icon className="w-5 h-5" />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex justify-between items-start flex-wrap gap-2">
                                             <p className="font-semibold text-gray-900 dark:text-white truncate">{notif.title}</p>
                                             <div className="flex gap-1">
-                                                {!notif.is_read && (
+                                                {!notif.is_read && !selectionMode && (
                                                     <button
                                                         onClick={() => markReadMutation.mutate(notif.id)}
                                                         className="text-xs text-indigo-600 hover:text-indigo-700 p-1"
@@ -267,7 +344,7 @@ export default function NotificationsPage() {
                                                 </button>
                                             </div>
                                         </div>
-                                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{notif.message}</p>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{plainMessage}</p>
                                         <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
                                             <span>{new Date(notif.created_at).toLocaleString()}</span>
                                             {notif.link && (
@@ -277,7 +354,7 @@ export default function NotificationsPage() {
                                             )}
                                         </div>
                                     </div>
-                                    {!notif.is_read && (
+                                    {!notif.is_read && !selectionMode && (
                                         <span className="w-2 h-2 bg-indigo-500 rounded-full flex-shrink-0 mt-2"></span>
                                     )}
                                 </div>

@@ -5,223 +5,886 @@ import { accountsApi } from '../api/accountsApi';
 import { useChatStore } from '../stores/useChatStore';
 import { useAuth } from '../contexts/AuthContext';
 import {
-    FiMessageSquare, FiSearch, FiPlus, FiUser, FiX,
-    FiClock, FiChevronRight
+  FiMessageSquare, FiSearch, FiEdit3, FiX,
+  FiClock, FiChevronRight
 } from 'react-icons/fi';
+import toast from 'react-hot-toast';
+
+/* ─── Modern Design System ─── */
+const STYLE = `
+  @import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+
+  :root {
+    /* Light Mode */
+    --cp-bg-light: #ffffff;
+    --cp-surface-light: #f8f9fa;
+    --cp-surface2-light: #eef0f5;
+    --cp-border-light: rgba(0,0,0,0.08);
+    --cp-text-light: #1a1d23;
+    --cp-muted-light: #6b7280;
+    
+    /* Dark Mode */
+    --cp-bg-dark: #0f1419;
+    --cp-surface-dark: #1a2332;
+    --cp-surface2-dark: #243447;
+    --cp-border-dark: rgba(255,255,255,0.08);
+    --cp-text-dark: #e5e7eb;
+    --cp-muted-dark: #9ca3af;
+    
+    /* Status & Accent */
+    --cp-accent: #3b82f6;
+    --cp-accent-alt: #6366f1;
+    --cp-accent-glow: rgba(59, 130, 246, 0.15);
+    --cp-online: #10b981;
+    --cp-away: #f59e0b;
+    
+    /* Defaults to dark */
+    --cp-bg: var(--cp-bg-dark);
+    --cp-surface: var(--cp-surface-dark);
+    --cp-surface2: var(--cp-surface2-dark);
+    --cp-border: var(--cp-border-dark);
+    --cp-text: var(--cp-text-dark);
+    --cp-muted: var(--cp-muted-dark);
+  }
+
+  html.light-mode {
+    --cp-bg: var(--cp-bg-light);
+    --cp-surface: var(--cp-surface-light);
+    --cp-surface2: var(--cp-surface2-light);
+    --cp-border: var(--cp-border-light);
+    --cp-text: var(--cp-text-light);
+    --cp-muted: var(--cp-muted-light);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  .cp-root {
+    min-height: 100vh;
+    background: var(--cp-bg);
+    font-family: 'Geist', system-ui, sans-serif;
+    color: var(--cp-text);
+    position: relative;
+    overflow-x: hidden;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  .cp-root::before {
+    content: '';
+    position: fixed;
+    top: -200px;
+    left: -200px;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, var(--cp-accent-glow) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .cp-container {
+    position: relative;
+    z-index: 1;
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 40px 20px 80px;
+  }
+
+  /* ─── Header ─── */
+  .cp-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 36px;
+    animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes slideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .cp-header-left {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .cp-eyebrow {
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--cp-accent);
+    font-family: 'Geist Mono', monospace;
+    font-weight: 600;
+  }
+
+  .cp-title {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--cp-text);
+    line-height: 1;
+    letter-spacing: -0.6px;
+  }
+
+  .cp-new-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: linear-gradient(135deg, var(--cp-accent), var(--cp-accent-alt));
+    color: #ffffff;
+    border: none;
+    border-radius: 12px;
+    font-family: 'Geist', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 16px var(--cp-accent-glow);
+    transition: all 0.2s ease;
+  }
+
+  .cp-new-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 24px rgba(59, 130, 246, 0.35);
+  }
+
+  .cp-new-btn:active {
+    transform: translateY(0) scale(0.98);
+  }
+
+  /* ─── Search Panel ─── */
+  .cp-search-panel {
+    background: var(--cp-surface);
+    border: 1px solid var(--cp-border);
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 24px;
+    animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  }
+
+  .cp-search-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .cp-search-input-wrap {
+    position: relative;
+    flex: 1;
+  }
+
+  .cp-search-icon {
+    position: absolute;
+    left: 13px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--cp-muted);
+    pointer-events: none;
+  }
+
+  .cp-search-input {
+    width: 100%;
+    padding: 10px 14px 10px 38px;
+    background: var(--cp-surface2);
+    border: 1px solid var(--cp-border);
+    border-radius: 10px;
+    color: var(--cp-text);
+    font-family: 'Geist', sans-serif;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+  }
+
+  .cp-search-input::placeholder {
+    color: var(--cp-muted);
+  }
+
+  .cp-search-input:focus {
+    border-color: var(--cp-accent);
+    box-shadow: 0 0 0 3px var(--cp-accent-glow);
+  }
+
+  .cp-close-btn {
+    padding: 9px;
+    background: var(--cp-surface2);
+    border: 1px solid var(--cp-border);
+    border-radius: 10px;
+    color: var(--cp-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+  }
+
+  .cp-close-btn:hover {
+    color: var(--cp-text);
+    background: var(--cp-accent);
+    border-color: var(--cp-accent);
+  }
+
+  .cp-results {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  .cp-results::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .cp-results::-webkit-scrollbar-thumb {
+    background: var(--cp-border);
+    border-radius: 2px;
+  }
+
+  .cp-result-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .cp-result-item:hover {
+    background: var(--cp-accent-glow);
+  }
+
+  .cp-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--cp-accent), var(--cp-accent-alt));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: 700;
+    color: #ffffff;
+    flex-shrink: 0;
+  }
+
+  .cp-avatar-lg {
+    width: 48px;
+    height: 48px;
+    font-size: 18px;
+  }
+
+  .cp-online-dot {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 12px;
+    height: 12px;
+    background: var(--cp-online);
+    border-radius: 50%;
+    border: 2px solid var(--cp-bg);
+    box-shadow: 0 0 4px rgba(16, 185, 129, 0.4);
+  }
+
+  .cp-result-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .cp-result-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--cp-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cp-result-sub {
+    font-size: 12px;
+    color: var(--cp-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cp-no-results {
+    text-align: center;
+    color: var(--cp-muted);
+    font-size: 13px;
+    padding: 20px 0;
+  }
+
+  /* ─── Section Label ─── */
+  .cp-section-label {
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--cp-muted);
+    font-family: 'Geist Mono', monospace;
+    margin-bottom: 12px;
+    padding-left: 4px;
+    font-weight: 600;
+  }
+
+  /* ─── Skeleton Loader ─── */
+  .cp-skeleton-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .cp-skeleton {
+    background: var(--cp-surface);
+    border: 1px solid var(--cp-border);
+    border-radius: 16px;
+    padding: 18px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    animation: fadeIn 0.3s ease both;
+  }
+
+  .cp-skeleton:nth-child(1) { animation-delay: 0.05s; }
+  .cp-skeleton:nth-child(2) { animation-delay: 0.1s; }
+  .cp-skeleton:nth-child(3) { animation-delay: 0.15s; }
+  .cp-skeleton:nth-child(4) { animation-delay: 0.2s; }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .cp-sk-circle {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--cp-surface2);
+    animation: shimmer 1.5s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  .cp-sk-lines {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .cp-sk-line {
+    height: 12px;
+    border-radius: 6px;
+    background: var(--cp-surface2);
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  .cp-sk-line.short {
+    width: 40%;
+  }
+
+  .cp-sk-line.long {
+    width: 70%;
+  }
+
+  @keyframes shimmer {
+    0%, 100% {
+      opacity: 0.4;
+    }
+    50% {
+      opacity: 0.7;
+    }
+  }
+
+  /* ─── Empty State ─── */
+  .cp-empty {
+    text-align: center;
+    padding: 60px 20px;
+    background: var(--cp-surface);
+    border: 1px solid var(--cp-border);
+    border-radius: 20px;
+    animation: fadeIn 0.3s ease;
+  }
+
+  .cp-empty-icon {
+    width: 72px;
+    height: 72px;
+    margin: 0 auto 20px;
+    background: var(--cp-accent-glow);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    border: 1px solid var(--cp-border);
+  }
+
+  .cp-empty-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--cp-text);
+    margin-bottom: 8px;
+  }
+
+  .cp-empty-sub {
+    font-size: 14px;
+    color: var(--cp-muted);
+    margin-bottom: 24px;
+  }
+
+  .cp-empty-btn {
+    padding: 10px 24px;
+    background: linear-gradient(135deg, var(--cp-accent), var(--cp-accent-alt));
+    color: #ffffff;
+    border: none;
+    border-radius: 12px;
+    font-family: 'Geist', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 12px var(--cp-accent-glow);
+    transition: all 0.2s ease;
+  }
+
+  .cp-empty-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.35);
+  }
+
+  /* ─── Conversation Cards ─── */
+  .cp-conv-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .cp-conv-card {
+    background: var(--cp-surface);
+    border: 1px solid var(--cp-border);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    animation: fadeUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+    position: relative;
+    overflow: hidden;
+  }
+
+  @keyframes fadeUp {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .cp-conv-card:nth-child(2) { animation-delay: 0.05s; }
+  .cp-conv-card:nth-child(3) { animation-delay: 0.1s; }
+  .cp-conv-card:nth-child(4) { animation-delay: 0.15s; }
+  .cp-conv-card:nth-child(5) { animation-delay: 0.2s; }
+
+  .cp-conv-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      135deg,
+      transparent 0%,
+      var(--cp-accent-glow) 100%
+    );
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+  }
+
+  .cp-conv-card:hover {
+    border-color: var(--cp-accent);
+    background: var(--cp-surface2);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  }
+
+  .cp-conv-card:hover::before {
+    opacity: 0.5;
+  }
+
+  .cp-conv-card:active {
+    transform: translateY(0) scale(0.99);
+  }
+
+  .cp-avatar-wrap {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .cp-conv-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .cp-conv-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+
+  .cp-conv-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--cp-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60%;
+  }
+
+  .cp-conv-time {
+    font-size: 11px;
+    color: var(--cp-muted);
+    font-family: 'Geist Mono', monospace;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .cp-conv-preview {
+    font-size: 13px;
+    color: var(--cp-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cp-unread-badge {
+    min-width: 20px;
+    height: 20px;
+    background: linear-gradient(135deg, var(--cp-accent), var(--cp-accent-alt));
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: #ffffff;
+    padding: 0 6px;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px var(--cp-accent-glow);
+  }
+
+  .cp-chevron {
+    color: var(--cp-muted);
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .cp-conv-card:hover .cp-chevron {
+    color: var(--cp-accent);
+    transform: translateX(2px);
+  }
+
+  /* ─── Responsive ─── */
+  @media (max-width: 640px) {
+    .cp-container {
+      padding: 24px 16px 80px;
+    }
+
+    .cp-title {
+      font-size: 24px;
+    }
+
+    .cp-header {
+      margin-bottom: 24px;
+    }
+
+    .cp-new-btn {
+      padding: 8px 16px;
+      font-size: 13px;
+    }
+
+    .cp-conv-name {
+      max-width: 50%;
+      font-size: 14px;
+    }
+
+    .cp-conv-preview {
+      font-size: 12px;
+    }
+
+    .cp-conv-card {
+      padding: 14px;
+      gap: 12px;
+    }
+
+    .cp-avatar {
+      width: 40px;
+      height: 40px;
+      font-size: 14px;
+    }
+
+    .cp-avatar-lg {
+      width: 44px;
+      height: 44px;
+      font-size: 16px;
+    }
+  }
+`;
 
 export default function ChatsPage() {
-    const { user } = useAuth();
-    const [loading, setLoading] = useState(true);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [searchResults, setSearchResults] = useState([]);
-    const [showSearch, setShowSearch] = useState(false);
-    const conversations = useChatStore(s => s.conversations);
-    const setConversations = useChatStore(s => s.setConversations);
-    const navigate = useNavigate();
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [showSearch, setShowSearch] = useState(false);
+  const conversations = useChatStore(s => s.conversations);
+  const setConversations = useChatStore(s => s.setConversations);
+  const navigate = useNavigate();
 
-    const fetchConversations = useCallback(async () => {
-        try {
-            const res = await chatApi.getConversations();
-            setConversations(res.data);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
-    }, [setConversations]);
+  const fetchConversations = useCallback(async () => {
+    try {
+      const res = await chatApi.getConversations();
+      setConversations(res.data);
+    } catch (err) {
+      console.error('Fetch conversations error:', err);
+      toast.error('Failed to load conversations');
+    } finally {
+      setLoading(false);
+    }
+  }, [setConversations]);
 
-    useEffect(() => {
-        fetchConversations();
-    }, [fetchConversations]);
+  useEffect(() => {
+    fetchConversations();
+  }, [fetchConversations]);
 
-    const handleSearch = useCallback(async (q) => {
-        setSearchQuery(q);
-        if (q.trim().length < 2) {
-            setSearchResults([]);
-            return;
-        }
-        try {
-            const res = await accountsApi.searchStudents(q);
-            // Filter out the current user
-            const filtered = (res.data || []).filter(u => u.id !== user.id);
-            setSearchResults(filtered);
-        } catch (err) {
-            console.error(err);
-            setSearchResults([]);
-        }
-    }, [user.id]);
+  const handleSearch = useCallback(async (q) => {
+    setSearchQuery(q);
+    if (q.trim().length < 2) {
+      setSearchResults([]);
+      return;
+    }
 
-    const startChat = async (otherUserId) => {
-        try {
-            const res = await chatApi.startConversation(otherUserId);
-            navigate(`/chat/${res.data.id}`);
-            setShowSearch(false);
-            setSearchQuery('');
-            setSearchResults([]);
-        } catch (err) {
-            console.error(err);
-        }
+    try {
+      const res = await accountsApi.searchStudents(q);
+      const filtered = (res.data || []).filter(u => u.id !== user.id);
+      setSearchResults(filtered);
+    } catch (err) {
+      console.error('Search error:', err);
+      setSearchResults([]);
+    }
+  }, [user.id]);
+
+  const startChat = async (otherUserId) => {
+    try {
+      const res = await chatApi.startConversation(otherUserId);
+      navigate(`/chat/${res.data.id}`);
+      setShowSearch(false);
+      setSearchQuery('');
+      setSearchResults([]);
+    } catch (err) {
+      console.error('Start chat error:', err);
+      toast.error('Failed to start conversation');
+    }
+  };
+
+  const getOtherParticipant = (conv) => {
+    if (!user) return { name: 'Unknown', id: null };
+    const otherId = conv.participants.find(id => id !== user.id);
+    return {
+      name: otherId ? `User ${otherId.slice(0, 8)}` : 'Unknown',
+      id: otherId,
     };
+  };
 
-    // Helper to get the other participant's name and details
-    const getOtherParticipant = (conv) => {
-        if (!user) return { name: 'Unknown', avatar: '' };
-        const otherId = conv.participants.find(id => id !== user.id);
-        // In a full implementation, you would fetch user details or store them.
-        // For now, we use a placeholder; ideally you'd have a users map or fetch.
-        // But for demonstration, we'll show the conversation ID trimmed.
-        return {
-            name: otherId ? `User ${otherId.slice(0, 8)}` : 'Unknown',
-            avatar: null, // could fetch from user service
-            id: otherId,
-        };
-    };
+  const formatTime = (timestamp) => {
+    if (!timestamp) return '';
+    const now = new Date();
+    const msgDate = new Date(timestamp);
+    const diffDays = Math.floor((now - msgDate) / (1000 * 60 * 60 * 24));
 
-    const formatTime = (timestamp) => {
-        if (!timestamp) return '';
-        const now = new Date();
-        const msgDate = new Date(timestamp);
-        const diffDays = Math.floor((now - msgDate) / (1000 * 60 * 60 * 24));
-        if (diffDays === 0) return msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        if (diffDays === 1) return 'Yesterday';
-        if (diffDays < 7) return msgDate.toLocaleDateString([], { weekday: 'short' });
-        return msgDate.toLocaleDateString();
-    };
+    if (diffDays === 0) {
+      return msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) {
+      return msgDate.toLocaleDateString([], { weekday: 'short' });
+    }
+    return msgDate.toLocaleDateString();
+  };
 
-    return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-            <div className="max-w-2xl mx-auto px-4 py-8">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-8">
-                    <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                        Messages
-                    </h1>
-                    <button
-                        onClick={() => setShowSearch(!showSearch)}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-lg shadow-indigo-500/25 transition-all hover:shadow-indigo-500/40 active:scale-95"
-                    >
-                        <FiPlus size={18} />
-                        <span className="hidden sm:inline">New Chat</span>
-                    </button>
-                </div>
-
-                {/* Search panel for new chat */}
-                {showSearch && (
-                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 p-4 mb-6">
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="relative flex-1">
-                                <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                <input
-                                    type="text"
-                                    value={searchQuery}
-                                    onChange={(e) => handleSearch(e.target.value)}
-                                    placeholder="Search students by name..."
-                                    className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-                                    autoFocus
-                                />
-                            </div>
-                            <button
-                                onClick={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]); }}
-                                className="p-2.5 rounded-xl text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                            >
-                                <FiX size={20} />
-                            </button>
-                        </div>
-                        {searchResults.length > 0 && (
-                            <div className="space-y-2 max-h-64 overflow-y-auto">
-                                {searchResults.map((student) => (
-                                    <div
-                                        key={student.id}
-                                        onClick={() => startChat(student.id)}
-                                        className="flex items-center gap-3 p-3 rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-900/20 cursor-pointer transition-colors"
-                                    >
-                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-bold shadow">
-                                            {student.full_name?.[0] || '?'}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="font-semibold text-gray-900 dark:text-white">{student.full_name}</p>
-                                            <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{student.class_name || 'Student'}</p>
-                                        </div>
-                                        <FiChevronRight className="text-gray-400" />
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                        {searchQuery.length >= 2 && searchResults.length === 0 && (
-                            <p className="text-center text-gray-500 dark:text-gray-400 py-4">No students found.</p>
-                        )}
-                    </div>
-                )}
-
-                {/* Conversations list */}
-                {loading ? (
-                    <div className="space-y-4">
-                        {[...Array(3)].map((_, i) => (
-                            <div key={i} className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow animate-pulse">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 rounded-full bg-gray-200 dark:bg-gray-700" />
-                                    <div className="flex-1 space-y-2">
-                                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/3" />
-                                        <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-2/3" />
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                ) : conversations.length === 0 ? (
-                    <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700">
-                        <div className="w-20 h-20 mx-auto bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/30 dark:to-purple-900/30 rounded-full flex items-center justify-center mb-6">
-                            <FiMessageSquare className="w-8 h-8 text-indigo-500" />
-                        </div>
-                        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">No conversations yet</h2>
-                        <p className="text-gray-500 dark:text-gray-400 mb-6">Search for a student and start chatting!</p>
-                        <button
-                            onClick={() => setShowSearch(true)}
-                            className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 shadow-lg shadow-indigo-500/25 transition-all active:scale-95"
-                        >
-                            Find someone to chat
-                        </button>
-                    </div>
-                ) : (
-                    <div className="space-y-3">
-                        {conversations.map(conv => {
-                            const other = getOtherParticipant(conv);
-                            return (
-                                <div
-                                    key={conv.id}
-                                    onClick={() => navigate(`/chat/${conv.id}`)}
-                                    className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-md hover:shadow-lg border border-gray-100 dark:border-gray-700 cursor-pointer transition-all duration-200 hover:-translate-y-0.5 group"
-                                >
-                                    <div className="flex items-center gap-4">
-                                        <div className="relative">
-                                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-bold shadow-md">
-                                                {other.name?.[0] || '?'}
-                                            </div>
-                                            {/* Online indicator (simulated) */}
-                                            <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-400 rounded-full border-2 border-white dark:border-gray-800" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-baseline justify-between mb-1">
-                                                <h3 className="font-semibold text-gray-900 dark:text-white truncate">
-                                                    {other.name}
-                                                </h3>
-                                                <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap ml-2 flex items-center gap-1">
-                                                    <FiClock size={12} />
-                                                    {formatTime(conv.last_message_at)}
-                                                </span>
-                                            </div>
-                                            <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                                                {conv.last_message_preview || 'No messages yet'}
-                                            </p>
-                                        </div>
-                                        <FiChevronRight className="text-gray-400 group-hover:text-indigo-500 transition-colors ml-2" />
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
+  return (
+    <>
+      <style>{STYLE}</style>
+      <div className="cp-root">
+        <div className="cp-container">
+          {/* Header */}
+          <header className="cp-header">
+            <div className="cp-header-left">
+              <span className="cp-eyebrow">Academe / Inbox</span>
+              <h1 className="cp-title">Messages</h1>
             </div>
+            <button
+              className="cp-new-btn"
+              onClick={() => setShowSearch(!showSearch)}
+              title="Start a new chat"
+            >
+              <FiEdit3 size={16} />
+              <span>New Chat</span>
+            </button>
+          </header>
+
+          {/* Search Panel */}
+          {showSearch && (
+            <div className="cp-search-panel">
+              <div className="cp-search-row">
+                <div className="cp-search-input-wrap">
+                  <FiSearch className="cp-search-icon" size={15} />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => handleSearch(e.target.value)}
+                    placeholder="Search students by name…"
+                    className="cp-search-input"
+                    autoFocus
+                  />
+                </div>
+                <button
+                  className="cp-close-btn"
+                  onClick={() => {
+                    setShowSearch(false);
+                    setSearchQuery('');
+                    setSearchResults([]);
+                  }}
+                  title="Close search"
+                >
+                  <FiX size={18} />
+                </button>
+              </div>
+
+              {searchResults.length > 0 && (
+                <div className="cp-results">
+                  {searchResults.map((student) => (
+                    <div
+                      key={student.id}
+                      className="cp-result-item"
+                      onClick={() => startChat(student.id)}
+                    >
+                      <div className="cp-avatar">
+                        {student.full_name?.[0]?.toUpperCase() || '?'}
+                      </div>
+                      <div className="cp-result-info">
+                        <p className="cp-result-name">{student.full_name}</p>
+                        <p className="cp-result-sub">{student.class_name || 'Student'}</p>
+                      </div>
+                      <FiChevronRight size={15} style={{ color: 'var(--cp-muted)', flexShrink: 0 }} />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {searchQuery.length >= 2 && searchResults.length === 0 && (
+                <p className="cp-no-results">No students found</p>
+              )}
+            </div>
+          )}
+
+          {/* Content */}
+          {loading ? (
+            <div className="cp-skeleton-list">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="cp-skeleton">
+                  <div className="cp-sk-circle" />
+                  <div className="cp-sk-lines">
+                    <div className="cp-sk-line short" />
+                    <div className="cp-sk-line long" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : conversations.length === 0 ? (
+            <div className="cp-empty">
+              <div className="cp-empty-icon">
+                <FiMessageSquare />
+              </div>
+              <h2 className="cp-empty-title">No conversations yet</h2>
+              <p className="cp-empty-sub">Find a student and start chatting.</p>
+              <button
+                className="cp-empty-btn"
+                onClick={() => setShowSearch(true)}
+              >
+                Start a chat
+              </button>
+            </div>
+          ) : (
+            <div className="cp-conv-list">
+              <p className="cp-section-label">Recent — {conversations.length}</p>
+              {conversations.map((conv, i) => {
+                const other = getOtherParticipant(conv);
+                return (
+                  <div
+                    key={conv.id}
+                    className="cp-conv-card"
+                    style={{ animationDelay: `${i * 0.05}s` }}
+                    onClick={() => navigate(`/chat/${conv.id}`)}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <div className="cp-avatar-wrap">
+                      <div className="cp-avatar cp-avatar-lg">
+                        {other.name?.[0]?.toUpperCase() || '?'}
+                      </div>
+                      <div className="cp-online-dot" />
+                    </div>
+
+                    <div className="cp-conv-body">
+                      <div className="cp-conv-top">
+                        <span className="cp-conv-name">{other.name}</span>
+                        <span className="cp-conv-time">
+                          <FiClock size={10} />
+                          {formatTime(conv.last_message_at)}
+                        </span>
+                      </div>
+                      <p className="cp-conv-preview">
+                        {conv.last_message_preview || 'No messages yet'}
+                      </p>
+                    </div>
+
+                    {conv.unread_count > 0 && (
+                      <div className="cp-unread-badge">
+                        {conv.unread_count}
+                      </div>
+                    )}
+
+                    <FiChevronRight className="cp-chevron" size={16} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
-    );
+      </div>
+    </>
+  );
 }

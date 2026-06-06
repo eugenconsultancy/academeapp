@@ -48,9 +48,12 @@ export const classesApi = {
     getAttendance: (entryId) => apiClient.get(`/classes/attendance/${entryId}/`),
 
     // ==========================================
-    // WEEKLY SUMMARY
+    // WEEKLY SUMMARY – NOW ACCEPTS week_start PARAMETER
     // ==========================================
-    getWeeklySummary: () => apiClient.get('/classes/weekly-summary/'),
+    getWeeklySummary: (weekStart) =>
+        apiClient.get('/classes/weekly-summary/', {
+            params: { week_start: weekStart },
+        }),
 
     // ==========================================
     // CHECK‑IN

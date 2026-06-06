@@ -30,6 +30,36 @@ const STATUS_ICONS = {
     cancelled: FiXCircle,
 };
 
+/**
+ * Safely parse a date string and return a formatted string.
+ * Returns "Unknown" if parsing fails.
+ */
+function safeFormatDate(dateStr, options = {}) {
+    if (!dateStr) return 'Unknown';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return 'Unknown';
+    try {
+        return d.toLocaleDateString(undefined, options);
+    } catch {
+        return 'Unknown';
+    }
+}
+
+/**
+ * Relative time string with fallback.
+ */
+function getRelativeTime(dateStr) {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
+    const diff = Date.now() - d.getTime();
+    const days = Math.floor(diff / 86400000);
+    if (days === 0) return 'Today';
+    if (days === 1) return 'Yesterday';
+    if (days < 7) return `${days} days ago`;
+    return d.toLocaleDateString();
+}
+
 export default function ClaimListPage() {
     const [claims, setClaims] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -57,16 +87,6 @@ export default function ClaimListPage() {
         total: claims.length,
         active: claims.filter(c => !['claimed', 'rejected', 'cancelled'].includes(c.status)).length,
         claimed: claims.filter(c => c.status === 'claimed').length,
-    };
-
-    const getRelativeTime = (dateStr) => {
-        if (!dateStr) return '';
-        const diff = Date.now() - new Date(dateStr).getTime();
-        const days = Math.floor(diff / 86400000);
-        if (days === 0) return 'Today';
-        if (days === 1) return 'Yesterday';
-        if (days < 7) return `${days} days ago`;
-        return new Date(dateStr).toLocaleDateString();
     };
 
     if (loading) return <SkeletonLoader type="list" count={3} />;

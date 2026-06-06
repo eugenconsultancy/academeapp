@@ -82,7 +82,7 @@ def request_otp(request, data: OTPRequestIn):
 @router.post("/verify-otp/")
 def verify_otp(request, data: OTPVerifyIn):
     if not PhoneOTPAuth.verify_otp(data.phone_number, data.otp):
-        return {"error": "Invalid OTP"}
+        return {"error": "Your OTP is Invalid"}
 
     user = get_object_or_404(User, phone_number=data.phone_number)
     tokens = create_token_pair(user)

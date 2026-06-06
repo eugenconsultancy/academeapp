@@ -1,9 +1,15 @@
+# apps/chat/api.py
 import uuid
+from datetime import timedelta
 from django.shortcuts import get_object_or_404
 from django.conf import settings
 from ninja import Router
 from ninja.errors import HttpError
+
 from common.jwt_auth import JWTAuth
+
+auth = JWTAuth()
+
 from .models import Conversation, Message
 from .schema import (
     ConversationOut,
@@ -17,7 +23,7 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 router = Router()
-auth = JWTAuth()
+
 
 # ---------- Start a new conversation (or get existing) ----------
 @router.post('/conversations/start', response=ConversationOut, auth=auth)
@@ -25,7 +31,7 @@ def start_conversation(request, payload: StartConversationIn):
     user_a = request.auth
     user_b = get_object_or_404(User, id=payload.receiver_id)
     if user_a == user_b:
-        raise HttpError(400, "Cannot chat with yourself.")
+        raise HttpError(400, "You cannot chat with yourself.")
 
     # Find existing conversation with exactly these two participants
     conv = Conversation.objects.filter(participants=user_a).filter(participants=user_b).distinct().first()
@@ -33,11 +39,9 @@ def start_conversation(request, payload: StartConversationIn):
         conv = Conversation.objects.create(is_active=True)
         conv.participants.add(user_a, user_b)
     else:
-        # Reactivate if needed (should always be active)
         conv.is_active = True
         conv.save()
 
-    # Return conversation with participants IDs
     return {
         "id": conv.id,
         "participants": [p.id for p in conv.participants.all()],
@@ -45,6 +49,7 @@ def start_conversation(request, payload: StartConversationIn):
         "last_message_preview": conv.last_message_preview,
         "last_message_at": conv.last_message_at,
     }
+
 
 # ---------- List user's conversations ----------
 @router.get('/conversations', response=list[ConversationOut], auth=auth)
@@ -62,6 +67,7 @@ def list_conversations(request):
         })
     return result
 
+
 # ---------- Get messages (cursor-based pagination) ----------
 @router.get('/conversations/{conv_id}/messages', response=list[MessageOut], auth=auth)
 def get_messages(request, conv_id: uuid.UUID, before: uuid.UUID = None, limit: int = 50):
@@ -70,6 +76,7 @@ def get_messages(request, conv_id: uuid.UUID, before: uuid.UUID = None, limit: i
     if before:
         qs = qs.filter(id__lt=before)
     return qs.order_by('-created_at')[:limit]
+
 
 # ---------- Send a message ----------
 @router.post('/conversations/{conv_id}/messages', response=MessageOut, auth=auth)
@@ -82,7 +89,6 @@ def post_message(request, conv_id: uuid.UUID, payload: MessageIn):
         file_url=payload.file_url,
         msg_type=payload.msg_type
     )
-    # Update denormalized preview
     conv.last_message_preview = (payload.content or '')[:200]
     conv.last_message_at = message.created_at
     conv.save(update_fields=['last_message_preview', 'last_message_at'])
@@ -96,7 +102,8 @@ def post_message(request, conv_id: uuid.UUID, payload: MessageIn):
         "created_at": message.created_at,
     }
 
-# ---------- Presigned URL for file upload (restricted) ----------
+
+# ---------- Presigned URL for file upload (with safety checks) ----------
 @router.post('/presigned-url', response=PresignedUrlOut, auth=auth)
 def generate_presigned_url(request, payload: PresignedUrlIn):
     import boto3
@@ -107,24 +114,33 @@ def generate_presigned_url(request, payload: PresignedUrlIn):
     if any(payload.content_type.startswith(p) for p in BLOCKED_MIME_PREFIXES):
         raise HttpError(400, "Video files are not allowed.")
 
+    # Ensure AWS settings are available
+    bucket_name = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', None)
+    region = getattr(settings, 'AWS_S3_REGION_NAME', None)
+    access_key = getattr(settings, 'AWS_ACCESS_KEY_ID', None)
+    secret_key = getattr(settings, 'AWS_SECRET_ACCESS_KEY', None)
+
+    if not all([bucket_name, region, access_key, secret_key]):
+        raise HttpError(500, "File uploads are not configured. Please set AWS_* settings.")
+
     s3_client = boto3.client(
         's3',
-        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-        region_name=settings.AWS_S3_REGION_NAME,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        region_name=region,
     )
     key = f"chat_media/{uuid.uuid4()}/{payload.file_name}"
     try:
         presigned = s3_client.generate_presigned_url(
             'put_object',
             Params={
-                'Bucket': settings.AWS_STORAGE_BUCKET_NAME,
+                'Bucket': bucket_name,
                 'Key': key,
                 'ContentType': payload.content_type,
             },
             ExpiresIn=300
         )
-        file_url = f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com/{key}"
+        file_url = f"https://{bucket_name}.s3.{region}.amazonaws.com/{key}"
         return PresignedUrlOut(presigned_url=presigned, file_url=file_url)
     except NoCredentialsError:
         raise HttpError(500, "AWS credentials not configured.")

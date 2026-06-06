@@ -11,7 +11,7 @@ router = Router()
 
 # ── Schemas ──────────────────────────────────────────────
 class NotificationOut(BaseModel):
-    id: UUID                      # <-- now UUID, Pydantic serialises to string automatically
+    id: UUID
     title: str
     message: str
     type: str = Field(alias='notification_type')
@@ -20,7 +20,7 @@ class NotificationOut(BaseModel):
     created_at: datetime
     link: str
     source_type: Optional[str] = None
-    source_id: Optional[UUID] = None   # <-- UUID, serialised as string when not None
+    source_id: Optional[UUID] = None
 
     class Config:
         from_attributes = True
@@ -42,6 +42,10 @@ class UnreadCountOut(BaseModel):
 
 class MarkAllReadIn(BaseModel):
     before: Optional[datetime] = None
+
+
+class BulkMarkReadIn(BaseModel):
+    notification_ids: List[UUID]
 
 
 class PreferenceOut(BaseModel):
@@ -161,6 +165,20 @@ def mark_all_read(request, body: MarkAllReadIn = MarkAllReadIn()):
         qs = qs.filter(created_at__lt=body.before)
     updated_count = qs.update(is_read=True)
     return {"message": f"Marked {updated_count} notifications as read"}
+
+
+# ═══════════════════════════════════════════════════════════
+# BULK MARK AS READ
+# ═══════════════════════════════════════════════════════════
+@router.post("/bulk-mark-read/", auth=JWTAuth(), response={200: dict}, tags=["Notifications"])
+def bulk_mark_read(request, body: BulkMarkReadIn):
+    user = request.auth
+    if user.role == 'admin':
+        qs = Notification.objects.filter(id__in=body.notification_ids, is_deleted=False)
+    else:
+        qs = Notification.objects.filter(id__in=body.notification_ids, user=user, is_deleted=False)
+    count = qs.update(is_read=True)
+    return {"message": f"Marked {count} notifications as read"}
 
 
 # ═══════════════════════════════════════════════════════════

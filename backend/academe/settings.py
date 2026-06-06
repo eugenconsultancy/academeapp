@@ -11,8 +11,6 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'your-secret-key-here')
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
 
-
-
 # Jazzmin should always be before django.contrib.admin
 INSTALLED_APPS = [
     'jazzmin',
@@ -83,19 +81,17 @@ DATABASES = {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
         'OPTIONS': {
-            'timeout': 20,  # Max seconds o wait for a database lock to clear
+            'timeout': 20,
         },
     }
 }
 
-
-# Channel layers for WebSocket (using Redis)
+# =============================================================================
+# CHANNELS – use in‑memory layer for local development (no Redis needed)
+# =============================================================================
 CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            'hosts': [('127.0.0.1', 6379)],
-        },
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
     },
 }
 
@@ -116,20 +112,41 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-
+# ── EMAIL CONFIGURATION ──────────────────────────────────────
+# Note: Ensure you use an 'App Password' from your Google Account settings,
+# not your regular login password.
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.getenv('EMAIL_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_PASSWORD')
 
-# Cross origin RS
+# ── CROSS-ORIGIN RESOURCE SHARING (CORS) ──────────────────────
+# We allow the emulator, local browser dev, and potentially your local network.
 CORS_ALLOW_ALL_ORIGINS = DEBUG
-CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
 
-# Celery
-CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://10.5.50.15:5173", # Android Emulator access
+    "http://127.0.0.1:5173",
+]
+
+# If you prefer using environment variables, keep your existing logic 
+# but add the local IP address to your .env file:
+# CORS_ALLOWED_ORIGINS=http://localhost:5173,http://10.5.50.15:5173
+# CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
+
+# =============================================================================
+# CELERY – use memory broker for local development (no Redis needed)
+# =============================================================================
+if DEBUG:
+    CELERY_BROKER_URL = 'memory://'
+    CELERY_RESULT_BACKEND = 'cache+memory://'
+else:
+    # Production – use Redis
+    CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+    CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -156,18 +173,17 @@ if DEBUG and not AWS_ACCESS_KEY_ID:
     DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
 
 # ── Dual‑bucket names (used by found items app) ─────────────
-# Fall back to the main bucket if separate buckets are not configured.
 AWS_PRIVATE_BUCKET_NAME = os.getenv('AWS_PRIVATE_BUCKET_NAME', AWS_STORAGE_BUCKET_NAME)
 AWS_PUBLIC_BUCKET_NAME = os.getenv('AWS_PUBLIC_BUCKET_NAME', AWS_STORAGE_BUCKET_NAME)
 
-# Firebase FOR PUSH NOTIFICATIONS
+# Firebase for push notifications
 FIREBASE_CREDENTIALS = os.getenv('FIREBASE_CREDENTIALS_PATH')
 
 # ==============================================================================
-# 💳 INTASEND PRODUCTION PAYMENT INTEGRATION
+# 💳 INTASEND PAYMENT INTEGRATION (keys now from environment)
 # ==============================================================================
-INTASEND_SECRET_KEY = 'ISSecretKey_live_899f0bd8-6a95-435d-bb1f-6d8803411fd2'
-INTASEND_PUBLISHABLE_KEY = 'ISPubKey_live_442dc7f8-5a18-49e2-b533-ce825a6893b9'
+INTASEND_SECRET_KEY = os.getenv('INTASEND_SECRET_KEY')
+INTASEND_PUBLISHABLE_KEY = os.getenv('INTASEND_PUBLISHABLE_KEY')
 
 # Rate Limiting
 OTP_RATE_LIMIT = 3
@@ -190,7 +206,7 @@ SEARCH_BACKEND = 'django.db.models.Q'
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
 
 # ============================================
-# JAZZMIN – MODERN SAAS DASHBOARD (Top Nav + Contextual Sidebar)
+# JAZZMIN – MODERN SAAS DASHBOARD
 # ============================================
 JAZZMIN_SETTINGS = {
     "site_title": "Academe Admin",
@@ -199,13 +215,11 @@ JAZZMIN_SETTINGS = {
     "welcome_sign": "Welcome to Academe",
     "copyright": "Academe – Student Affairs Platform",
 
-    # Sidebar: we are using a custom contextual sidebar, not the default.
-    "show_sidebar": False,  # hide Jazzmin sidebar completely
+    "show_sidebar": False,
     "navigation_expanded": False,
     "hide_apps": [],
     "hide_models": [],
 
-    # Top menu (replaced by custom top nav in JS)
     "topmenu_links": [],
 
     "usermenu_links": [
@@ -242,8 +256,8 @@ JAZZMIN_UI_TWEAKS = {
     "accent": "accent-purple",
     "navbar": "navbar-dark bg-dark",
     "no_navbar_border": True,
-    "navbar_fixed": False,       # we handle our own fixed top nav
-    "sidebar_fixed": False,      # we use custom sidebar
+    "navbar_fixed": False,
+    "sidebar_fixed": False,
     "sidebar": "sidebar-dark-purple",
     "sidebar_nav_flat_style": True,
     "theme": "slate",
@@ -259,11 +273,9 @@ JAZZMIN_UI_TWEAKS = {
     "actions_sticky_top": True,
 }
 
-# ── DASHBOARD LAYOUT ──────────────────────────
 JAZZMIN_DASHBOARD = {
     "title": "Academe Admin Portal",
     "sections": [
-        # Quick Stats Row
         {
             "name": "Quick Stats",
             "column": 0,
@@ -276,7 +288,6 @@ JAZZMIN_DASHBOARD = {
                 {"type": "stat_card", "title": "Open Tickets", "model": "support.SupportTicket", "filters": {"status": "open"}, "icon": "fas fa-ticket-alt", "color": "danger"},
             ],
         },
-        # Feature Tiles + Activity Feed
         {
             "name": "Model Quick Access",
             "column": 0,
@@ -315,14 +326,8 @@ JAZZMIN_DASHBOARD = {
     ],
 }
 
-# ============================================
-# 🖼️ ADMIN CUSTOMIZATION
-# ============================================
-
-# Admin site customization
+# Admin customization
 ADMIN_SITE_HEADER = "Academe Administration"
 ADMIN_SITE_TITLE = "Academe Admin Portal"
 ADMIN_INDEX_TITLE = "Welcome to Academe Dashboard"
-
-# Number of items per page in admin
 ADMIN_LIST_PER_PAGE = 20
