@@ -1,5 +1,4 @@
 // C:\Users\GATARA-BJTU\academe\frontend\src\App.jsx
-
 import { useState, Suspense, lazy, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';

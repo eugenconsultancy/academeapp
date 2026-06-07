@@ -428,62 +428,194 @@ dist/C:/Users/GATARA-BJTU/academe/frontend/js/AttendanceDetail-Bo7R68uU.js.br   
 dist/C:/Users/GATARA-BJTU/academe/frontend/js/AdminDashboard-CaIJvgq5.js.br                  29.89kb / brotliCompress: 5.41kb
 dist/C:/Users/GATARA-BJTU/academe/frontend/js/AttendanceRing3D-Cq1pfbDr.js.br                5.59kb / brotliCompress: 1.93kb
 dist/C:/Users/GATARA-BJTU/academe/frontend/js/BiometricEnrollmentPage-DTZnMPn1.js.br         6.49kb / brotliCompress: 1.79kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/blogApi-RKWxIlDl.js.br                         1.00kb / brotliCompress: 0.29kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/AttendanceSummary-CLJN7zkS.js.br               12.19kb / brotliCompress: 3.08kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/AnnouncementsPage-Dk1rDG9a.js.br               43.34kb / brotliCompress: 8.47kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/BlogPage-CMKi7yWC.js.br                        21.29kb / brotliCompress: 4.89kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/BlurredImage-DqRqOggj.js.br                    6.74kb / brotliCompress: 2.28kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/BlogDetail-BKyCWQbl.js.br                      29.13kb / brotliCompress: 6.55kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/Card-D3c0s-An.js.br                            11.24kb / brotliCompress: 2.78kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/ClaimDetail-Chh33mEx.js.br                     14.38kb / brotliCompress: 3.65kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/ClaimListPage-BY06o8eE.js.br                   7.80kb / brotliCompress: 2.27kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/classesApi-DZfKdvUU.js.br                      1.10kb / brotliCompress: 0.39kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/CampusMapPage-B9sEqaky.js.br                   22.68kb / brotliCompress: 5.45kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/CreateAnnouncementRequestPage-aHOATNgu.js.br   3.37kb / brotliCompress: 1.02kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/CreateBlog-DgnHhBqm.js.br                      11.75kb / brotliCompress: 3.26kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/ContactPage-iAXZjBHE.js.br                     14.25kb / brotliCompress: 3.45kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/CreateOpportunityPage-5vh5lg2g.js.br           4.54kb / brotliCompress: 1.23kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/EditBlogPage-DILY9zlX.js.br                    9.19kb / brotliCompress: 2.77kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/ForgotPasswordPage-Do1juilZ.js.br              4.08kb / brotliCompress: 1.34kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/EditOpportunityPage-C-GZHRcN.js.br             5.09kb / brotliCompress: 1.36kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/foundItemsApi-B0ktCe84.js.br                   1.46kb / brotliCompress: 0.40kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/ClassesPage-BexWei3x.js.br                     47.43kb / brotliCompress: 10.16kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/geoService-egDj5fX7.js.br                      1.90kb / brotliCompress: 0.63kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/FoundItemDetailPage-DWyECHV3.js.br             13.25kb / brotliCompress: 3.24kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/GovernanceStats-BRlKkxr3.js.br                 3.61kb / brotliCompress: 1.16kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/FoundItemsPage-DnCWETlA.js.br                  14.82kb / brotliCompress: 3.51kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/GovernanceDashboard-CGJomWmJ.js.br             11.74kb / brotliCompress: 2.82kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/HomepageScene-CluKYBqO.js.br                   7.21kb / brotliCompress: 2.18kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/LoginPage-DexcuCwM.js.br                       18.61kb / brotliCompress: 4.01kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/ManageTimetablePage-BJti1q3L.js.br             12.20kb / brotliCompress: 3.28kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/HomePage-CZcnHgH7.js.br                        51.01kb / brotliCompress: 12.75kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/MyBlogPostsPage-DOG8DBZF.js.br                 3.67kb / brotliCompress: 1.25kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/MyFoundItemsPage-DqUyYM7m.js.br                2.92kb / brotliCompress: 1.03kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/NotFoundPage-BGt4awLX.js.br                    6.72kb / brotliCompress: 1.63kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/NotificationsPage-DwBWEPrn.js.br               4.20kb / brotliCompress: 1.41kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/NearbyClassesPage-CAciENNf.js.br               23.91kb / brotliCompress: 6.56kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/OpportunityDetailPage-DGOYZumO.js.br           6.74kb / brotliCompress: 1.93kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/OpportunitiesPage-Cu_jqq9v.js.br               23.42kb / brotliCompress: 5.63kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/ProfileEditPage-CT6yJeXV.js.br                 3.82kb / brotliCompress: 1.08kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/PostFoundItem-O4QtWlD8.js.br                   13.98kb / brotliCompress: 3.89kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/PrivacyPage-D2LYXlCO.js.br                     15.11kb / brotliCompress: 3.05kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/ResetPasswordPage-D2dSLqoO.js.br               6.96kb / brotliCompress: 1.82kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/ProfilePage-BqBnACP6.js.br                     20.87kb / brotliCompress: 3.48kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/ResourceUploadPage-DoIfqugw.js.br              3.99kb / brotliCompress: 1.23kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/SearchResultsPage-CfPW9-1y.js.br               3.66kb / brotliCompress: 0.96kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/SessionsPage-DCVnpgFD.js.br                    15.81kb / brotliCompress: 3.82kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/SignupPage-CwcVfGf0.js.br                      14.05kb / brotliCompress: 3.55kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/TwoFactorSetupPage-DvkOA64A.js.br              6.27kb / brotliCompress: 1.76kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/useGeolocation-BNXbrIF-.js.br                  5.77kb / brotliCompress: 2.29kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/TimetableManager-BVrRkNV3.js.br                19.49kb / brotliCompress: 4.60kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/service-worker.js.br                              2.94kb / brotliCompress: 0.88kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/vendor-date-BiKiMn9r.js.br                     9.33kb / brotliCompress: 2.87kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/sw.js.br                                          7.44kb / brotliCompress: 3.07kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/VenueDetailPage-qApj7DYz.js.br                 16.66kb / brotliCompress: 4.29kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/workbox-63c18b4d.js.br                            22.32kb / brotliCompress: 6.83kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/index-CpfRjmkF.js.br                           153.28kb / brotliCompress: 30.76kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/css/style-Ds__kdW_.css.br                         344.83kb / brotliCompress: 32.20kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/vendor-core-BHxsrp2j.js.br                     625.97kb / brotliCompress: 129.63kb
-dist/C:/Users/GATARA-BJTU/academe/frontend/js/vendor-Dufet3wZ.js.br                          1219.73kb / brotliCompress: 262.38kb
+dist/C:/Users/GATARA-BJTU/academe/frontend/js/blogApi-RKWxIlDl.js.br                         
 
 
+
+
+
+That is perfect. By running `python manage.py runserver 0.0.0.0:8000`, you have successfully instructed your Django backend to listen for incoming connections from **any** device on your network, not just your local machine.
+
+### Your Final Setup Checklist
+
+Now that your backend is actively listening on `0.0.0.0:8000` and your `.env` is configured with `10.5.50.15`, everything is aligned. Here is your confirmed sequence to get the app running on your phone:
+
+1. **Backend (Terminal 1):** Keep that command running. It is now the "server" for your phone.
+```bash
+# Already running:
+python manage.py runserver 0.0.0.0:8000
+
+```
+
+
+2. **Frontend/Sync (Terminal 2):** In your `frontend` directory, ensure your latest changes are built and synced.
+```bash
+# Build the web project
+npm run build
+# Sync the web files into the Android project
+npx cap sync android
+
+```
+
+
+3. **Deploy (Terminal 2):** Install the app on your connected phone.
+```bash
+# Run this to push the app to your phone
+npx cap run android
+
+```
+
+
+
+### Important Note on Network Permissions
+
+Since you are using `10.5.50.15`, your Android app will attempt to make network requests. Ensure that your `AndroidManifest.xml` (located in `frontend/android/app/src/main/AndroidManifest.xml`) contains the internet permission so the app is allowed to talk to your computer:
+
+```xml
+<uses-permission android:name="android.permission.INTERNET" />
+
+```
+
+*(Capacitor usually adds this automatically, but it's good to be aware if you get "Network Error" messages).*
+
+**Since your backend is now listening on all interfaces (`0.0.0.0`), you are ready to test. When you run `npx cap run android`, does the app launch on your phone and successfully fetch data from your computer?**
+
+
+
+
+
+
+fix for TICKET FUCNTION:
+
+10.5.50.15:13591 - - [06/Jun/2026:22:44:44] "HEAD /health/" 200 -
+10.5.50.15:13594 - - [06/Jun/2026:22:44:45] "HEAD /health/" 200 -
+10.5.50.15:13608 - - [06/Jun/2026:22:44:56] "HEAD /health/" 200 -
+10.5.50.15:13048 - - [06/Jun/2026:22:45:04] "GET /notifications/?page_size=20" 200 36
+10.5.50.15:13619 - - [06/Jun/2026:22:45:04] "HEAD /health/" 200 -
+10.5.50.15:12853 - - [06/Jun/2026:22:45:04] "GET /chat/conversations" 200 256
+10.5.50.15:13504 - - [06/Jun/2026:22:45:06] "GET /notifications/?page_size=20" 200 36
+10.5.50.15:13291 - - [06/Jun/2026:22:45:06] "GET /chat/conversations" 200 501
+10.5.50.15:13658 - - [06/Jun/2026:22:45:16] "HEAD /health/" 200 -
+10.5.50.15:13692 - - [06/Jun/2026:22:45:36] "HEAD /health/" 200 -
+10.5.50.15:13291 - - [06/Jun/2026:22:45:36] "GET /notifications/?page_size=20" 200 36
+10.5.50.15:13504 - - [06/Jun/2026:22:45:36] "GET /chat/conversations" 200 501
+10.5.50.15:13504 - - [06/Jun/2026:22:45:36] "GET /opportunities/unread-count/" 200 12
+10.5.50.15:13504 - - [06/Jun/2026:22:45:37] "OPTIONS /support/" 200 -
+10.5.50.15:13504 - - [06/Jun/2026:22:45:37] "POST /support/" 200 88
+1 validation error for NinjaResponseSchema
+response.0.submitted_by_name
+  Field required [type=missing, input_value=<DjangoGetter: <SupportTicket: others - OPEN>>, input_type=DjangoGetter]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+Traceback (most recent call last):
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 219, in run
+    return self._result_to_response(request, result, temporal_response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 422, in _result_to_response
+    validated_object = response_model.model_validate(
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\pydantic\main.py", line 732, in model_validate
+    return cls.__pydantic_validator__.validate_python(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for NinjaResponseSchema
+response.0.submitted_by_name
+  Field required [type=missing, input_value=<DjangoGetter: <SupportTicket: others - OPEN>>, input_type=DjangoGetter]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+2026-06-06 22:45:41,335 ERROR    1 validation error for NinjaResponseSchema
+response.0.submitted_by_name
+  Field required [type=missing, input_value=<DjangoGetter: <SupportTicket: others - OPEN>>, input_type=DjangoGetter]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+Traceback (most recent call last):
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 219, in run
+    return self._result_to_response(request, result, temporal_response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 422, in _result_to_response
+    validated_object = response_model.model_validate(
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\pydantic\main.py", line 732, in model_validate
+    return cls.__pydantic_validator__.validate_python(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for NinjaResponseSchema
+response.0.submitted_by_name
+  Field required [type=missing, input_value=<DjangoGetter: <SupportTicket: others - OPEN>>, input_type=DjangoGetter]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+Internal Server Error: /support/
+2026-06-06 22:45:41,347 ERROR    Internal Server Error: /support/
+10.5.50.15:13504 - - [06/Jun/2026:22:45:41] "GET /support/" 500 1052
+1 validation error for NinjaResponseSchema
+response.0.submitted_by_name
+  Field required [type=missing, input_value=<DjangoGetter: <SupportTicket: others - OPEN>>, input_type=DjangoGetter]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+Traceback (most recent call last):
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 219, in run
+    return self._result_to_response(request, result, temporal_response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 422, in _result_to_response
+    validated_object = response_model.model_validate(
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\pydantic\main.py", line 732, in model_validate
+    return cls.__pydantic_validator__.validate_python(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for NinjaResponseSchema
+response.0.submitted_by_name
+  Field required [type=missing, input_value=<DjangoGetter: <SupportTicket: others - OPEN>>, input_type=DjangoGetter]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+2026-06-06 22:45:42,392 ERROR    1 validation error for NinjaResponseSchema
+response.0.submitted_by_name
+  Field required [type=missing, input_value=<DjangoGetter: <SupportTicket: others - OPEN>>, input_type=DjangoGetter]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+Traceback (most recent call last):
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 219, in run
+    return self._result_to_response(request, result, temporal_response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 422, in _result_to_response
+    validated_object = response_model.model_validate(
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\pydantic\main.py", line 732, in model_validate
+    return cls.__pydantic_validator__.validate_python(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for NinjaResponseSchema
+response.0.submitted_by_name
+  Field required [type=missing, input_value=<DjangoGetter: <SupportTicket: others - OPEN>>, input_type=DjangoGetter]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+Internal Server Error: /support/
+2026-06-06 22:45:42,395 ERROR    Internal Server Error: /support/
+10.5.50.15:13504 - - [06/Jun/2026:22:45:42] "GET /support/" 500 1052
+1 validation error for NinjaResponseSchema
+response.0.submitted_by_name
+  Field required [type=missing, input_value=<DjangoGetter: <SupportTicket: others - OPEN>>, input_type=DjangoGetter]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+Traceback (most recent call last):
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 219, in run
+    return self._result_to_response(request, result, temporal_response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 422, in _result_to_response
+    validated_object = response_model.model_validate(
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\pydantic\main.py", line 732, in model_validate
+    return cls.__pydantic_validator__.validate_python(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for NinjaResponseSchema
+response.0.submitted_by_name
+  Field required [type=missing, input_value=<DjangoGetter: <SupportTicket: others - OPEN>>, input_type=DjangoGetter]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+2026-06-06 22:45:44,419 ERROR    1 validation error for NinjaResponseSchema
+response.0.submitted_by_name
+  Field required [type=missing, input_value=<DjangoGetter: <SupportTicket: others - OPEN>>, input_type=DjangoGetter]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+Traceback (most recent call last):
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 219, in run
+    return self._result_to_response(request, result, temporal_response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\ninja\operation.py", line 422, in _result_to_response
+    validated_object = response_model.model_validate(
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\pydantic\main.py", line 732, in model_validate
+    return cls.__pydantic_validator__.validate_python(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for NinjaResponseSchema
+response.0.submitted_by_name
+  Field required [type=missing, input_value=<DjangoGetter: <SupportTicket: others - OPEN>>, input_type=DjangoGetter]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+Internal Server Error: /support/
+2026-06-06 22:45:44,423 ERROR    Internal Server Error: /support/
+10.5.50.15:13504 - - [06/Jun/2026:22:45:44] "GET /support/" 500 1052

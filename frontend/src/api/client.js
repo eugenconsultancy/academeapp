@@ -15,13 +15,15 @@ const apiClient = axios.create({
   timeout: 30000,
 });
 
-// Request interceptor – attach token from localStorage
+// Request interceptor – attach token from localStorage and skip ngrok interstitial
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    // ✅ Bypass the ngrok browser‑warning page for API requests
+    config.headers['ngrok-skip-browser-warning'] = 'true';
     return config;
   },
   (error) => Promise.reject(error)

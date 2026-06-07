@@ -125,16 +125,16 @@ EMAIL_HOST_PASSWORD = os.getenv('EMAIL_PASSWORD')
 # We allow the emulator, local browser dev, and potentially your local network.
 CORS_ALLOW_ALL_ORIGINS = DEBUG
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://10.5.50.15:5173", # Android Emulator access
-    "http://127.0.0.1:5173",
-]
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:5173",
+#     "http://10.5.50.15:5173", # Android Emulator access
+#     "http://127.0.0.1:5173",
+# ]
 
 # If you prefer using environment variables, keep your existing logic 
 # but add the local IP address to your .env file:
 # CORS_ALLOWED_ORIGINS=http://localhost:5173,http://10.5.50.15:5173
-# CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
+CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
 
 # =============================================================================
 # CELERY – use memory broker for local development (no Redis needed)
