@@ -130,6 +130,7 @@
     "@types/leaflet": "^1.9.21",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
+    "@vitejs/plugin-legacy": "^5.4.3",
     "@vitejs/plugin-react": "^5.2.0",
     "autoprefixer": "^10.5.0",
     "concurrently": "^8.2.2",

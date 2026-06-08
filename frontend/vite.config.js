@@ -2,6 +2,7 @@
 
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import legacy from '@vitejs/plugin-legacy';                  // ✅ added
 import { VitePWA } from 'vite-plugin-pwa';
 import { visualizer } from 'rollup-plugin-visualizer';
 import viteCompression from 'vite-plugin-compression';
@@ -101,6 +102,11 @@ export default defineConfig(({ command, mode }) => {
         },
       }),
 
+      // ✅ Legacy plugin for older Android WebViews
+      legacy({
+        targets: ['defaults', 'not IE 11', 'android >= 80'],
+      }),
+
       pwaPlugin,
 
       isProduction &&
@@ -196,6 +202,8 @@ export default defineConfig(({ command, mode }) => {
       chunkSizeWarningLimit: 600,
       cssCodeSplit: false,
       minify: isProduction ? 'terser' : false,
+      // ✅ Safer target for all Android devices
+      target: 'es2015',
       terserOptions: isProduction
         ? {
           compress: {
@@ -211,16 +219,10 @@ export default defineConfig(({ command, mode }) => {
       cssMinify: isProduction,
       rollupOptions: {
         output: {
+          // ✅ Fixed chunk splitting – no separate React chunk
           manualChunks: (id) => {
             if (id.includes('node_modules')) {
-              if (
-                id.includes('react') ||
-                id.includes('react-dom') ||
-                id.includes('react-router-dom') ||
-                id.includes('scheduler')
-              ) {
-                return 'vendor-core';
-              }
+              // Keep these splits for better caching
               if (id.includes('three') || id.includes('@react-three/fiber') || id.includes('@react-three/drei')) {
                 return 'vendor-three';
               }
@@ -233,6 +235,7 @@ export default defineConfig(({ command, mode }) => {
               if (id.includes('date-fns')) {
                 return 'vendor-date';
               }
+              // EVERYTHING ELSE (including React) goes into one chunk
               return 'vendor';
             }
           },
@@ -253,7 +256,6 @@ export default defineConfig(({ command, mode }) => {
           entryFileNames: 'js/[name]-[hash].js',
         },
       },
-      target: 'es2020',
     },
 
     css: {
@@ -276,13 +278,12 @@ export default defineConfig(({ command, mode }) => {
         '@tanstack/react-query',
         'date-fns',
         'clsx',
-        // 'react-window' is removed from here
       ],
       exclude: [
         'three',
         '@react-three/fiber',
         '@react-three/drei',
-        'react-window',               // ← prevent Vite from pre‑bundling it
+        'react-window',
       ],
     },
 
