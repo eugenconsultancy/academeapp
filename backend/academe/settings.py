@@ -112,14 +112,17 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# ── EMAIL CONFIGURATION ──────────────────────────────────────
-# Note: Ensure you use an 'App Password' from your Google Account settings,
-# not your regular login password.
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.getenv('EMAIL_USER')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_PASSWORD')
+# ── EMAIL CONFIGURATION (Temporarily using console backend for debugging) ──
+# This will print emails to the terminal instead of actually sending them.
+# Remove or comment this out when you want to use real SMTP.
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
+# If you want to switch back to real SMTP, comment the line above and uncomment the lines below:
+# EMAIL_HOST = 'smtp.gmail.com'
+# EMAIL_PORT = 587
+# EMAIL_USE_TLS = True
+# EMAIL_HOST_USER = os.getenv('EMAIL_USER')
+# EMAIL_HOST_PASSWORD = os.getenv('EMAIL_PASSWORD')
 
 # ── CROSS-ORIGIN RESOURCE SHARING (CORS) ──────────────────────
 # We allow the emulator, local browser dev, and potentially your local network.
