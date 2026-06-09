@@ -26,6 +26,7 @@ api = NinjaAPI(
     version="1.0.0",
 )
 
+# Mount all routers under the /api/ prefix
 api.add_router("/accounts/", accounts_router, tags=["Accounts"])
 api.add_router("/classes/", classes_router, tags=["Classes"])
 api.add_router("/found-items/", found_items_router, tags=["Found Items"])
@@ -46,11 +47,13 @@ def health_check(request):
     return JsonResponse({'status': 'ok', 'version': '1.0.0'})
 
 urlpatterns = [
-    path('health/', health_check),   # ← changed from 'api/health/' to match the proxy-stripped path
+    path('health/', health_check),
+    path('api/health/', health_check),
     path('admin/', admin.site.urls),
-    path('', api.urls),
+    path('api/', api.urls),
 ]
 
-# Serve media files in development
+# ✅ Serve media AND static files in development
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

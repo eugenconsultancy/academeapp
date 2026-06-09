@@ -16,7 +16,9 @@ router = Router()
 @router.get("/", auth=JWTAuth(), response=List[TicketOut])
 def list_user_tickets(request, status: str = None):
     """List tickets submitted by the authenticated user. Optionally filter by status."""
-    tickets = SupportTicket.objects.filter(submitted_by=request.auth)
+    tickets = SupportTicket.objects.filter(submitted_by=request.auth)\
+        .select_related('submitted_by', 'assigned_to')\
+        .prefetch_related('responses__responder')
     if status and status in [s.value for s in TicketStatus]:
         tickets = tickets.filter(status=status)
     tickets = tickets.order_by('-created_at')
@@ -35,7 +37,11 @@ def create_ticket(request, data: TicketIn):
 
 @router.get("/{ticket_id}/", auth=JWTAuth(), response=TicketOut)
 def get_ticket(request, ticket_id: str):
-    ticket = get_object_or_404(SupportTicket, id=ticket_id, submitted_by=request.auth)
+    ticket = get_object_or_404(
+        SupportTicket.objects.select_related('submitted_by', 'assigned_to')
+        .prefetch_related('responses__responder'),
+        id=ticket_id, submitted_by=request.auth
+    )
     return ticket
 
 # ─────────────────────────────────────────────────────────────────
@@ -48,7 +54,8 @@ def admin_list_tickets(
     status: str = Query(None, description="Filter by status"),
     assigned_to: str = Query(None, description="Filter by assigned user ID")
 ):
-    tickets = SupportTicket.objects.all()
+    tickets = SupportTicket.objects.select_related('submitted_by', 'assigned_to')\
+        .prefetch_related('responses__responder')
     if status:
         tickets = tickets.filter(status=status)
     if assigned_to:
@@ -57,7 +64,11 @@ def admin_list_tickets(
 
 @router.get("/admin/{ticket_id}/", auth=IsAdmin(), response=TicketOut)
 def admin_get_ticket(request, ticket_id: str):
-    ticket = get_object_or_404(SupportTicket, id=ticket_id)
+    ticket = get_object_or_404(
+        SupportTicket.objects.select_related('submitted_by', 'assigned_to')
+        .prefetch_related('responses__responder'),
+        id=ticket_id
+    )
     return ticket
 
 @router.put("/admin/{ticket_id}/", auth=IsAdmin())
@@ -83,14 +94,4 @@ def admin_respond_to_ticket(request, ticket_id: str, data: TicketResponseIn):
         message=data.message,
         is_internal=data.is_internal
     )
-    # Optionally send notification to ticket submitter (if not internal)
-    # if not data.is_internal:
-    #     from apps.notifications.services import NotificationService
-    #     NotificationService.send(
-    #         user=ticket.submitted_by,
-    #         title=f"Support Ticket Update: {ticket.title}",
-    #         message=f"New response from {request.auth.full_name}",
-    #         notification_type="support",
-    #         link=f"/my-tickets/{ticket.id}"
-    #     )
     return {"message": "Response added", "response_id": str(response.id)}

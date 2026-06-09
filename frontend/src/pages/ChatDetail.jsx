@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import ChatWindow from '../components/chat/ChatWindow';
 import MessageInput from '../components/chat/MessageInput';
 import { chatApi } from '../api/chatApi';
-import { FiArrowLeft, FiSearch, FiMoreVertical, FiX } from 'react-icons/fi';
+import { FiArrowLeft, FiSearch, FiMoreVertical, FiX, FiArrowDown } from 'react-icons/fi';
 
 /* ─── Modern Design System ─── */
 const STYLE = `
@@ -191,6 +191,10 @@ const STYLE = `
     text-overflow: ellipsis;
   }
 
+  .cd-header-meta.online {
+    color: var(--chat-online);
+  }
+
   .cd-header-actions {
     display: flex;
     align-items: center;
@@ -220,7 +224,7 @@ const STYLE = `
     box-shadow: 0 4px 12px var(--chat-accent-glow);
   }
 
-  /* ─── Search Bar ─── */
+  /* ─── Search Modal ─── */
   .cd-search-modal {
     position: fixed;
     inset: 0;
@@ -394,6 +398,221 @@ const STYLE = `
     letter-spacing: 0.05em;
   }
 
+  /* ─── Info Drawer ─── */
+  .cd-drawer-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+    z-index: 30;
+    animation: fadeIn 0.2s ease;
+  }
+
+  .cd-drawer {
+    position: fixed;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 320px;
+    background: var(--chat-surface);
+    border-left: 1px solid var(--chat-border);
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: -4px 0 12px rgba(0, 0, 0, 0.12);
+  }
+
+  @keyframes slideInRight {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  .cd-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    border-bottom: 1px solid var(--chat-border);
+    flex-shrink: 0;
+  }
+
+  .cd-drawer-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--chat-text);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    font-family: 'Geist Mono', monospace;
+  }
+
+  .cd-drawer-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--chat-surface2);
+    border: 1px solid var(--chat-border);
+    color: var(--chat-muted);
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .cd-drawer-close:hover {
+    background: var(--chat-accent);
+    border-color: var(--chat-accent);
+    color: #ffffff;
+  }
+
+  .cd-drawer-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+  }
+
+  .cd-drawer-section {
+    margin-bottom: 24px;
+  }
+
+  .cd-drawer-section-title {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--chat-muted);
+    font-family: 'Geist Mono', monospace;
+    margin-bottom: 12px;
+    font-weight: 600;
+  }
+
+  .cd-drawer-user-card {
+    background: var(--chat-surface2);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+
+  .cd-drawer-user-avatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--chat-accent), var(--chat-accent-alt));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0 auto 12px;
+  }
+
+  .cd-drawer-user-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--chat-text);
+    margin-bottom: 4px;
+  }
+
+  .cd-drawer-user-meta {
+    font-size: 12px;
+    color: var(--chat-muted);
+    margin-bottom: 8px;
+  }
+
+  .cd-drawer-user-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--chat-online);
+    font-weight: 500;
+  }
+
+  .cd-drawer-button {
+    width: 100%;
+    padding: 10px;
+    margin-top: 8px;
+    background: var(--chat-surface);
+    border: 1px solid var(--chat-border);
+    border-radius: 10px;
+    color: var(--chat-text);
+    font-family: 'Geist', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .cd-drawer-button:hover {
+    background: var(--chat-accent-glow);
+    border-color: var(--chat-accent);
+    color: var(--chat-accent);
+  }
+
+  .cd-drawer-button.danger {
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.2);
+  }
+
+  .cd-drawer-button.danger:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: #ef4444;
+  }
+
+  .cd-drawer-content::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .cd-drawer-content::-webkit-scrollbar-thumb {
+    background: var(--chat-border);
+    border-radius: 2px;
+  }
+
+  /* ─── Scroll to Bottom Button ─── */
+  .cd-scroll-btn {
+    position: absolute;
+    bottom: 80px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: linear-gradient(135deg, var(--chat-accent), var(--chat-accent-alt));
+    color: #ffffff;
+    border: none;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 12px var(--chat-accent-glow);
+    animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 5;
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .cd-scroll-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.35);
+  }
+
   /* ─── Responsive ─── */
   @media (max-width: 640px) {
     .cd-header {
@@ -429,6 +648,10 @@ const STYLE = `
       width: 32px;
       height: 32px;
     }
+
+    .cd-drawer {
+      width: 100%;
+    }
   }
 `;
 
@@ -443,8 +666,10 @@ export default function ChatDetail() {
   const [loading, setLoading] = useState(true);
   const [otherParticipant, setOtherParticipant] = useState(null);
   const [showSearch, setShowSearch] = useState(false);
+  const [showDrawer, setShowDrawer] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
   const conversations = useChatStore(s => s.conversations);
   const messages = useChatStore(s => s.messages[conversationId] || []);
 
@@ -452,16 +677,16 @@ export default function ChatDetail() {
   useEffect(() => {
     const conv = conversations.find(c => c.id === conversationId);
     if (conv && user) {
-      const otherId = conv.participants.find(id => id !== user.id);
       setOtherParticipant({
-        id: otherId,
-        name: otherId ? `User ${otherId.slice(0, 8)}` : 'Unknown',
-        status: 'online',
-        lastActive: '2m ago',
-        messageCount: messages.length,
+        id: conv.participant_id,
+        name: conv.participant_name || 'Unknown',
+        class: conv.participant_class || 'Student',
+        status: conv.participant_status || 'offline',
+        lastActive: conv.participant_last_active || '—',
+        avatar: conv.participant_avatar,
       });
     }
-  }, [conversationId, conversations, user, messages.length]);
+  }, [conversationId, conversations, user]);
 
   // Load conversation
   useEffect(() => {
@@ -508,10 +733,22 @@ export default function ChatDetail() {
     setShowSearch(false);
     setSearchQuery('');
     setSearchResults([]);
-    // Trigger scroll in ChatWindow component
     const element = document.getElementById(`msg-${messageId}`);
     element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     element?.classList.add('highlight');
+  };
+
+  const handleScroll = (e) => {
+    const element = e.target;
+    const isNearBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 100;
+    setShowScrollBtn(!isNearBottom);
+  };
+
+  const scrollToBottom = () => {
+    const messagesContainer = document.querySelector('.cd-messages');
+    if (messagesContainer) {
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
   };
 
   return (
@@ -528,12 +765,14 @@ export default function ChatDetail() {
               <div className="cd-avatar">
                 {otherParticipant?.name?.[0]?.toUpperCase() || '?'}
               </div>
-              <div className="cd-online-ring" />
+              {otherParticipant?.status === 'online' && <div className="cd-online-ring" />}
             </div>
             <div className="cd-header-text">
               <p className="cd-header-name">{otherParticipant?.name || 'Loading…'}</p>
-              <p className="cd-header-meta">
-                Online • Last active {otherParticipant?.lastActive || '—'}
+              <p className={`cd-header-meta ${otherParticipant?.status === 'online' ? 'online' : ''}`}>
+                {otherParticipant?.status === 'online'
+                  ? '🟢 Online'
+                  : `Last active ${otherParticipant?.lastActive}`}
               </p>
             </div>
           </div>
@@ -545,7 +784,11 @@ export default function ChatDetail() {
             >
               <FiSearch size={18} />
             </button>
-            <button className="cd-icon-btn" title="More options">
+            <button
+              className="cd-icon-btn"
+              onClick={() => setShowDrawer(!showDrawer)}
+              title="Conversation info"
+            >
               <FiMoreVertical size={18} />
             </button>
           </div>
@@ -594,8 +837,68 @@ export default function ChatDetail() {
           </>
         )}
 
+        {/* Info Drawer */}
+        {showDrawer && (
+          <>
+            <div
+              className="cd-drawer-overlay"
+              onClick={() => setShowDrawer(false)}
+            />
+            <div className="cd-drawer">
+              <div className="cd-drawer-header">
+                <h2 className="cd-drawer-title">Details</h2>
+                <button
+                  className="cd-drawer-close"
+                  onClick={() => setShowDrawer(false)}
+                >
+                  <FiX size={16} />
+                </button>
+              </div>
+
+              <div className="cd-drawer-content">
+                {/* User Card */}
+                <div className="cd-drawer-section">
+                  <div className="cd-drawer-user-card">
+                    <div className="cd-drawer-user-avatar">
+                      {otherParticipant?.name?.[0]?.toUpperCase() || '?'}
+                    </div>
+                    <p className="cd-drawer-user-name">{otherParticipant?.name}</p>
+                    <p className="cd-drawer-user-meta">{otherParticipant?.class}</p>
+                    <p className="cd-drawer-user-status">
+                      <span>●</span>
+                      {otherParticipant?.status === 'online'
+                        ? 'Active now'
+                        : `Last active ${otherParticipant?.lastActive}`}
+                    </p>
+                    <button className="cd-drawer-button">View Profile</button>
+                  </div>
+                </div>
+
+                {/* Conversation Actions */}
+                <div className="cd-drawer-section">
+                  <p className="cd-drawer-section-title">Actions</p>
+                  <button className="cd-drawer-button">📌 Pin Conversation</button>
+                  <button className="cd-drawer-button">🔕 Mute Notifications</button>
+                  <button className="cd-drawer-button">📑 Search in Chat</button>
+                  <button className="cd-drawer-button danger">🚫 Block User</button>
+                  <button className="cd-drawer-button danger">🗑️ Delete Chat</button>
+                </div>
+
+                {/* Chat Info */}
+                <div className="cd-drawer-section">
+                  <p className="cd-drawer-section-title">Chat Info</p>
+                  <div style={{ fontSize: '12px', color: 'var(--chat-muted)', lineHeight: '1.8' }}>
+                    <div>Messages: {messages.length}</div>
+                    <div style={{ marginTop: '8px' }}>Created: {new Date().toLocaleDateString()}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
         {/* Messages */}
-        <div className="cd-messages">
+        <div className="cd-messages" onScroll={handleScroll}>
           {loading ? (
             <div className="cd-loading">
               <div className="cd-loading-dots">
@@ -606,7 +909,43 @@ export default function ChatDetail() {
               <span className="cd-loading-text">loading conversation</span>
             </div>
           ) : (
-            <ChatWindow conversationId={conversationId} />
+            <>
+              {messages.length === 0 ? (
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: '100%',
+                  gap: '12px',
+                  color: 'var(--chat-muted)'
+                }}>
+                  <div style={{ fontSize: '32px' }}>💬</div>
+                  <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--chat-text)' }}>
+                    Start your conversation
+                  </div>
+                  <div style={{ fontSize: '12px', textAlign: 'center', maxWidth: '200px' }}>
+                    Introduce yourself and begin chatting with {otherParticipant?.name}.
+                  </div>
+                </div>
+              ) : (
+                <ChatWindow
+                  conversationId={conversationId}
+                  onScroll={handleScroll}
+                />
+              )}
+            </>
+          )}
+
+          {showScrollBtn && (
+            <button
+              className="cd-scroll-btn"
+              onClick={scrollToBottom}
+              title="Jump to latest messages"
+            >
+              <FiArrowDown size={14} />
+              <span>New messages</span>
+            </button>
           )}
         </div>
 

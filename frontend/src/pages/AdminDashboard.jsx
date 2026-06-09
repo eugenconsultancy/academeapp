@@ -17,7 +17,7 @@ import {
   FiTrash2, FiAlertTriangle, FiX, FiCheck,
   FiUserCheck, FiBook, FiClipboard, FiServer,
   FiEdit2, FiSlash, FiEyeOff, FiEye as FiEyeShow,
-  FiUserPlus, FiLayers,
+  FiUserPlus, FiLayers, FiMessageSquare,
 } from 'react-icons/fi';
 
 const TABS = [
@@ -371,6 +371,13 @@ export default function AdminDashboard() {
 
         .role-scope-list { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
         .role-scope-item { background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.15); border-radius: 6px; padding: 2px 8px; font-size: 0.7rem; font-weight: 600; color: #6366f1; }
+
+        /* ✅ FIX: Overview tab cards now respond to dark mode */
+        .ad-overview-card { background: rgba(255,255,255,0.85); border: 1px solid rgba(0,0,0,0.05); border-radius: 14px; padding: 16px; cursor: pointer; text-align: center; backdrop-filter: blur(12px); transition: all 0.2s; }
+        .ad-overview-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); transform: translateY(-1px); }
+        .dark .ad-overview-card { background: rgba(15,23,42,0.85); border-color: rgba(255,255,255,0.05); }
+        .ad-overview-card .ad-overview-label { font-weight: 700; color: #0f172a; font-size: 0.9rem; }
+        .dark .ad-overview-card .ad-overview-label { color: #f8fafc; }
       `}</style>
 
       <div className="ad-root">
@@ -382,6 +389,7 @@ export default function AdminDashboard() {
           <div className="ad-header-links">
             <Link to="/admin/audit-logs" className="ad-link"><FiActivity size={14} /> Audit Logs</Link>
             <Link to="/admin/roles" className="ad-link"><FiUsers size={14} /> Roles</Link>
+            <Link to="/admin/tickets" className="ad-link"><FiMessageSquare size={14} /> Tickets</Link>
             <Link to="/governance" className="ad-link"><FiTrendingUp size={14} /> Governance</Link>
             <a href="http://localhost:8000/admin/" target="_blank" rel="noopener noreferrer" className="ad-link ad-link-green"><FiExternalLink size={14} /> Django Admin</a>
           </div>
@@ -409,11 +417,12 @@ export default function AdminDashboard() {
                   <div className="ad-stat"><div className="ad-stat-value">{safeStr(stats?.active_roles) || '0'}</div><div className="ad-stat-label">Roles</div></div>
                   <div className="ad-stat"><div className="ad-stat-value">{safeStr(stats?.announcements_count) || '0'}</div><div className="ad-stat-label">Announcements</div></div>
                 </div>
+                {/* ✅ FIXED: Overview grid now uses responsive dark‑mode classes */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
                   {TABS.filter(t => t.id !== 'overview').map(tab => (
-                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className="ad-card" style={{ cursor: 'pointer', textAlign: 'center' }}>
+                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className="ad-overview-card">
                       <tab.icon size={28} style={{ color: '#6366f1', marginBottom: 8 }} />
-                      <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.9rem' }}>{tab.label}</div>
+                      <div className="ad-overview-label">{tab.label}</div>
                     </button>
                   ))}
                 </div>

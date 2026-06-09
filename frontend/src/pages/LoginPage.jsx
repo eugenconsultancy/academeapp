@@ -144,6 +144,7 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
+      // ✅ No /api/ prefix – baseURL already provides it
       await apiClient.post('/accounts/request-otp/', { phone_number: phone });
       setStep('otp');
       setResendTimer(30);

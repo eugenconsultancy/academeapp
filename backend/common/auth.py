@@ -8,18 +8,20 @@ from ninja_jwt.exceptions import InvalidToken
 class PhoneOTPAuth:
     @staticmethod
     def generate_otp(phone_number):
-        # Rate limit (per phone number)
-        rate_key = f'otp_rate_{phone_number}'
-        rate_limit = getattr(settings, 'OTP_RATE_LIMIT', 5)
-        rate_window = getattr(settings, 'OTP_RATE_WINDOW', 300)
-        
-        attempts = cache.get(rate_key, 0)
-        if attempts >= rate_limit:
-            return None, "Rate limit exceeded. Please try again later."
+        # ✅ Bypass rate limiting in DEBUG mode
+        if not settings.DEBUG:
+            rate_key = f'otp_rate_{phone_number}'
+            rate_limit = getattr(settings, 'OTP_RATE_LIMIT', 5)
+            rate_window = getattr(settings, 'OTP_RATE_WINDOW', 300)
+            
+            attempts = cache.get(rate_key, 0)
+            if attempts >= rate_limit:
+                return None, "Rate limit exceeded. Please try again later."
+            
+            cache.set(rate_key, attempts + 1, timeout=rate_window)
         
         otp = str(random.randint(100000, 999999))
         cache.set(f'otp_{phone_number}', otp, timeout=600)  # 10 min
-        cache.set(rate_key, attempts + 1, timeout=rate_window)
         
         return otp, None
     
@@ -28,7 +30,7 @@ class PhoneOTPAuth:
         # Check lockout
         lockout_key = f'otp_lockout_{phone_number}'
         if cache.get(lockout_key):
-            return False  # <-- FIXED: returns bool only
+            return False
             
         otp_key = f'otp_{phone_number}'
         stored_otp = cache.get(otp_key)
@@ -37,13 +39,14 @@ class PhoneOTPAuth:
             cache.delete(otp_key)
             return True
         
-        # Increment failure counter
-        fail_key = f'otp_fail_{phone_number}'
-        attempts = cache.get(fail_key, 0) + 1
-        if attempts >= 3:
-            cache.set(lockout_key, True, timeout=1800)  # 30 min lockout
-        else:
-            cache.set(fail_key, attempts, timeout=600)
+        # ✅ Bypass failure counting in DEBUG mode
+        if not settings.DEBUG:
+            fail_key = f'otp_fail_{phone_number}'
+            attempts = cache.get(fail_key, 0) + 1
+            if attempts >= 3:
+                cache.set(lockout_key, True, timeout=1800)  # 30 min lockout
+            else:
+                cache.set(fail_key, attempts, timeout=600)
         
         return False
 
@@ -56,7 +59,6 @@ class CustomJWTAuth(JWTAuth):
             if not user.is_active:
                 raise InvalidToken('Account is deactivated')
             
-            # Check password change timestamp if available
             if hasattr(user, 'last_password_change') and user.last_password_change:
                 iat = validated_token.get('iat')
                 if iat and user.last_password_change.timestamp() > iat:

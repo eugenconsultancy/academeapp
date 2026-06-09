@@ -2,7 +2,7 @@
 
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
-import legacy from '@vitejs/plugin-legacy';                  // ✅ added
+import legacy from '@vitejs/plugin-legacy';
 import { VitePWA } from 'vite-plugin-pwa';
 import { visualizer } from 'rollup-plugin-visualizer';
 import viteCompression from 'vite-plugin-compression';
@@ -102,7 +102,6 @@ export default defineConfig(({ command, mode }) => {
         },
       }),
 
-      // ✅ Legacy plugin for older Android WebViews
       legacy({
         targets: ['defaults', 'not IE 11', 'android >= 80'],
       }),
@@ -164,30 +163,7 @@ export default defineConfig(({ command, mode }) => {
         'X-Frame-Options': 'DENY',
         'X-XSS-Protection': '1; mode=block',
       },
-      proxy: {
-        '/api': {
-          target: env.VITE_API_URL || 'http://localhost:8000',
-          changeOrigin: true,
-          secure: false,
-          rewrite: (path) => path.replace(/^\/api/, ''),
-        },
-        '/ws': {
-          target: env.VITE_WS_URL || 'ws://localhost:8000',
-          ws: true,
-          changeOrigin: true,
-          secure: false,
-        },
-        '/media': {
-          target: env.VITE_API_URL || 'http://localhost:8000',
-          changeOrigin: true,
-          secure: false,
-        },
-        '/static': {
-          target: env.VITE_API_URL || 'http://localhost:8000',
-          changeOrigin: true,
-          secure: false,
-        },
-      },
+      // ✅ Proxy block removed – the browser talks directly to ngrok
       watch: {
         usePolling: false,
         ignored: ['**/node_modules/**', '**/dist/**', '**/.git/**'],
@@ -202,7 +178,6 @@ export default defineConfig(({ command, mode }) => {
       chunkSizeWarningLimit: 600,
       cssCodeSplit: false,
       minify: isProduction ? 'terser' : false,
-      // ✅ Safer target for all Android devices
       target: 'es2015',
       terserOptions: isProduction
         ? {
@@ -219,10 +194,8 @@ export default defineConfig(({ command, mode }) => {
       cssMinify: isProduction,
       rollupOptions: {
         output: {
-          // ✅ Fixed chunk splitting – no separate React chunk
           manualChunks: (id) => {
             if (id.includes('node_modules')) {
-              // Keep these splits for better caching
               if (id.includes('three') || id.includes('@react-three/fiber') || id.includes('@react-three/drei')) {
                 return 'vendor-three';
               }
@@ -235,7 +208,6 @@ export default defineConfig(({ command, mode }) => {
               if (id.includes('date-fns')) {
                 return 'vendor-date';
               }
-              // EVERYTHING ELSE (including React) goes into one chunk
               return 'vendor';
             }
           },

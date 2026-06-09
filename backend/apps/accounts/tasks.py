@@ -7,7 +7,7 @@ import json
 from .models import User, Badge, StudentRole, UserSession
 from apps.governance.models import AuditLog
 from common.constants import BadgeType, BADGE_THRESHOLDS
-from common.notifications import NotificationService
+from apps.notifications.services import NotificationService
 
 logger = logging.getLogger(__name__)
 

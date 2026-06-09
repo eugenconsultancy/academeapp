@@ -1,7 +1,7 @@
 from celery import shared_task
 from django.utils import timezone
 from .models import TimetableEntry, ClassGroup
-from common.notifications import NotificationService
+from apps.notifications.services import NotificationService
 from .services import TimetableService
 import logging
 

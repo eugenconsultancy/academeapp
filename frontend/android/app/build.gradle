@@ -1,5 +1,5 @@
 apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android' // Added this to fix the kotlinOptions error
+apply plugin: 'kotlin-android'
 
 android {
     namespace = "com.academe.app"
@@ -21,10 +21,13 @@ android {
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        
         aaptOptions {
-             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+            // Corrected: added :!*.gz to the pattern string
+            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:!*.gz'
         }
     }
+    
     buildTypes {
         release {
             minifyEnabled false

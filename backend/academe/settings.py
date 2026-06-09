@@ -11,7 +11,6 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'your-secret-key-here')
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
 
-# Jazzmin should always be before django.contrib.admin
 INSTALLED_APPS = [
     'jazzmin',
     'django.contrib.admin',
@@ -21,12 +20,10 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     
-    # Third party
     'corsheaders',
     'storages',
-    'channels',                # <-- ADD THIS
+    'channels',
     
-    # Local apps
     'apps.accounts',
     'apps.classes',
     'apps.found_items',
@@ -38,7 +35,7 @@ INSTALLED_APPS = [
     'apps.geoservice',
     'apps.governance',
     'apps.notifications',
-    'apps.chat',               # <-- ADD THIS
+    'apps.chat',
     'common',
 ]
 
@@ -75,7 +72,6 @@ TEMPLATES = [
 WSGI_APPLICATION = 'academe.wsgi.application'
 ASGI_APPLICATION = 'academe.asgi.application'
 
-# DATABASES - SQLite for Development
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -86,9 +82,6 @@ DATABASES = {
     }
 }
 
-# =============================================================================
-# CHANNELS – use in‑memory layer for local development (no Redis needed)
-# =============================================================================
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels.layers.InMemoryChannelLayer",
@@ -112,41 +105,30 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# ── EMAIL CONFIGURATION (Temporarily using console backend for debugging) ──
-# This will print emails to the terminal instead of actually sending them.
-# Remove or comment this out when you want to use real SMTP.
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
-# If you want to switch back to real SMTP, comment the line above and uncomment the lines below:
-# EMAIL_HOST = 'smtp.gmail.com'
-# EMAIL_PORT = 587
-# EMAIL_USE_TLS = True
-# EMAIL_HOST_USER = os.getenv('EMAIL_USER')
-# EMAIL_HOST_PASSWORD = os.getenv('EMAIL_PASSWORD')
-
-# ── CROSS-ORIGIN RESOURCE SHARING (CORS) ──────────────────────
-# We allow the emulator, local browser dev, and potentially your local network.
 CORS_ALLOW_ALL_ORIGINS = DEBUG
 
-# CORS_ALLOWED_ORIGINS = [
-#     "http://localhost:5173",
-#     "http://10.5.50.15:5173", # Android Emulator access
-#     "http://127.0.0.1:5173",
-# ]
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "authorization",
+    "content-type",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+    "ngrok-skip-browser-warning",
+]
 
-# If you prefer using environment variables, keep your existing logic 
-# but add the local IP address to your .env file:
-# CORS_ALLOWED_ORIGINS=http://localhost:5173,http://10.5.50.15:5173
-CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://10.5.50.15:5173",
+    "https://granitic-imbricately-dede.ngrok-free.dev",
+]
 
-# =============================================================================
-# CELERY – use memory broker for local development (no Redis needed)
-# =============================================================================
 if DEBUG:
     CELERY_BROKER_URL = 'memory://'
     CELERY_RESULT_BACKEND = 'cache+memory://'
 else:
-    # Production – use Redis
     CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
     CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
@@ -155,7 +137,6 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'Africa/Nairobi'
 
-# JWT Settings
 NINJA_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=24),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
@@ -164,7 +145,6 @@ NINJA_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-# AWS S3
 AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
 AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
@@ -175,41 +155,31 @@ AWS_S3_ENCRYPTION = True
 if DEBUG and not AWS_ACCESS_KEY_ID:
     DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
 
-# ── Dual‑bucket names (used by found items app) ─────────────
 AWS_PRIVATE_BUCKET_NAME = os.getenv('AWS_PRIVATE_BUCKET_NAME', AWS_STORAGE_BUCKET_NAME)
 AWS_PUBLIC_BUCKET_NAME = os.getenv('AWS_PUBLIC_BUCKET_NAME', AWS_STORAGE_BUCKET_NAME)
 
-# Firebase for push notifications
 FIREBASE_CREDENTIALS = os.getenv('FIREBASE_CREDENTIALS_PATH')
 
-# ==============================================================================
-# 💳 INTASEND PAYMENT INTEGRATION (keys now from environment)
-# ==============================================================================
 INTASEND_SECRET_KEY = os.getenv('INTASEND_SECRET_KEY')
 INTASEND_PUBLISHABLE_KEY = os.getenv('INTASEND_PUBLISHABLE_KEY')
 
-# Rate Limiting
 OTP_RATE_LIMIT = 3
 OTP_RATE_WINDOW = 3600
 
-# Attendance
 ATTENDANCE_WINDOW_BEFORE = 10
 ATTENDANCE_WINDOW_AFTER = 10
 SYNC_GRACE_PERIOD = 30
 
-# Escrow and Platform Rules
 ESCROW_AUTO_CONFIRM_DAYS = 7
 ESCROW_FEE_PERCENTAGE = 50
 PLATFORM_FEE_PERCENTAGE = 50
 
-# Search
 SEARCH_BACKEND = 'django.db.models.Q'
 
-# File upload limits
-DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 
 # ============================================
-# JAZZMIN – MODERN SAAS DASHBOARD
+# JAZZMIN – MINIMAL SETTINGS (engine handles the rest)
 # ============================================
 JAZZMIN_SETTINGS = {
     "site_title": "Academe Admin",
@@ -245,91 +215,25 @@ JAZZMIN_SETTINGS = {
 
     "related_modal_active": True,
     "custom_css": "admin/css/custom_admin.css",
-    "custom_js": "admin/js/theme_toggle.js",
+    "custom_js": "admin/js/academe_engine.js",   # ✅ Updated to new engine file
     "show_ui_builder": False,
     "changeform_format": "horizontal_tabs",
     "language_chooser": False,
 }
 
+# ✅ Stripped down – the engine handles all visual layout
 JAZZMIN_UI_TWEAKS = {
     "navbar_small_text": False,
     "footer_small_text": True,
-    "brand_small_text": False,
-    "brand_colour": "navbar-dark",
-    "accent": "accent-purple",
-    "navbar": "navbar-dark bg-dark",
-    "no_navbar_border": True,
-    "navbar_fixed": False,
-    "sidebar_fixed": False,
-    "sidebar": "sidebar-dark-purple",
-    "sidebar_nav_flat_style": True,
     "theme": "slate",
-    "dark_mode_theme": "darkly",
-    "button_classes": {
-        "primary": "btn-primary",
-        "secondary": "btn-secondary",
-        "info": "btn-info",
-        "warning": "btn-warning",
-        "danger": "btn-danger",
-        "success": "btn-success",
-    },
+    "sidebar_nav_flat_style": True,
     "actions_sticky_top": True,
+    "navbar": "navbar-dark bg-dark",
+    "sidebar": "sidebar-dark-primary",
 }
 
-JAZZMIN_DASHBOARD = {
-    "title": "Academe Admin Portal",
-    "sections": [
-        {
-            "name": "Quick Stats",
-            "column": 0,
-            "row": 0,
-            "span": 12,
-            "widgets": [
-                {"type": "stat_card", "title": "Total Users", "model": "accounts.User", "count": True, "icon": "fas fa-users", "color": "primary"},
-                {"type": "stat_card", "title": "Found Items", "model": "found_items.FoundItem", "count": True, "icon": "fas fa-box-open", "color": "success"},
-                {"type": "stat_card", "title": "Announcements", "model": "announcements.Announcement", "count": True, "icon": "fas fa-bullhorn", "color": "warning"},
-                {"type": "stat_card", "title": "Open Tickets", "model": "support.SupportTicket", "filters": {"status": "open"}, "icon": "fas fa-ticket-alt", "color": "danger"},
-            ],
-        },
-        {
-            "name": "Model Quick Access",
-            "column": 0,
-            "row": 1,
-            "span": 8,
-            "widgets": [
-                {
-                    "type": "model_list",
-                    "models": [
-                        "accounts.User",
-                        "found_items.FoundItem",
-                        "announcements.Announcement",
-                        "opportunities.Opportunity",
-                        "classes.ClassGroup",
-                        "support.SupportTicket",
-                    ],
-                    "columns": 3,
-                    "icon": "fas fa-th",
-                },
-            ],
-        },
-        {
-            "name": "Recent Activity",
-            "column": 1,
-            "row": 1,
-            "span": 4,
-            "widgets": [
-                {
-                    "type": "recent_actions",
-                    "limit": 8,
-                    "icon": "fas fa-clock",
-                    "scrollable": True,
-                },
-            ],
-        },
-    ],
-}
+# ✅ REMOVED JAZZMIN_DASHBOARD – the engine injects its own layout
 
-# Admin customization
 ADMIN_SITE_HEADER = "Academe Administration"
 ADMIN_SITE_TITLE = "Academe Admin Portal"
 ADMIN_INDEX_TITLE = "Welcome to Academe Dashboard"

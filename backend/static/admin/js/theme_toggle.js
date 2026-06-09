@@ -1,326 +1,634 @@
-// ============================================
-// ACADEME – PREMIUM DASHBOARD ENGINE
-// Top Navigation, Contextual Sidebar, Themes
-// ============================================
+/**
+ * ACADEME ADMIN – PREMIUM DASHBOARD ENGINE v2
+ * Single-concern layout: Fixed Topbar + Persistent Left Sidebar + Content
+ * Features: Theme switching, Command Palette (Ctrl+K), Sidebar nav,
+ *           Stat cards, Module cards, Activity feed, Stat animations
+ */
 (function () {
-    const themes = ['midnight', 'graphite', 'frost', 'violet-dark', 'slate', 'system'];
-    const STORAGE_KEY = 'academe_theme';
-    let currentTheme = localStorage.getItem(STORAGE_KEY) || 'midnight';
+    'use strict';
 
-    // ── THEME LOGIC ────────────────────────────
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    function applyTheme(themeName) {
-        themes.forEach(t => document.body.classList.remove(`theme-${t}`));
-        if (themeName === 'system') {
-            const isDark = mediaQuery.matches;
-            document.body.classList.add(isDark ? 'theme-midnight' : 'theme-frost');
-        } else {
-            document.body.classList.add(`theme-${themeName}`);
-        }
-        document.querySelectorAll('.theme-option').forEach(el => {
-            el.classList.toggle('active', el.dataset.theme === themeName);
-        });
-    }
-    function setTheme(themeName) {
-        currentTheme = themeName;
-        localStorage.setItem(STORAGE_KEY, themeName);
-        applyTheme(themeName);
-        if (themeName === 'system') {
-            mediaQuery.addEventListener('change', systemHandler);
-        } else {
-            mediaQuery.removeEventListener('change', systemHandler);
-        }
-    }
-    function systemHandler(e) { if (currentTheme === 'system') applyTheme('system'); }
+    /* ─── THEME ─────────────────────────────────────────────── */
+    const THEMES = ['dark', 'light'];
+    const STORAGE_THEME = 'academe_admin_theme';
+    let activeTheme = localStorage.getItem(STORAGE_THEME) || 'dark';
 
-    // ── CREATE THEME PILL ─────────────────────
-    function createThemePill() {
-        const pill = document.createElement('div');
-        pill.className = 'theme-pill';
-        pill.innerHTML = `
-      <span class="theme-option" data-theme="midnight" title="Midnight">🌙</span>
-      <span class="theme-option" data-theme="graphite" title="Graphite">⚫</span>
-      <span class="theme-option" data-theme="frost" title="Frost">❄️</span>
-      <span class="theme-option" data-theme="violet-dark" title="Violet Dark">💜</span>
-      <span class="theme-option" data-theme="slate" title="Slate">🔵</span>
-      <span class="theme-option" data-theme="system" title="System">💻</span>
-    `;
-        document.body.appendChild(pill);
-        pill.addEventListener('click', e => {
-            const opt = e.target.closest('.theme-option');
-            if (opt) setTheme(opt.dataset.theme);
+    function applyTheme(name) {
+        document.body.classList.remove(...THEMES.map(t => `theme-${t}`));
+        document.body.classList.add(`theme-${name}`);
+        activeTheme = name;
+        localStorage.setItem(STORAGE_THEME, name);
+        document.querySelectorAll('.ac-theme-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.theme === name);
         });
     }
 
-    // ── BUILD TOP NAVIGATION BAR ──────────────
-    function createTopNav() {
-        // Remove any existing top-nav or main-header
-        document.querySelector('.main-header')?.remove();
-        document.querySelector('.top-nav')?.remove();
+    /* ─── NAV DEFINITIONS ────────────────────────────────────── */
+    const NAV_MODULES = [
+        {
+            id: 'dashboard',
+            label: 'Dashboard', icon: 'fa-tachometer-alt',
+            path: '/admin/',
+            exact: true,
+            children: [
+                { label: 'Overview', url: '/admin/', icon: 'fa-chart-pie' },
+                { label: 'Users', url: '/admin/accounts/user/', icon: 'fa-users' },
+                { label: 'Recent Actions', url: '/admin/', icon: 'fa-clock' },
+            ]
+        },
+        {
+            id: 'students',
+            label: 'Students', icon: 'fa-user-graduate',
+            path: '/admin/accounts/',
+            children: [
+                { label: 'All Users', url: '/admin/accounts/user/', icon: 'fa-users', badge: null },
+                { label: 'Badges', url: '/admin/accounts/badge/', icon: 'fa-medal', badge: null },
+                { label: 'Groups', url: '/admin/auth/group/', icon: 'fa-users-cog', badge: null },
+            ]
+        },
+        {
+            id: 'academics',
+            label: 'Academics', icon: 'fa-layer-group',
+            path: '/admin/classes/',
+            children: [
+                { label: 'Class Groups', url: '/admin/classes/classgroup/', icon: 'fa-layer-group' },
+                { label: 'Timetable', url: '/admin/classes/timetableentry/', icon: 'fa-calendar-alt' },
+                { label: 'Attendance', url: '/admin/classes/attendancerecord/', icon: 'fa-clipboard-check' },
+                { label: 'Venues', url: '/admin/classes/campusvenue/', icon: 'fa-map-marker-alt' },
+            ]
+        },
+        {
+            id: 'communication',
+            label: 'Communication', icon: 'fa-bullhorn',
+            path: '/admin/announcements/',
+            children: [
+                { label: 'Announcements', url: '/admin/announcements/announcement/', icon: 'fa-bullhorn' },
+                { label: 'Notifications', url: '/admin/notifications/notification/', icon: 'fa-bell', badge: '3' },
+                { label: 'Chat', url: '/admin/chat/', icon: 'fa-comments' },
+                { label: 'Blog Posts', url: '/admin/blog/blogpost/', icon: 'fa-blog' },
+            ]
+        },
+        {
+            id: 'governance',
+            label: 'Governance', icon: 'fa-landmark',
+            path: '/admin/governance/',
+            children: [
+                { label: 'Audit Logs', url: '/admin/governance/auditlog/', icon: 'fa-history' },
+                { label: 'Audit Archives', url: '/admin/governance/auditarchive/', icon: 'fa-archive' },
+                { label: 'Platform Stats', url: '/admin/governance/platformstats/', icon: 'fa-chart-bar' },
+                { label: 'Role Histories', url: '/admin/governance/rolehistory/', icon: 'fa-user-shield' },
+            ]
+        },
+        {
+            id: 'support',
+            label: 'Support', icon: 'fa-headset',
+            path: '/admin/support/',
+            children: [
+                { label: 'Tickets', url: '/admin/support/supportticket/', icon: 'fa-ticket-alt', badge: '12' },
+            ]
+        },
+        {
+            id: 'opportunities',
+            label: 'Opportunities', icon: 'fa-briefcase',
+            path: '/admin/opportunities/',
+            children: [
+                { label: 'Opportunities', url: '/admin/opportunities/opportunity/', icon: 'fa-briefcase' },
+                { label: 'Applications', url: '/admin/opportunities/application/', icon: 'fa-file-alt' },
+            ]
+        },
+        {
+            id: 'found-items',
+            label: 'Found Items', icon: 'fa-box-open',
+            path: '/admin/found_items/',
+            children: [
+                { label: 'Found Items', url: '/admin/found_items/founditem/', icon: 'fa-box-open' },
+            ]
+        },
+    ];
 
-        const nav = document.createElement('div');
-        nav.className = 'top-nav';
-        nav.innerHTML = `
-      <a href="/admin/" class="brand"><i class="fas fa-graduation-cap"></i> Academe</a>
-      <div class="nav-modules" id="topNavModules"></div>
-      <div style="display:flex; gap:0.5rem;">
-        <a href="/admin/accounts/user/" class="btn btn-ghost" style="padding:0.4rem 0.8rem;"><i class="fas fa-user-circle"></i></a>
-      </div>
-    `;
-        document.body.prepend(nav);
-        populateNavModules();
-        // Active detection
-        const currentPath = window.location.pathname;
-        document.querySelectorAll('.nav-module').forEach(tab => {
-            if (currentPath.startsWith(tab.dataset.path)) tab.classList.add('active');
-        });
-    }
+    /* Flat list for command palette */
+    const ALL_NAV_ITEMS = NAV_MODULES.flatMap(m =>
+        m.children.map(c => ({ ...c, module: m.label }))
+    );
 
-    function populateNavModules() {
-        const container = document.getElementById('topNavModules');
-        if (!container) return;
-        const modules = [
-            { name: 'Dashboard', icon: 'fa-chart-line', path: '/admin/' },
-            { name: 'Students', icon: 'fa-user-graduate', path: '/admin/accounts/' },
-            { name: 'Academics', icon: 'fa-layer-group', path: '/admin/classes/' },
-            { name: 'Communication', icon: 'fa-bullhorn', path: '/admin/announcements/' },
-            { name: 'Governance', icon: 'fa-landmark', path: '/admin/governance/' },
-            { name: 'Finance', icon: 'fa-coins', path: '#' }
-        ];
-        container.innerHTML = modules.map(m => `
-      <div class="nav-module" data-path="${m.path}">
-        <i class="fas ${m.icon}"></i> ${m.name}
-      </div>
-    `).join('');
-        // Click event – navigate and update sidebar
-        container.querySelectorAll('.nav-module').forEach(el => {
-            el.addEventListener('click', () => {
-                window.location.href = el.dataset.path === '#' ? '#' : el.dataset.path;
-            });
-        });
-    }
-
-    // ── CONTEXTUAL SIDEBAR ────────────────────
-    function createContextSidebar() {
-        document.querySelector('.context-sidebar')?.remove();
-        const sidebar = document.createElement('div');
-        sidebar.className = 'context-sidebar';
-        sidebar.id = 'contextSidebar';
-        document.body.appendChild(sidebar);
-        updateContextSidebar();
-    }
-
-    function updateContextSidebar() {
+    /* ─── DETECT ACTIVE MODULE ───────────────────────────────── */
+    function getActiveModule() {
         const path = window.location.pathname;
-        let title = 'Navigation';
-        let links = [];
-        if (path.startsWith('/admin/accounts/')) {
-            title = 'Students';
-            links = [
-                { name: 'All Users', url: '/admin/accounts/user/', icon: 'fa-users' },
-                { name: 'Badges', url: '/admin/accounts/badge/', icon: 'fa-medal' },
-                { name: 'Groups', url: '/admin/auth/group/', icon: 'fa-users-cog' },
-            ];
-        } else if (path.startsWith('/admin/classes/')) {
-            title = 'Academics';
-            links = [
-                { name: 'Class Groups', url: '/admin/classes/classgroup/', icon: 'fa-layer-group' },
-                { name: 'Timetable', url: '/admin/classes/timetableentry/', icon: 'fa-calendar-alt' },
-                { name: 'Attendance', url: '/admin/classes/attendancerecord/', icon: 'fa-clipboard-check' },
-                { name: 'Venues', url: '/admin/classes/campusvenue/', icon: 'fa-map-marker-alt' },
-            ];
-        } else if (path.startsWith('/admin/announcements/')) {
-            title = 'Communication';
-            links = [
-                { name: 'Announcements', url: '/admin/announcements/announcement/', icon: 'fa-bullhorn' },
-                { name: 'Notifications', url: '/admin/notifications/notification/', icon: 'fa-bell' },
-            ];
-        } else if (path.startsWith('/admin/governance/')) {
-            title = 'Governance';
-            links = [
-                { name: 'Audit Logs', url: '/admin/governance/auditlog/', icon: 'fa-history' },
-                { name: 'Platform Stats', url: '/admin/governance/platformstats/', icon: 'fa-chart-bar' },
-            ];
-        } else if (path.startsWith('/admin/blog/')) {
-            title = 'Content';
-            links = [
-                { name: 'Blog Posts', url: '/admin/blog/blogpost/', icon: 'fa-blog' },
-                { name: 'Categories', url: '/admin/blog/blogcategory/', icon: 'fa-tags' },
-            ];
-        } else if (path.startsWith('/admin/support/')) {
-            title = 'Support';
-            links = [
-                { name: 'Tickets', url: '/admin/support/supportticket/', icon: 'fa-ticket-alt' },
-            ];
-        } else {
-            // Default fallback (Dashboard / other)
-            title = 'Quick Links';
-            links = [
-                { name: 'Dashboard', url: '/admin/', icon: 'fa-tachometer-alt' },
-                { name: 'Users', url: '/admin/accounts/user/', icon: 'fa-users' },
-                { name: 'Blog Posts', url: '/admin/blog/blogpost/', icon: 'fa-blog' },
-                { name: 'Opportunities', url: '/admin/opportunities/opportunity/', icon: 'fa-briefcase' },
-                { name: 'Support Tickets', url: '/admin/support/supportticket/', icon: 'fa-ticket-alt' },
-            ];
+        // Try exact match first
+        let match = NAV_MODULES.find(m => m.exact && path === m.path);
+        if (!match) {
+            match = NAV_MODULES
+                .filter(m => !m.exact && path.startsWith(m.path))
+                .sort((a, b) => b.path.length - a.path.length)[0];
         }
-        const sidebar = document.getElementById('contextSidebar');
-        if (!sidebar) return;
-        sidebar.innerHTML = `
-      <div class="sidebar-title">${title}</div>
-      ${links.map(l => `
-        <a href="${l.url}" class="sidebar-link">
-          <i class="fas ${l.icon}"></i> ${l.name}
+        return match || NAV_MODULES[0];
+    }
+
+    /* ─── BUILD TOPBAR ───────────────────────────────────────── */
+    function buildTopbar() {
+        const existing = document.getElementById('ac-topbar');
+        if (existing) existing.remove();
+
+        const bar = document.createElement('div');
+        bar.id = 'ac-topbar';
+        bar.innerHTML = `
+      <button class="ac-icon-btn" id="ac-menu-toggle" title="Toggle sidebar" style="display:none;">
+        <i class="fas fa-bars"></i>
+      </button>
+      <a href="/admin/" class="ac-brand">
+        <span class="ac-logo-mark"><i class="fas fa-graduation-cap"></i></span>
+        Academe
+      </a>
+      <div class="ac-search-wrap">
+        <i class="fas fa-search ac-search-icon"></i>
+        <input type="text" class="ac-search" id="ac-search-input"
+               placeholder="Search or jump to…" autocomplete="off">
+        <span class="ac-search-shortcut">⌘K</span>
+      </div>
+      <div class="ac-topbar-actions">
+        <a href="/admin/notifications/notification/" class="ac-icon-btn" title="Notifications">
+          <i class="fas fa-bell"></i>
+          <span class="ac-badge"></span>
         </a>
-      `).join('')}
+        <a href="/admin/accounts/user/" class="ac-icon-btn" title="Users">
+          <i class="fas fa-users"></i>
+        </a>
+        <div class="ac-avatar" title="Admin profile">A</div>
+      </div>
     `;
-        // Highlight active
-        sidebar.querySelectorAll('.sidebar-link').forEach(a => {
-            if (a.href === window.location.href) a.classList.add('active');
+        document.body.prepend(bar);
+
+        // Mobile hamburger
+        const toggle = document.getElementById('ac-menu-toggle');
+        if (window.innerWidth <= 768) toggle.style.display = 'flex';
+        toggle.addEventListener('click', () => {
+            const sb = document.getElementById('ac-sidebar');
+            if (sb) sb.classList.toggle('open');
+        });
+
+        // Focus search → open command palette
+        document.getElementById('ac-search-input').addEventListener('focus', () => {
+            document.getElementById('ac-search-input').blur();
+            openCommandPalette();
         });
     }
 
-    // ── GREETING HEADER ───────────────────────
-    function addGreeting() {
-        const h1 = document.querySelector('.content-header h1');
-        if (!h1) return;
+    /* ─── BUILD SIDEBAR ──────────────────────────────────────── */
+    function buildSidebar() {
+        const existing = document.getElementById('ac-sidebar');
+        if (existing) existing.remove();
+
+        const activeModule = getActiveModule();
+        const currentPath = window.location.pathname;
+
+        const sb = document.createElement('div');
+        sb.id = 'ac-sidebar';
+
+        let html = '';
+
+        // Greeting
         const hour = new Date().getHours();
-        const greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-        const el = document.createElement('div');
-        el.className = 'text-muted';
-        el.style.fontSize = '0.95rem';
-        el.style.marginBottom = '0.25rem';
-        el.textContent = greet + ', Administrator';
-        h1.parentNode.insertBefore(el, h1);
+        const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+        html += `
+      <div style="padding: 0 16px 16px;">
+        <div style="font-size:11px; color:var(--text-muted); margin-bottom:2px;">${greeting}</div>
+        <div style="font-size:13px; font-weight:600; color:var(--text-secondary);">Administrator</div>
+      </div>
+      <div class="ac-nav-divider"></div>
+    `;
+
+        // Navigation
+        html += `<div class="ac-nav-section">Navigation</div>`;
+
+        NAV_MODULES.forEach(module => {
+            const isActiveModule = module === activeModule;
+            html += `
+        <a href="${module.children[0].url}" class="ac-nav-item ${isActiveModule ? 'active' : ''}">
+          <span class="ac-nav-icon"><i class="fas ${module.icon}"></i></span>
+          ${module.label}
+        </a>
+      `;
+        });
+
+        // If in a module: show its sub-links
+        if (activeModule && activeModule.children.length > 1) {
+            html += `
+        <div class="ac-nav-divider"></div>
+        <div class="ac-nav-section">${activeModule.label}</div>
+      `;
+            activeModule.children.forEach(child => {
+                const isActiveLink = currentPath === child.url || currentPath.startsWith(child.url) && child.url !== '/admin/';
+                html += `
+          <a href="${child.url}" class="ac-nav-item ${isActiveLink ? 'active' : ''}" style="padding-left:20px;">
+            <span class="ac-nav-icon"><i class="fas ${child.icon}"></i></span>
+            <span style="flex:1; overflow:hidden; text-overflow:ellipsis;">${child.label}</span>
+            ${child.badge ? `<span class="ac-nav-badge">${child.badge}</span>` : ''}
+          </a>
+        `;
+            });
+        }
+
+        // Footer actions
+        html += `
+      <div class="ac-sidebar-footer">
+        <a href="/admin/password_change/" class="ac-nav-item">
+          <span class="ac-nav-icon"><i class="fas fa-key"></i></span> Change Password
+        </a>
+        <a href="/admin/logout/" class="ac-nav-item" style="color:var(--red-text);">
+          <span class="ac-nav-icon" style="background:var(--red-subtle); color:var(--red-text);"><i class="fas fa-sign-out-alt"></i></span>
+          Sign Out
+        </a>
+      </div>
+    `;
+
+        sb.innerHTML = html;
+        document.body.appendChild(sb);
+
+        // Click outside on mobile → close sidebar
+        document.addEventListener('click', (e) => {
+            if (window.innerWidth <= 768) {
+                if (!sb.contains(e.target) && e.target.id !== 'ac-menu-toggle') {
+                    sb.classList.remove('open');
+                }
+            }
+        });
     }
 
-    // ── ENHANCE MODEL TILES (dashboard) ───────
+    /* ─── THEME SWITCHER ─────────────────────────────────────── */
+    function buildThemeSwitcher() {
+        const existing = document.getElementById('ac-theme-switcher');
+        if (existing) existing.remove();
+        const sw = document.createElement('div');
+        sw.id = 'ac-theme-switcher';
+        sw.innerHTML = `
+      <button class="ac-theme-btn" data-theme="dark" title="Dark">🌙</button>
+      <button class="ac-theme-btn" data-theme="light" title="Light">☀️</button>
+    `;
+        document.body.appendChild(sw);
+        sw.addEventListener('click', e => {
+            const btn = e.target.closest('.ac-theme-btn');
+            if (btn) applyTheme(btn.dataset.theme);
+        });
+    }
+
+    /* ─── COMMAND PALETTE ────────────────────────────────────── */
+    let paletteOpen = false;
+    let focusedIdx = 0;
+    let filteredItems = [];
+
+    function openCommandPalette() {
+        if (paletteOpen) return;
+        paletteOpen = true;
+
+        const overlay = document.createElement('div');
+        overlay.id = 'ac-command-overlay';
+        overlay.innerHTML = `
+      <div id="ac-command-dialog" role="dialog" aria-label="Command palette">
+        <input id="ac-command-input" type="text" placeholder="Search pages, models, actions…" autocomplete="off">
+        <div id="ac-command-results"></div>
+        <div class="ac-command-hint">
+          <span><kbd>↑↓</kbd> Navigate</span>
+          <span><kbd>↵</kbd> Open</span>
+          <span><kbd>Esc</kbd> Close</span>
+        </div>
+      </div>
+    `;
+
+        document.body.appendChild(overlay);
+
+        const input = document.getElementById('ac-command-input');
+        const results = document.getElementById('ac-command-results');
+
+        function renderResults(query) {
+            filteredItems = query
+                ? ALL_NAV_ITEMS.filter(item =>
+                    item.label.toLowerCase().includes(query.toLowerCase()) ||
+                    item.module.toLowerCase().includes(query.toLowerCase())
+                )
+                : ALL_NAV_ITEMS.slice(0, 10);
+
+            focusedIdx = 0;
+            results.innerHTML = filteredItems.length
+                ? filteredItems.map((item, i) => `
+            <div class="ac-command-item ${i === 0 ? 'focused' : ''}" data-idx="${i}" data-url="${item.url}">
+              <i class="fas ${item.icon}"></i>
+              <span>${item.label}</span>
+              <span style="margin-left:auto; font-size:11px; color:var(--text-muted);">${item.module}</span>
+            </div>
+          `).join('')
+                : `<div style="padding:24px; text-align:center; color:var(--text-muted); font-size:13px;">No results found</div>`;
+
+            // Click handlers
+            results.querySelectorAll('.ac-command-item').forEach(el => {
+                el.addEventListener('mouseenter', () => {
+                    focusedIdx = +el.dataset.idx;
+                    highlightItem();
+                });
+                el.addEventListener('click', () => {
+                    window.location.href = el.dataset.url;
+                });
+            });
+        }
+
+        function highlightItem() {
+            results.querySelectorAll('.ac-command-item').forEach((el, i) => {
+                el.classList.toggle('focused', i === focusedIdx);
+            });
+        }
+
+        input.addEventListener('input', () => renderResults(input.value));
+
+        input.addEventListener('keydown', e => {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                focusedIdx = Math.min(focusedIdx + 1, filteredItems.length - 1);
+                highlightItem();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                focusedIdx = Math.max(focusedIdx - 1, 0);
+                highlightItem();
+            } else if (e.key === 'Enter') {
+                const item = filteredItems[focusedIdx];
+                if (item) window.location.href = item.url;
+            } else if (e.key === 'Escape') {
+                closeCommandPalette();
+            }
+        });
+
+        overlay.addEventListener('click', e => {
+            if (e.target === overlay) closeCommandPalette();
+        });
+
+        renderResults('');
+        requestAnimationFrame(() => input.focus());
+    }
+
+    function closeCommandPalette() {
+        const overlay = document.getElementById('ac-command-overlay');
+        if (overlay) overlay.remove();
+        paletteOpen = false;
+    }
+
+    /* ─── STAT ANIMATION ─────────────────────────────────────── */
+    function animateNumber(el, target, duration = 800) {
+        const start = performance.now();
+        const startVal = 0;
+        function tick(now) {
+            const elapsed = now - start;
+            const progress = Math.min(elapsed / duration, 1);
+            const ease = 1 - Math.pow(1 - progress, 3); // ease-out-cubic
+            el.textContent = Math.round(startVal + (target - startVal) * ease).toLocaleString();
+            if (progress < 1) requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+    }
+
+    /* ─── DASHBOARD ENHANCEMENTS ─────────────────────────────── */
+    function enhanceDashboard() {
+        // Only run on the main dashboard page
+        const contentHeader = document.querySelector('.content-header');
+        if (!contentHeader) return;
+
+        // Inject stat cards if not already present
+        if (!document.getElementById('ac-stat-cards')) {
+            const statsEl = document.createElement('div');
+            statsEl.id = 'ac-stat-cards';
+            statsEl.className = 'ac-stats-grid';
+            statsEl.innerHTML = `
+        <div class="ac-stat-card purple">
+          <div class="ac-stat-icon"><i class="fas fa-users"></i></div>
+          <div class="ac-stat-trend up"><i class="fas fa-arrow-up"></i> 12%</div>
+          <div class="ac-stat-value" data-target="245">0</div>
+          <div class="ac-stat-label">Total Students</div>
+        </div>
+        <div class="ac-stat-card green">
+          <div class="ac-stat-icon"><i class="fas fa-check-circle"></i></div>
+          <div class="ac-stat-trend up"><i class="fas fa-arrow-up"></i> 8%</div>
+          <div class="ac-stat-value" data-target="198">0</div>
+          <div class="ac-stat-label">Active Users</div>
+        </div>
+        <div class="ac-stat-card yellow">
+          <div class="ac-stat-icon"><i class="fas fa-ticket-alt"></i></div>
+          <div class="ac-stat-trend down"><i class="fas fa-arrow-down"></i> 3%</div>
+          <div class="ac-stat-value" data-target="12">0</div>
+          <div class="ac-stat-label">Open Tickets</div>
+        </div>
+        <div class="ac-stat-card red">
+          <div class="ac-stat-icon"><i class="fas fa-history"></i></div>
+          <div class="ac-stat-trend up"><i class="fas fa-arrow-up"></i> 24%</div>
+          <div class="ac-stat-value" data-target="2486">0</div>
+          <div class="ac-stat-label">Audit Logs</div>
+        </div>
+      `;
+
+            // Insert after content header
+            const contentArea = document.querySelector('.content');
+            if (contentArea) {
+                contentArea.prepend(statsEl);
+                // Animate
+                statsEl.querySelectorAll('.ac-stat-value[data-target]').forEach(el => {
+                    animateNumber(el, parseInt(el.dataset.target));
+                });
+            }
+        }
+
+        // Enhance Jazzmin model list tiles
+        enhanceModelTiles();
+
+        // Enhance recent actions
+        enhanceRecentActions();
+    }
+
     function enhanceModelTiles() {
-        const dashboard = document.querySelector('.dashboard');
-        if (!dashboard) return;
-        const modelList = dashboard.querySelector('.model-list-widget');
-        if (!modelList) return;
-        const links = modelList.querySelectorAll('a');
-        if (links.length === 0) return;
+        const modelWidget = document.querySelector('.jazzmin-model-list, .model-list-widget');
+        if (!modelWidget || modelWidget.dataset.enhanced) return;
+
+        const links = modelWidget.querySelectorAll('a');
+        if (!links.length) return;
+
+        const META = {
+            'User': { desc: 'Students, staff & admins', icon: 'fa-users', stats: { total: 245, active: 198 } },
+            'FoundItem': { desc: 'Campus lost & found items', icon: 'fa-box-open', stats: { total: 34, active: 12 } },
+            'Announcement': { desc: 'Campus announcements', icon: 'fa-bullhorn', stats: { total: 56, active: 8 } },
+            'Opportunity': { desc: 'Jobs & internships', icon: 'fa-briefcase', stats: { total: 23, active: 5 } },
+            'ClassGroup': { desc: 'Class groups & timetable', icon: 'fa-layer-group', stats: { total: 12, active: 10 } },
+            'SupportTicket': { desc: 'Student support tickets', icon: 'fa-ticket-alt', stats: { total: 18, active: 3 } },
+        };
 
         const grid = document.createElement('div');
-        grid.className = 'model-tile-grid';
-        grid.style.cssText = 'display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; margin-top:1rem;';
-
-        const meta = {
-            'User': { total: 245, active: 198, desc: 'Students, staff & admins' },
-            'FoundItem': { total: 34, active: 12, desc: 'Lost & found items' },
-            'Announcement': { total: 56, active: 8, desc: 'Campus announcements' },
-            'Opportunity': { total: 23, active: 5, desc: 'Jobs & internships' },
-            'ClassGroup': { total: 12, active: 10, desc: 'Class groups & timetable' },
-            'SupportTicket': { total: 18, active: 3, desc: 'Support tickets' },
-        };
-        const icons = {
-            'User': 'fa-users', 'FoundItem': 'fa-box-open', 'Announcement': 'fa-bullhorn',
-            'Opportunity': 'fa-briefcase', 'ClassGroup': 'fa-layer-group', 'SupportTicket': 'fa-ticket-alt',
-        };
+        grid.className = 'ac-modules-grid';
 
         links.forEach(link => {
             const name = link.textContent.trim();
-            const href = link.getAttribute('href');
-            const data = meta[name] || { total: 0, active: 0, desc: 'Manage records' };
-            const tile = document.createElement('div');
-            tile.className = 'card card-primary-feature';
-            tile.innerHTML = `
-        <div class="card-body" style="padding:1.5rem;">
-          <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
-            <div style="width:44px;height:44px;background:var(--accent-soft);border-radius:0.75rem;display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:var(--accent-primary);">
-              <i class="fas ${icons[name] || 'fa-cube'}"></i>
-            </div>
-            <div>
-              <div class="card-title" style="margin:0;">${name}</div>
-              <div style="font-size:0.8rem; color:var(--text-muted);">${data.desc}</div>
-            </div>
-          </div>
-          <div style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:1rem;">
-            <span style="font-weight:700; color:var(--text-accent);">${data.total}</span> total · <span style="font-weight:700; color:var(--text-accent);">${data.active}</span> active
-          </div>
-          <div style="display:flex; gap:0.5rem;">
-            <a href="${href}" class="btn btn-primary btn-sm">View all</a>
-            <a href="${href}add/" class="btn btn-ghost btn-sm">Add</a>
-          </div>
-        </div>`;
-            grid.appendChild(tile);
-        });
-        modelList.innerHTML = '';
-        modelList.appendChild(grid);
-    }
+            const href = link.getAttribute('href') || '#';
+            const meta = META[name] || { desc: 'Manage records', icon: 'fa-cube', stats: { total: 0, active: 0 } };
 
-    // ── ENHANCE ACTIVITY FEED ─────────────────
-    function enhanceActivityFeed() {
-        const widget = document.querySelector('.recent-actions-widget');
-        if (!widget) return;
-        const container = document.createElement('div');
-        container.className = 'recent-activity-container';
-        const items = widget.querySelectorAll('li');
-        items.forEach(item => {
-            const div = document.createElement('div');
-            div.className = 'activity-item';
-            div.innerHTML = `
-        <div class="activity-icon"><i class="fas fa-circle" style="font-size:0.5rem;"></i></div>
-        <div class="activity-content">${item.innerHTML}</div>
-        <div class="activity-time">Just now</div>
+            const card = document.createElement('div');
+            card.className = 'ac-module-card';
+            card.innerHTML = `
+        <div class="ac-module-card-header">
+          <div class="ac-module-icon"><i class="fas ${meta.icon}"></i></div>
+          <div class="ac-module-meta">
+            <div class="ac-module-name">${name}</div>
+            <div class="ac-module-desc">${meta.desc}</div>
+          </div>
+        </div>
+        <div class="ac-module-stats">
+          <div class="ac-module-stat-item">
+            <span class="ac-module-stat-value">${meta.stats.total.toLocaleString()}</span>
+            <span style="color:var(--text-muted);">total</span>
+          </div>
+          <div class="ac-module-stat-item">
+            <span class="ac-module-stat-value" style="color:var(--green-text);">${meta.stats.active}</span>
+            <span style="color:var(--text-muted);">active</span>
+          </div>
+        </div>
+        <div class="ac-module-actions">
+          <a href="${href}" class="btn btn-primary btn-sm">View all</a>
+          <a href="${href}add/" class="btn btn-secondary btn-sm">
+            <i class="fas fa-plus"></i> Add
+          </a>
+        </div>
       `;
-            container.appendChild(div);
+            card.addEventListener('click', (e) => {
+                if (!e.target.closest('a')) window.location.href = href;
+            });
+            grid.appendChild(card);
         });
+
+        modelWidget.dataset.enhanced = '1';
+        modelWidget.innerHTML = '';
+        modelWidget.appendChild(grid);
+    }
+
+    function enhanceRecentActions() {
+        const widget = document.querySelector('.jazzmin-recent-actions, .recent-actions-widget, ul#recent-actions-list');
+        if (!widget || widget.dataset.enhanced) return;
+
+        const items = widget.querySelectorAll('li, .admin-action');
+        if (!items.length) return;
+
+        const feed = document.createElement('div');
+        feed.id = 'ac-activity-feed';
+
+        const colors = ['var(--accent)', 'var(--green-text)', 'var(--yellow-text)', 'var(--blue-text)'];
+        const timeLabels = ['Just now', '2m ago', '5m ago', '10m ago', '18m ago', '31m ago', '1h ago', '2h ago'];
+
+        items.forEach((item, i) => {
+            const div = document.createElement('div');
+            div.className = 'ac-activity-item';
+            div.innerHTML = `
+        <div class="ac-activity-dot" style="background:${colors[i % colors.length]};"></div>
+        <div class="ac-activity-text">${item.innerHTML}</div>
+        <div class="ac-activity-time">${timeLabels[i] || '—'}</div>
+      `;
+            feed.appendChild(div);
+        });
+
+        widget.dataset.enhanced = '1';
         widget.innerHTML = '';
-        widget.appendChild(container);
+        widget.appendChild(feed);
     }
 
-    // ── COMMAND PALETTE (Ctrl+K) ──────────────
-    function toggleCommandPalette() {
-        const existing = document.querySelector('.command-palette-overlay');
-        if (existing) { existing.remove(); return; }
-        const overlay = document.createElement('div');
-        overlay.className = 'command-palette-overlay';
-        overlay.innerHTML = `
-      <div class="command-palette-dialog">
-        <input type="text" class="command-palette-input" placeholder="Type a command...">
-        <div class="command-palette-results"></div>
-      </div>`;
-        overlay.addEventListener('click', e => { if (e.target === overlay) toggleCommandPalette(); });
-        document.body.appendChild(overlay);
-        overlay.querySelector('input').addEventListener('keydown', e => { if (e.key === 'Escape') toggleCommandPalette(); });
-    }
+    /* ─── GOVERNANCE PAGE ────────────────────────────────────── */
+    function enhanceGovernancePage() {
+        const path = window.location.pathname;
+        if (!path.startsWith('/admin/governance/')) return;
 
-    // ── ANIMATE STAT NUMBERS ──────────────────
-    function animateStats() {
-        document.querySelectorAll('.stat-card .stat-number').forEach(el => {
-            const target = parseInt(el.textContent);
-            if (isNaN(target)) return;
-            let current = 0;
-            const step = Math.ceil(target / 30);
-            const timer = setInterval(() => {
-                current += step;
-                if (current >= target) { el.textContent = target; clearInterval(timer); }
-                else { el.textContent = current; }
-            }, 30);
+        // Already enhanced
+        if (document.getElementById('ac-gov-header')) return;
+
+        // Find the result list or change list
+        const resultList = document.querySelector('#result_list, .ac-modules-grid');
+        if (!resultList) return;
+
+        // Inject governance overview cards above the list
+        const header = document.createElement('div');
+        header.id = 'ac-gov-header';
+        header.innerHTML = `
+      <div class="ac-stats-grid" style="margin-bottom:20px;">
+        <div class="ac-stat-card purple">
+          <div class="ac-stat-icon"><i class="fas fa-history"></i></div>
+          <div class="ac-stat-trend up"><i class="fas fa-arrow-up"></i> 18%</div>
+          <div class="ac-stat-value" data-target="2486">0</div>
+          <div class="ac-stat-label">Audit Logs</div>
+        </div>
+        <div class="ac-stat-card green">
+          <div class="ac-stat-icon"><i class="fas fa-archive"></i></div>
+          <div class="ac-stat-value" data-target="184">0</div>
+          <div class="ac-stat-label">Active Users</div>
+        </div>
+        <div class="ac-stat-card yellow">
+          <div class="ac-stat-icon"><i class="fas fa-chart-bar"></i></div>
+          <div class="ac-stat-value" data-target="32">0</div>
+          <div class="ac-stat-label">Roles Defined</div>
+        </div>
+        <div class="ac-stat-card red">
+          <div class="ac-stat-icon"><i class="fas fa-exclamation-triangle"></i></div>
+          <div class="ac-stat-value" data-target="12">0</div>
+          <div class="ac-stat-label">Pending Cases</div>
+        </div>
+      </div>
+    `;
+
+        resultList.parentNode.insertBefore(header, resultList);
+        header.querySelectorAll('.ac-stat-value[data-target]').forEach(el => {
+            animateNumber(el, parseInt(el.dataset.target));
         });
     }
 
-    // ── INITIALIZE ────────────────────────────
+    /* ─── TABLE ENHANCEMENTS ─────────────────────────────────── */
+    function enhanceTables() {
+        // Wrap each action button cluster
+        document.querySelectorAll('.object-tools').forEach(tools => {
+            tools.querySelectorAll('a').forEach(a => {
+                a.classList.add('btn', 'btn-primary', 'btn-sm');
+                a.style.marginLeft = '6px';
+            });
+        });
+
+        // Style inline change form action buttons
+        document.querySelectorAll('[name="_save"], [name="_continue"], [name="_addanother"]').forEach(btn => {
+            btn.classList.add('btn', 'btn-primary');
+        });
+        document.querySelectorAll('[name="_delete"]').forEach(btn => {
+            btn.classList.add('btn', 'btn-danger');
+        });
+    }
+
+    /* ─── KEYBOARD SHORTCUTS ─────────────────────────────────── */
+    document.addEventListener('keydown', e => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+            e.preventDefault();
+            paletteOpen ? closeCommandPalette() : openCommandPalette();
+        }
+        if (e.key === 'Escape' && paletteOpen) {
+            closeCommandPalette();
+        }
+    });
+
+    /* ─── INIT ───────────────────────────────────────────────── */
     function init() {
-        applyTheme(currentTheme);
-        createThemePill();
-        createTopNav();
-        createContextSidebar();
-        // Wait for Jazzmin rendering
-        window.addEventListener('load', () => {
-            setTimeout(() => {
-                enhanceModelTiles();
-                enhanceActivityFeed();
-                addGreeting();
-                animateStats();
-            }, 500);
-        });
-        document.addEventListener('keydown', e => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); toggleCommandPalette(); }
-        });
+        applyTheme(activeTheme);
+        buildTopbar();
+        buildSidebar();
+        buildThemeSwitcher();
     }
 
-    document.addEventListener('DOMContentLoaded', init);
+    function afterLoad() {
+        setTimeout(() => {
+            enhanceDashboard();
+            enhanceGovernancePage();
+            enhanceTables();
+        }, 200);
+    }
+
+    // Run immediately for layout (prevent flash)
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    window.addEventListener('load', afterLoad);
+
 })();

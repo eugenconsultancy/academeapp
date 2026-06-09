@@ -40,6 +40,7 @@ export default function AdminRolesPage() {
     const fetchRoles = async () => {
         setLoading(true);
         try {
+            // ✅ Fixed: removed /admin/ from the path
             const res = await apiClient.get('/accounts/roles/');
             let data = [];
             if (activeTab === 'active') {
@@ -65,7 +66,6 @@ export default function AdminRolesPage() {
         }
     };
 
-    // Search users for assignment
     const handleUserSearch = async (query) => {
         setAssignForm({ ...assignForm, user_id: query });
         if (query.length < 2) { setUserSearchResults([]); return; }
@@ -89,13 +89,11 @@ export default function AdminRolesPage() {
         setUserSearchResults([]);
     };
 
-    // NEW: Search classes by name
     const handleClassSearch = async (query) => {
         setAssignForm({ ...assignForm, scope_name: query, scope_id: '' });
         if (query.length < 2) { setClassSearchResults([]); return; }
         setClassSearching(true);
         try {
-            // Assuming there is an endpoint to search classes – adjust URL as needed
             const response = await apiClient.get('/classes/search/', { params: { q: query } });
             const data = response.data || response;
             setClassSearchResults(data);
@@ -110,8 +108,8 @@ export default function AdminRolesPage() {
     const selectClass = (cls) => {
         setAssignForm({
             ...assignForm,
-            scope_id: cls.id,          // UUID of the class
-            scope_name: cls.name,      // Human-readable class name
+            scope_id: cls.id,
+            scope_name: cls.name,
         });
         setClassSearchResults([]);
     };
@@ -165,7 +163,6 @@ export default function AdminRolesPage() {
 
     return (
         <div className="max-w-4xl mx-auto px-4 py-8 font-outfit">
-            {/* Breadcrumb */}
             <nav className="flex items-center gap-2 text-sm text-gray-500 mb-6">
                 <Link to="/" className="hover:text-indigo-600"><FiHome /> Home</Link>
                 <FiChevronRight size={12} />
@@ -174,7 +171,6 @@ export default function AdminRolesPage() {
                 <span className="text-gray-900 dark:text-white font-semibold">Roles</span>
             </nav>
 
-            {/* Header */}
             <div className="flex justify-between items-start gap-4 mb-6 flex-wrap">
                 <div>
                     <h1 className="text-3xl font-black tracking-tight">Role Management</h1>
@@ -190,7 +186,6 @@ export default function AdminRolesPage() {
                 </div>
             </div>
 
-            {/* Stats */}
             <div className="flex gap-3 mb-6">
                 <span className="px-4 py-2 rounded-full text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100">
                     <FiUsers className="inline mr-1" size={12} /> {activeCount} Active
@@ -202,7 +197,6 @@ export default function AdminRolesPage() {
                 )}
             </div>
 
-            {/* Search & Filter */}
             <div className="flex gap-3 mb-4 flex-wrap">
                 <div className="relative flex-1 min-w-[180px]">
                     <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
@@ -226,7 +220,6 @@ export default function AdminRolesPage() {
                 </select>
             </div>
 
-            {/* Tabs */}
             <div className="flex gap-2 mb-5 border-b pb-2">
                 {['active', 'past'].map(tab => (
                     <button
@@ -239,7 +232,6 @@ export default function AdminRolesPage() {
                 ))}
             </div>
 
-            {/* Roles List */}
             {roles.length > 0 ? (
                 <div className="space-y-3">
                     {roles.map(role => {
@@ -294,7 +286,7 @@ export default function AdminRolesPage() {
                 </div>
             )}
 
-            {/* Assign Role Modal with class name search */}
+            {/* Assign Role Modal */}
             {showAssignModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
                     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
@@ -338,7 +330,7 @@ export default function AdminRolesPage() {
                                 </select>
                             </div>
 
-                            {/* Class Name Search (replaces UUID input) */}
+                            {/* Class Name Search */}
                             <div>
                                 <label className="block text-sm font-medium mb-1">Class *</label>
                                 <div className="relative">

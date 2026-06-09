@@ -3,7 +3,7 @@ from django.utils import timezone
 from apps.governance.services.stats_service import StatsService
 from apps.governance.services.role_service import RoleService
 from apps.governance.models import AuditLog, AuditArchive
-from common.notifications import NotificationService
+from apps.notifications.services import NotificationService
 import logging
 
 logger = logging.getLogger(__name__)

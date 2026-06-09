@@ -6,7 +6,7 @@ from ninja import Router, Query, File, Schema
 from ninja.files import UploadedFile
 
 from common.auth import PhoneOTPAuth
-from common.jwt_auth import JWTAuth, create_token_pair  # added decode_token helper
+from common.jwt_auth import JWTAuth, create_token_pair
 from .models import User, Badge, DataExport, UserSession, StudentRole
 from .schema import (
     SignupIn, OTPRequestIn, OTPVerifyIn, ProfileUpdateIn
@@ -277,6 +277,47 @@ def list_my_roles(request):
     }
 
 
+# ============================================
+# ADMIN: LIST ALL ROLES
+# ============================================
+@router.get("/admin/roles/", auth=JWTAuth())
+def list_all_roles(request):
+    """Admin only: return all active and past roles across all users."""
+    if request.auth.role != 'admin':
+        return {"error": "Permission denied"}, 403
+
+    active_roles = StudentRole.objects.filter(is_active=True).select_related('user', 'assigned_by')
+    past_roles = StudentRole.objects.filter(is_active=False).select_related('user', 'assigned_by')[:50]
+
+    return {
+        "active_roles": [{
+            "id": str(r.id),
+            "user_name": r.user.full_name,
+            "user_id": str(r.user.id),
+            "role": r.role,
+            "role_display": r.get_role_display(),
+            "scope_type": r.scope_type,
+            "scope_name": r.scope_name,
+            "scope_id": str(r.scope_id),
+            "start_date": str(r.start_date),
+            "end_date": str(r.end_date),
+            "days_remaining": r.days_remaining,
+            "is_expired": r.is_expired,
+            "assigned_by_name": r.assigned_by.full_name if r.assigned_by else None,
+        } for r in active_roles],
+        "past_roles": [{
+            "id": str(r.id),
+            "user_name": r.user.full_name,
+            "user_id": str(r.user.id),
+            "role": r.role,
+            "role_display": r.get_role_display(),
+            "scope_name": r.scope_name,
+            "end_date": str(r.end_date),
+            "revocation_reason": r.revocation_reason,
+        } for r in past_roles],
+    }
+
+
 @router.post("/roles/assign/", auth=JWTAuth())
 def assign_role(request, data: dict):
     user = request.auth
@@ -450,11 +491,9 @@ def refresh_token(request):
         return {"error": "Refresh token required"}, 400
 
     try:
-        # Decode using the same method as your JWTAuth class
         secret = getattr(settings, 'JWT_SECRET_KEY', settings.SECRET_KEY)
         payload = jwt.decode(refresh_token_value, secret, algorithms=["HS256"])
 
-        # Verify it is actually a refresh token
         if payload.get("type") != "refresh":
             return {"error": "Invalid token type"}, 403
 
@@ -463,9 +502,6 @@ def refresh_token(request):
             return {"error": "Invalid token"}, 403
 
         user = User.objects.get(id=user_id, is_active=True)
-
-        # Optional: check that the token hasn't been revoked (e.g., by session management)
-        # but for now just issue new tokens
 
         new_tokens = create_token_pair(user)
         return new_tokens
@@ -527,14 +563,12 @@ def two_factor_setup(request):
     """Generate QR code and secret for TOTP setup."""
     user = request.auth
     secret, qr_code = TwoFactorService.generate_qr_code(user)
-    # Store secret temporarily in cache (5 minutes)
     from django.core.cache import cache
     cache.set(f"2fa_secret_{user.id}", secret, timeout=300)
     return {"qr_code": qr_code, "secret": secret}
 
 @router.post("/2fa/verify-setup/", auth=JWTAuth())
 def verify_two_factor_setup(request, data: Schema):
-    """Verify TOTP code and enable 2FA for the user."""
     from ninja import Schema as NinjaSchema
     class VerifySetupIn(NinjaSchema):
         code: str
@@ -546,17 +580,14 @@ def verify_two_factor_setup(request, data: Schema):
         return {"error": "Setup session expired, please restart"}
     if not TwoFactorService.verify_totp_code(secret, verify_data.code):
         return {"error": "Invalid verification code"}
-    # Enable 2FA for user
     user.two_factor_enabled = True
     user.save(update_fields=['two_factor_enabled'])
-    # Generate backup codes
     backup_codes = TwoFactorService.generate_backup_codes(user)
     cache.delete(f"2fa_secret_{user.id}")
     return {"message": "2FA enabled", "backup_codes": backup_codes}
 
 @router.post("/2fa/disable/", auth=JWTAuth())
 def disable_two_factor(request, data: Schema):
-    """Disable 2FA after verifying a TOTP code."""
     from ninja import Schema as NinjaSchema
     class DisableIn(NinjaSchema):
         code: str
@@ -566,20 +597,17 @@ def disable_two_factor(request, data: Schema):
         return {"error": "Invalid 2FA code"}
     user.two_factor_enabled = False
     user.save(update_fields=['two_factor_enabled'])
-    # Clear backup codes
     from django.core.cache import cache
     cache.delete(f"backup_codes_{user.id}")
     return {"message": "2FA disabled"}
 
 @router.get("/2fa/status/", auth=JWTAuth())
 def two_factor_status(request):
-    """Return whether 2FA is enabled for the user."""
     user = request.auth
     return {"two_factor_enabled": user.two_factor_enabled}
 
 @router.post("/2fa/verify-login/", auth=None)
 def verify_2fa_login(request, data: TwoFactorVerifyLoginIn):
-    """Second step after OTP verification: validate TOTP code and issue tokens."""
     temp_token = data.temp_token
     code = data.code
     user = AccountService.get_user_from_temp_token(temp_token)
@@ -617,7 +645,6 @@ def verify_2fa_login(request, data: TwoFactorVerifyLoginIn):
 # ============================================
 @router.get("/users/", auth=JWTAuth())
 def list_all_users(request):
-    """Admin only: return a list of all users with detailed info and active roles."""
     if request.auth.role != 'admin':
         return []
 
@@ -634,7 +661,7 @@ def list_all_users(request):
             'phone_number': u.phone_number,
             'institution': u.institution,
             'class_name': u.class_name,
-            'role': u.role,                 # base role
+            'role': u.role,
             'is_active': u.is_active,
             'active_roles': [{
                 'id': str(r.id),
@@ -720,7 +747,6 @@ def admin_deactivate_user(request, user_id: str):
     user.is_active = False
     user.save(update_fields=['is_active'])
     
-    # Revoke all active sessions
     UserSession.objects.filter(user=user, is_active=True).update(
         is_active=False,
         revoked_at=timezone.now(),

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { chatApi } from '../api/chatApi';
 import { accountsApi } from '../api/accountsApi';
@@ -6,7 +6,7 @@ import { useChatStore } from '../stores/useChatStore';
 import { useAuth } from '../contexts/AuthContext';
 import {
   FiMessageSquare, FiSearch, FiEdit3, FiX,
-  FiClock, FiChevronRight
+  FiClock, FiChevronRight, FiFilter
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -91,12 +91,12 @@ const STYLE = `
     padding: 40px 20px 80px;
   }
 
-  /* ─── Header ─── */
+  /* ─── Enhanced Header ─── */
   .cp-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    margin-bottom: 36px;
+    margin-bottom: 32px;
     animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
@@ -111,7 +111,14 @@ const STYLE = `
     }
   }
 
-  .cp-header-left {
+  .cp-header-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    flex: 1;
+  }
+
+  .cp-header-top {
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -134,6 +141,40 @@ const STYLE = `
     letter-spacing: -0.6px;
   }
 
+  .cp-header-stats {
+    display: flex;
+    gap: 24px;
+    padding: 16px 0;
+    border-top: 1px solid var(--cp-border);
+    border-bottom: 1px solid var(--cp-border);
+  }
+
+  .cp-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .cp-stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--cp-text);
+  }
+
+  .cp-stat-label {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--cp-muted);
+    font-family: 'Geist Mono', monospace;
+  }
+
+  .cp-header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
   .cp-new-btn {
     display: flex;
     align-items: center;
@@ -149,6 +190,7 @@ const STYLE = `
     cursor: pointer;
     box-shadow: 0 4px 16px var(--cp-accent-glow);
     transition: all 0.2s ease;
+    flex-shrink: 0;
   }
 
   .cp-new-btn:hover {
@@ -158,6 +200,44 @@ const STYLE = `
 
   .cp-new-btn:active {
     transform: translateY(0) scale(0.98);
+  }
+
+  /* ─── Tabs ─── */
+  .cp-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--cp-border);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .cp-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .cp-tab {
+    padding: 10px 16px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--cp-muted);
+    font-family: 'Geist', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    position: relative;
+  }
+
+  .cp-tab:hover {
+    color: var(--cp-text);
+  }
+
+  .cp-tab.active {
+    color: var(--cp-accent);
+    border-bottom-color: var(--cp-accent);
   }
 
   /* ─── Search Panel ─── */
@@ -277,6 +357,7 @@ const STYLE = `
     font-weight: 700;
     color: #ffffff;
     flex-shrink: 0;
+    position: relative;
   }
 
   .cp-avatar-lg {
@@ -489,6 +570,15 @@ const STYLE = `
     overflow: hidden;
   }
 
+  .cp-conv-card.unread {
+    background: linear-gradient(
+      to right,
+      rgba(59, 130, 246, 0.08),
+      transparent
+    );
+    border-color: rgba(59, 130, 246, 0.2);
+  }
+
   @keyframes fadeUp {
     from {
       opacity: 0;
@@ -571,12 +661,23 @@ const STYLE = `
     flex-shrink: 0;
   }
 
+  .cp-conv-meta {
+    font-size: 12px;
+    color: var(--cp-muted);
+    margin-bottom: 4px;
+  }
+
   .cp-conv-preview {
     font-size: 13px;
     color: var(--cp-muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .cp-conv-card.unread .cp-conv-preview {
+    color: var(--cp-text);
+    font-weight: 500;
   }
 
   .cp-unread-badge {
@@ -620,6 +721,10 @@ const STYLE = `
       margin-bottom: 24px;
     }
 
+    .cp-header-stats {
+      gap: 16px;
+    }
+
     .cp-new-btn {
       padding: 8px 16px;
       font-size: 13px;
@@ -659,6 +764,7 @@ export default function ChatsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showSearch, setShowSearch] = useState(false);
+  const [activeTab, setActiveTab] = useState('all');
   const conversations = useChatStore(s => s.conversations);
   const setConversations = useChatStore(s => s.setConversations);
   const navigate = useNavigate();
@@ -709,15 +815,6 @@ export default function ChatsPage() {
     }
   };
 
-  const getOtherParticipant = (conv) => {
-    if (!user) return { name: 'Unknown', id: null };
-    const otherId = conv.participants.find(id => id !== user.id);
-    return {
-      name: otherId ? `User ${otherId.slice(0, 8)}` : 'Unknown',
-      id: otherId,
-    };
-  };
-
   const formatTime = (timestamp) => {
     if (!timestamp) return '';
     const now = new Date();
@@ -734,26 +831,83 @@ export default function ChatsPage() {
     return msgDate.toLocaleDateString();
   };
 
+  // Filter conversations based on tab
+  const filteredConversations = useMemo(() => {
+    switch (activeTab) {
+      case 'unread':
+        return conversations.filter(c => c.unread_count > 0);
+      case 'archived':
+        return conversations.filter(c => !c.is_active);
+      case 'all':
+      default:
+        return conversations.filter(c => c.is_active);
+    }
+  }, [conversations, activeTab]);
+
+  const unreadCount = useMemo(() => {
+    return conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+  }, [conversations]);
+
   return (
     <>
       <style>{STYLE}</style>
       <div className="cp-root">
         <div className="cp-container">
-          {/* Header */}
+          {/* Enhanced Header */}
           <header className="cp-header">
-            <div className="cp-header-left">
-              <span className="cp-eyebrow">Academe / Inbox</span>
-              <h1 className="cp-title">Messages</h1>
+            <div className="cp-header-content">
+              <div className="cp-header-top">
+                <span className="cp-eyebrow">Academe / Inbox</span>
+                <h1 className="cp-title">Messages</h1>
+              </div>
+
+              {/* Stats */}
+              <div className="cp-header-stats">
+                <div className="cp-stat">
+                  <span className="cp-stat-value">{conversations.length}</span>
+                  <span className="cp-stat-label">Conversations</span>
+                </div>
+                <div className="cp-stat">
+                  <span className="cp-stat-value">{unreadCount}</span>
+                  <span className="cp-stat-label">Unread</span>
+                </div>
+              </div>
             </div>
-            <button
-              className="cp-new-btn"
-              onClick={() => setShowSearch(!showSearch)}
-              title="Start a new chat"
-            >
-              <FiEdit3 size={16} />
-              <span>New Chat</span>
-            </button>
+
+            {/* Actions */}
+            <div className="cp-header-actions">
+              <button
+                className="cp-new-btn"
+                onClick={() => setShowSearch(!showSearch)}
+                title="Start a new chat"
+              >
+                <FiEdit3 size={16} />
+                <span>New Chat</span>
+              </button>
+            </div>
           </header>
+
+          {/* Tabs */}
+          <div className="cp-tabs">
+            <button
+              className={`cp-tab ${activeTab === 'all' ? 'active' : ''}`}
+              onClick={() => setActiveTab('all')}
+            >
+              All
+            </button>
+            <button
+              className={`cp-tab ${activeTab === 'unread' ? 'active' : ''}`}
+              onClick={() => setActiveTab('unread')}
+            >
+              Unread {unreadCount > 0 && `(${unreadCount})`}
+            </button>
+            <button
+              className={`cp-tab ${activeTab === 'archived' ? 'active' : ''}`}
+              onClick={() => setActiveTab('archived')}
+            >
+              Archived
+            </button>
+          </div>
 
           {/* Search Panel */}
           {showSearch && (
@@ -823,29 +977,45 @@ export default function ChatsPage() {
                 </div>
               ))}
             </div>
-          ) : conversations.length === 0 ? (
+          ) : filteredConversations.length === 0 ? (
             <div className="cp-empty">
               <div className="cp-empty-icon">
                 <FiMessageSquare />
               </div>
-              <h2 className="cp-empty-title">No conversations yet</h2>
-              <p className="cp-empty-sub">Find a student and start chatting.</p>
-              <button
-                className="cp-empty-btn"
-                onClick={() => setShowSearch(true)}
-              >
-                Start a chat
-              </button>
+              <h2 className="cp-empty-title">
+                {activeTab === 'unread'
+                  ? 'No unread messages'
+                  : activeTab === 'archived'
+                    ? 'No archived conversations'
+                    : 'No conversations yet'}
+              </h2>
+              <p className="cp-empty-sub">
+                {activeTab === 'all'
+                  ? 'Find a student and start chatting.'
+                  : 'Stay in touch with your classmates.'}
+              </p>
+              {activeTab === 'all' && (
+                <button
+                  className="cp-empty-btn"
+                  onClick={() => setShowSearch(true)}
+                >
+                  Start a chat
+                </button>
+              )}
             </div>
           ) : (
             <div className="cp-conv-list">
-              <p className="cp-section-label">Recent — {conversations.length}</p>
-              {conversations.map((conv, i) => {
-                const other = getOtherParticipant(conv);
+              <p className="cp-section-label">
+                {activeTab === 'all' && `Recent — ${filteredConversations.length}`}
+                {activeTab === 'unread' && `Unread — ${filteredConversations.length}`}
+                {activeTab === 'archived' && `Archived — ${filteredConversations.length}`}
+              </p>
+              {filteredConversations.map((conv, i) => {
+                const isUnread = conv.unread_count > 0;
                 return (
                   <div
                     key={conv.id}
-                    className="cp-conv-card"
+                    className={`cp-conv-card${isUnread ? ' unread' : ''}`}
                     style={{ animationDelay: `${i * 0.05}s` }}
                     onClick={() => navigate(`/chat/${conv.id}`)}
                     role="button"
@@ -853,25 +1023,32 @@ export default function ChatsPage() {
                   >
                     <div className="cp-avatar-wrap">
                       <div className="cp-avatar cp-avatar-lg">
-                        {other.name?.[0]?.toUpperCase() || '?'}
+                        {conv.participant_name?.[0]?.toUpperCase() || '?'}
                       </div>
-                      <div className="cp-online-dot" />
+                      {conv.participant_status === 'online' && (
+                        <div className="cp-online-dot" />
+                      )}
                     </div>
 
                     <div className="cp-conv-body">
                       <div className="cp-conv-top">
-                        <span className="cp-conv-name">{other.name}</span>
+                        <span className="cp-conv-name">{conv.participant_name}</span>
                         <span className="cp-conv-time">
                           <FiClock size={10} />
                           {formatTime(conv.last_message_at)}
                         </span>
                       </div>
+                      <p className="cp-conv-meta">
+                        {conv.participant_status === 'online'
+                          ? '🟢 Active now'
+                          : `Last seen ${formatTime(conv.participant_last_active)}`}
+                      </p>
                       <p className="cp-conv-preview">
                         {conv.last_message_preview || 'No messages yet'}
                       </p>
                     </div>
 
-                    {conv.unread_count > 0 && (
+                    {isUnread && (
                       <div className="cp-unread-badge">
                         {conv.unread_count}
                       </div>

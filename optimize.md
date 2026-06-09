@@ -194,3 +194,25 @@ One minor optimization: In your body tag, you have:
 CSS
 background-image: radial-gradient(...), radial-gradient(...);
 Since this background is defined in the body tag, it will persist during theme switches, but the colors inside the radial gradients are currently hard-coded. Consider creating variables for these gradients to make them responsive to the dark/light modes as well (e.g., using lower opacity in dark mode)
+
+
+
+How to fix it (Recommended for Production)
+Open your vite.config.js (or vite.config.ts) in your frontend directory and add the manualChunks configuration. This tells Vite to split large libraries (like react, react-dom, or UI libraries) into their own separate files.
+
+JavaScript
+// vite.config.js
+export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            return 'vendor'; // Splits all libraries into a separate file
+          }
+        }
+      }
+    },
+    chunkSizeWarningLimit: 1000, // Optional: Increases the limit to 1000kb
+  }
+})

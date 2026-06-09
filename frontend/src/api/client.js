@@ -1,29 +1,36 @@
 import axios from 'axios';
 import { setTimeOffset } from '../utils/time';
 
-const BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const BASE_URL = import.meta.env.VITE_API_URL || '';
 export const BACKEND_BASE_URL = BASE_URL;
 
+// ✅ All API requests now automatically get the /api prefix
+const API_BASE = `${BASE_URL}/api`;
+
 const refreshApi = axios.create({
-  baseURL: BASE_URL,
-  headers: { 'Content-Type': 'application/json' },
+  baseURL: API_BASE,
+  headers: {
+    'Content-Type': 'application/json',
+    'ngrok-skip-browser-warning': 'true',
+  },
 });
 
 const apiClient = axios.create({
-  baseURL: BASE_URL,
-  headers: { 'Content-Type': 'application/json' },
+  baseURL: API_BASE,
+  headers: {
+    'Content-Type': 'application/json',
+    'ngrok-skip-browser-warning': 'true',
+  },
   timeout: 30000,
 });
 
-// Request interceptor – attach token from localStorage and skip ngrok interstitial
+// Request interceptor – attach token from localStorage
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    // ✅ Bypass the ngrok browser‑warning page for API requests
-    config.headers['ngrok-skip-browser-warning'] = 'true';
     return config;
   },
   (error) => Promise.reject(error)
@@ -42,7 +49,6 @@ const processQueue = (error, token = null) => {
 
 apiClient.interceptors.response.use(
   (response) => {
-    // Synchronize time with server on every response
     const serverDate = response.headers['date'];
     if (serverDate) {
       setTimeOffset(serverDate);
@@ -52,7 +58,7 @@ apiClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Skip refresh for auth endpoints
+    // ✅ Match the short paths – baseURL already adds /api
     const authEndpoints = [
       '/accounts/login/', '/accounts/verify-otp/', '/accounts/refresh-token/',
       '/accounts/request-otp/', '/accounts/register/', '/accounts/signup/'
@@ -61,7 +67,6 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Skip refresh logic for background sync requests – they should just fail
     if (originalRequest._syncRequest && error.response?.status === 401) {
       return Promise.reject(error);
     }
@@ -92,7 +97,6 @@ apiClient.interceptors.response.use(
           refresh: refreshToken,
         });
 
-        // Validate response content
         if (!response.data || !response.data.access) {
           throw new Error('No access token in refresh response');
         }

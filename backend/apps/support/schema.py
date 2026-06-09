@@ -3,9 +3,9 @@
 from ninja import Schema
 from typing import Optional, List
 from datetime import datetime
-import uuid
+from uuid import UUID
 
-# ── Input schemas (unchanged) ────────────────────────────────
+# ── Input schemas ──────────────────────────────────────────
 class TicketIn(Schema):
     title: str
     description: str
@@ -20,9 +20,9 @@ class TicketUpdateIn(Schema):
     assigned_to_id: Optional[str] = None
     resolution: Optional[str] = None
 
-# ── Output schemas (FIXED) ──────────────────────────────────
+# ── Output schemas ────────────────────────────────────────
 class TicketResponseOut(Schema):
-    id: uuid.UUID                      # automatically serialized as string
+    id: UUID                          # ✅ UUID – matches BaseModel primary key
     responder_name: str
     message: str
     is_internal: bool
@@ -31,15 +31,9 @@ class TicketResponseOut(Schema):
     class Config:
         from_attributes = True
 
-    @staticmethod
-    def resolve_responder_name(obj):
-        # obj is a TicketResponse instance
-        if obj.responder:
-            return obj.responder.get_full_name() or obj.responder.username
-        return "Unknown"
 
 class TicketOut(Schema):
-    id: uuid.UUID
+    id: UUID                          # ✅ UUID – matches BaseModel primary key
     title: str
     description: str
     category: str
@@ -52,15 +46,3 @@ class TicketOut(Schema):
 
     class Config:
         from_attributes = True
-
-    @staticmethod
-    def resolve_submitted_by_name(obj):
-        if obj.submitted_by:
-            return obj.submitted_by.get_full_name() or obj.submitted_by.username
-        return "Unknown"
-
-    @staticmethod
-    def resolve_assigned_to_name(obj):
-        if obj.assigned_to:
-            return obj.assigned_to.get_full_name() or obj.assigned_to.username
-        return None
