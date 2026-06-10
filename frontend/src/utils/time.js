@@ -1,4 +1,4 @@
-// ── Constants ────────────────────────────────────────────────────────────
+// ── Constants; ALSO I HAVE date-fns (`date-fns`) INSTALLED ────────────────────────────────────────────────────────────
 
 const SCHOOL_HOLIDAYS_KE = [
     '01-01', // New Year's Day
