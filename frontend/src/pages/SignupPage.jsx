@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { accountsApi } from '../api/accountsApi';
 import toast from 'react-hot-toast';
 import {
   FiZap, FiUser, FiPhone, FiHash, FiMail, FiBookOpen, FiHome,
-  FiArrowRight, FiShield, FiUsers, FiCheck, FiAlertCircle,
-  FiCheckCircle, FiInfo,
+  FiArrowRight, FiArrowLeft, FiShield, FiUsers, FiCheck, FiAlertCircle,
+  FiCheckCircle, FiLock, FiStar, FiTrendingUp,
 } from 'react-icons/fi';
 
 const KENYAN_INSTITUTIONS = [
@@ -21,339 +21,953 @@ const KENYAN_INSTITUTIONS = [
   'Mount Kenya University',
 ];
 
+const BENEFITS = [
+  { icon: '📢', text: 'Instant campus announcements' },
+  { icon: '📚', text: 'Course notes & resources' },
+  { icon: '🎯', text: 'Internships & scholarships' },
+  { icon: '👥', text: 'Connect with classmates' },
+];
+
+// ------------------------------------------------------------
+// Step Progress Bar
+// ------------------------------------------------------------
+function StepBar({ step }) {
+  const steps = ['Personal', 'Academic', 'Confirm'];
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.75rem' }}>
+      {steps.map((label, i) => {
+        const done = i < step;
+        const active = i === step;
+        return (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', flex: i < steps.length - 1 ? 1 : 'none' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <div style={{
+                width: 30, height: 30, borderRadius: '50%',
+                background: done ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : active ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : '#e5e7eb',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.35s ease',
+                boxShadow: (done || active) ? '0 4px 12px rgba(99,102,241,0.35)' : 'none',
+                flexShrink: 0,
+              }}>
+                {done
+                  ? <FiCheckCircle size={14} color="#fff" />
+                  : <span style={{ fontSize: '0.7rem', fontWeight: 700, color: active ? '#fff' : '#9ca3af' }}>{i + 1}</span>
+                }
+              </div>
+              <span style={{ fontSize: '0.6rem', fontWeight: 600, color: (done || active) ? '#6366f1' : '#9ca3af', whiteSpace: 'nowrap' }}>
+                {label}
+              </span>
+            </div>
+            {i < steps.length - 1 && (
+              <div style={{
+                flex: 1, height: 2, margin: '-10px 6px 0',
+                background: done ? 'linear-gradient(90deg,#6366f1,#8b5cf6)' : '#e5e7eb',
+                borderRadius: 99, transition: 'background 0.35s ease',
+              }} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------
+// Field component
+// ------------------------------------------------------------
+function Field({ label, error, helper, icon: Icon, children }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+        {label}
+      </label>
+      <div style={{ position: 'relative' }}>
+        {Icon && (
+          <Icon
+            size={16}
+            style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }}
+          />
+        )}
+        {children}
+      </div>
+      {error && (
+        <span style={{ fontSize: '0.68rem', color: '#ef4444', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
+          <FiAlertCircle size={11} /> {error}
+        </span>
+      )}
+      {helper && !error && (
+        <span style={{ fontSize: '0.65rem', color: '#94a3b8' }}>{helper}</span>
+      )}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------
+// Main Signup Page
+// ------------------------------------------------------------
 export default function SignupPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [showInstitutionDropdown, setShowInstitutionDropdown] = useState(false);
+  const [step, setStep] = useState(0); // 0 = Personal, 1 = Academic, 2 = Confirm
+  const [showInstDropdown, setShowInstDropdown] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [formData, setFormData] = useState({
-    phone_number: '',
-    admission_number: '',
-    full_name: '',
-    email: '',
-    class_name: '',
-    institution: '',
+    phone_number: '', admission_number: '', full_name: '',
+    email: '', class_name: '', institution: '',
   });
   const [errors, setErrors] = useState({});
 
-  const validatePhone = (phone) => {
-    const cleaned = phone.replace(/\s/g, '');
-    if (!cleaned) return 'Phone number is required';
-    if (!/^\+?254\d{9}$/.test(cleaned) && !/^0\d{9}$/.test(cleaned)) {
-      return 'Use format: +254 700 000 000 or 0700 000 000';
+  const firstName = formData.full_name.trim().split(' ')[0] || '';
+
+  const inputStyle = (hasErr) => ({
+    width: '100%',
+    padding: '10px 14px 10px 38px',
+    borderRadius: 12,
+    border: `1.5px solid ${hasErr ? '#ef4444' : '#e5e7eb'}`,
+    background: hasErr ? 'rgba(239,68,68,0.04)' : '#f9fafb',
+    fontFamily: 'Outfit, sans-serif',
+    fontSize: '0.88rem',
+    fontWeight: 500,
+    color: '#1f2937',
+    outline: 'none',
+    transition: 'all 0.2s ease',
+    boxShadow: hasErr ? '0 0 0 3px rgba(239,68,68,0.1)' : 'none',
+  });
+
+  const handleChange = (name, value) => {
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (errors[name]) setErrors(prev => ({ ...prev, [name]: null }));
+  };
+
+  const validateStep = (s) => {
+    const errs = {};
+    if (s === 0) {
+      if (!formData.full_name.trim()) errs.full_name = 'Full name is required';
+      const ph = formData.phone_number.replace(/\s/g, '');
+      if (!ph) errs.phone_number = 'Phone number is required';
+      else if (!/^\+?254\d{9}$/.test(ph) && !/^0\d{9}$/.test(ph)) errs.phone_number = 'Use format: +254 700 000 000';
     }
-    return null;
+    if (s === 1) {
+      if (!formData.institution.trim()) errs.institution = 'Institution is required';
+      if (!formData.admission_number.trim() || formData.admission_number.trim().length < 5) errs.admission_number = 'Valid admission number required';
+      if (!formData.class_name.trim()) errs.class_name = 'Class / year is required';
+    }
+    if (s === 2) {
+      if (!agreedToTerms) errs.terms = 'You must agree to the terms';
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
   };
 
-  const validateAdmission = (adm) => {
-    if (!adm.trim()) return 'Admission number is required';
-    if (adm.trim().length < 5) return 'Admission number seems too short';
-    return null;
+  const next = () => {
+    if (validateStep(step)) setStep(s => s + 1);
   };
 
-  const validate = () => {
-    const newErrors = {};
-    newErrors.phone_number = validatePhone(formData.phone_number);
-    if (!formData.full_name.trim()) newErrors.full_name = 'Full name is required';
-    newErrors.admission_number = validateAdmission(formData.admission_number);
-    if (!formData.class_name.trim()) newErrors.class_name = 'Class/year is required';
-    if (!formData.institution.trim()) newErrors.institution = 'Institution is required';
-    if (!agreedToTerms) newErrors.terms = 'You must agree to the terms';
-    // Remove null errors
-    Object.keys(newErrors).forEach(k => { if (!newErrors[k]) delete newErrors[k]; });
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+  const back = () => setStep(s => s - 1);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
-    if (errors[name]) setErrors({ ...errors, [name]: null });
-  };
-
-  const handlePhoneChange = (e) => {
-    let value = e.target.value;
-    // Auto-format: if starts with 07, suggest +254
-    setFormData({ ...formData, phone_number: value });
-    if (errors.phone_number) setErrors({ ...errors, phone_number: null });
-  };
-
-  const handleInstitutionChange = (e) => {
-    setFormData({ ...formData, institution: e.target.value });
-    setShowInstitutionDropdown(true);
-    if (errors.institution) setErrors({ ...errors, institution: null });
-  };
-
-  const selectInstitution = (inst) => {
-    setFormData({ ...formData, institution: inst });
-    setShowInstitutionDropdown(false);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validate()) return;
-
+  const handleSubmit = async () => {
+    if (!validateStep(2)) return;
     setLoading(true);
     try {
       await accountsApi.signup(formData);
       setSuccess(true);
-      setTimeout(() => navigate('/login'), 2500);
-    } catch (error) {
-      toast.error(error.response?.data?.error || 'Signup failed. Please try again.');
+      setTimeout(() => navigate('/login'), 2800);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Signup failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Success state
+  const filteredInstitutions = KENYAN_INSTITUTIONS.filter(i =>
+    i.toLowerCase().includes(formData.institution.toLowerCase())
+  );
+
+  // ------------------------------------------------------------
+  // Success State
+  // ------------------------------------------------------------
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-        <div className="text-center" style={{ fontFamily: 'Outfit, sans-serif', maxWidth: 400, animation: 'signupFadeIn 0.6s ease both' }}>
-          <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'rgba(16,185,129,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
-            <FiCheckCircle size={40} style={{ color: '#10b981' }} />
+      <div style={{
+        minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'linear-gradient(135deg, #f0f9ff 0%, #faf5ff 100%)',
+        fontFamily: 'Outfit, sans-serif', padding: '1.5rem',
+      }}>
+        <style>{`
+          @keyframes sp-popIn { from { opacity:0; transform:scale(0.8); } to { opacity:1; transform:scale(1); } }
+          @keyframes sp-progress { from { width:100%; } to { width:0%; } }
+        `}</style>
+        <div style={{ textAlign: 'center', maxWidth: 380, animation: 'sp-popIn 0.5s cubic-bezier(0.16,1,0.3,1) both' }}>
+          <div style={{
+            width: 90, height: 90, borderRadius: '50%',
+            background: 'linear-gradient(135deg, rgba(16,185,129,0.12), rgba(52,211,153,0.08))',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 20px',
+            border: '2px solid rgba(16,185,129,0.2)',
+          }}>
+            <FiCheckCircle size={44} style={{ color: '#10b981' }} />
           </div>
-          <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a', marginBottom: 8 }}>Account Created! 🎉</h1>
-          <p style={{ color: '#64748b', marginBottom: 24, lineHeight: 1.6 }}>
-            Welcome to Academe, {formData.full_name.split(' ')[0]}! Redirecting you to login...
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', marginBottom: 8, letterSpacing: '-0.03em' }}>
+            You're in{firstName ? `, ${firstName}` : ''}! 🎉
+          </h1>
+          <p style={{ color: '#64748b', marginBottom: 8, lineHeight: 1.6, fontSize: '0.9rem' }}>
+            Your Academe account has been created. Redirecting to login…
+          </p>
+          <p style={{ color: '#94a3b8', fontSize: '0.78rem', marginBottom: 24 }}>
+            Welcome to your campus community.
           </p>
           <div style={{ height: 4, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: '100%', background: 'linear-gradient(90deg, #10b981, #34d399)', borderRadius: 99, animation: 'progressShrink 2.5s linear forwards' }} />
+            <div style={{
+              height: '100%', width: '100%',
+              background: 'linear-gradient(90deg, #10b981, #34d399)',
+              borderRadius: 99,
+              animation: 'sp-progress 2.8s linear forwards',
+            }} />
           </div>
-          <style>{`@keyframes progressShrink { from { width: 100%; } to { width: 0%; } }`}</style>
         </div>
       </div>
     );
   }
 
+  // ------------------------------------------------------------
+  // Main Render
+  // ------------------------------------------------------------
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Sans:wght@400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&display=swap');
 
-        .signup-container {
+        *, *::before, *::after { box-sizing: border-box; }
+
+        @keyframes sp-slideUp {
+          from { opacity: 0; transform: translateY(24px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes sp-spin { to { transform: rotate(360deg); } }
+        @keyframes sp-float {
+          0%,100% { transform: translateY(0); }
+          50% { transform: translateY(-12px); }
+        }
+        @keyframes sp-stepIn {
+          from { opacity: 0; transform: translateX(16px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+
+        .sp-page {
           font-family: 'Outfit', sans-serif;
-          width: 100%;
-          max-width: 480px;
-          animation: signupFadeIn 0.6s ease both;
-        }
-        @keyframes signupFadeIn {
-          from { opacity: 0; transform: translateY(20px) scale(0.97); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
+          min-height: 100vh;
+          display: flex;
+          background: #f8faff;
         }
 
-        .signup-card {
-          background: rgba(255,255,255,0.85);
-          backdrop-filter: blur(24px) saturate(180%);
-          -webkit-backdrop-filter: blur(24px) saturate(180%);
-          border: 1px solid rgba(255,255,255,0.5);
-          border-radius: 28px;
-          padding: 40px 32px;
-          box-shadow: 0 4px 24px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-          max-height: 90vh; overflow-y: auto;
+        /* Left panel — desktop only */
+        .sp-left {
+          display: none;
         }
-        .dark .signup-card {
-          background: rgba(17,17,34,0.85);
-          border-color: rgba(255,255,255,0.06);
-          box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+        @media (min-width: 1024px) {
+          .sp-left {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 3rem 3.5rem;
+            flex: 1;
+            background: linear-gradient(145deg, #0f172a 0%, #1e1b4b 40%, #312e81 100%);
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            overflow: hidden;
+          }
         }
 
-        .signup-logo {
-          width: 56px; height: 56px;
-          background: linear-gradient(135deg, #6366f1, #8b5cf6, #ec4899);
-          border-radius: 16px;
+        .sp-left-orb {
+          position: absolute;
+          border-radius: 50%;
+          filter: blur(60px);
+          pointer-events: none;
+        }
+
+        .sp-left-logo {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 3rem;
+        }
+        .sp-left-logo-mark {
+          width: 44px; height: 44px;
+          background: linear-gradient(135deg, #6366f1, #8b5cf6);
+          border-radius: 12px;
           display: flex; align-items: center; justify-content: center;
-          margin: 0 auto 16px;
-          box-shadow: 0 8px 32px rgba(99,102,241,0.35);
+          box-shadow: 0 6px 24px rgba(99,102,241,0.4);
         }
-        .signup-title {
-          font-size: 1.6rem; font-weight: 800; text-align: center;
+        .sp-left-brand {
+          font-family: 'Bricolage Grotesque', sans-serif;
+          font-size: 1.4rem; font-weight: 800;
+          letter-spacing: -0.03em;
+          background: linear-gradient(135deg, #a5b4fc, #c4b5fd);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+
+        .sp-left-headline {
+          font-family: 'Bricolage Grotesque', sans-serif;
+          font-size: clamp(1.8rem, 2.5vw, 2.4rem);
+          font-weight: 800;
+          letter-spacing: -0.04em;
+          color: #f8fafc;
+          line-height: 1.15;
+          margin-bottom: 1rem;
+        }
+        .sp-left-headline span {
+          background: linear-gradient(135deg, #818cf8, #c084fc);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+
+        .sp-left-sub {
+          color: #94a3b8;
+          font-size: 0.88rem;
+          line-height: 1.7;
+          margin-bottom: 2rem;
+          max-width: 360px;
+        }
+
+        .sp-benefit {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          margin-bottom: 1rem;
+          animation: sp-slideUp 0.5s ease both;
+        }
+        .sp-benefit-icon {
+          width: 38px; height: 38px;
+          border-radius: 10px;
+          background: rgba(99,102,241,0.15);
+          border: 1px solid rgba(99,102,241,0.2);
+          display: flex; align-items: center; justify-content: center;
+          font-size: 1.1rem;
+          flex-shrink: 0;
+        }
+        .sp-benefit-text {
+          font-size: 0.85rem;
+          color: #cbd5e1;
+          font-weight: 500;
+          line-height: 1.5;
+          padding-top: 8px;
+        }
+
+        .sp-left-stats {
+          display: flex;
+          gap: 1.5rem;
+          margin-top: 2.5rem;
+          padding-top: 1.5rem;
+          border-top: 1px solid rgba(255,255,255,0.08);
+          flex-wrap: wrap;
+        }
+        .sp-stat { }
+        .sp-stat-num {
+          font-family: 'Bricolage Grotesque', sans-serif;
+          font-size: 1.5rem; font-weight: 800;
+          background: linear-gradient(135deg, #818cf8, #c084fc);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          letter-spacing: -0.03em;
+        }
+        .sp-stat-label {
+          font-size: 0.72rem;
+          color: #64748b;
+          font-weight: 500;
+          margin-top: 1px;
+        }
+
+        /* Right side */
+        .sp-right {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 2rem 1.5rem;
+          flex: none;
+          width: 100%;
+        }
+        @media (min-width: 1024px) {
+          .sp-right {
+            width: 480px;
+            flex-shrink: 0;
+            overflow-y: auto;
+            max-height: 100vh;
+          }
+        }
+
+        .sp-card {
+          width: 100%;
+          max-width: 420px;
+          background: #fff;
+          border-radius: 26px;
+          padding: 2rem 1.75rem;
+          box-shadow: 0 4px 24px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
+          border: 1px solid rgba(0,0,0,0.05);
+          animation: sp-slideUp 0.55s cubic-bezier(0.16,1,0.3,1) both;
+        }
+
+        .sp-card-header {
+          text-align: center;
+          margin-bottom: 1.5rem;
+        }
+        .sp-card-logo {
+          width: 52px; height: 52px;
+          background: linear-gradient(135deg, #6366f1, #8b5cf6, #ec4899);
+          border-radius: 15px;
+          display: flex; align-items: center; justify-content: center;
+          margin: 0 auto 0.75rem;
+          box-shadow: 0 8px 28px rgba(99,102,241,0.35);
+        }
+        .sp-card-title {
+          font-family: 'Bricolage Grotesque', sans-serif;
+          font-size: 1.5rem; font-weight: 800;
           background: linear-gradient(135deg, #6366f1, #8b5cf6);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
+          letter-spacing: -0.03em;
+          line-height: 1.1;
           margin-bottom: 4px;
         }
-        .signup-subtitle {
-          text-align: center; font-size: 0.85rem; color: #9ca3af; margin-bottom: 28px;
+        .sp-card-subtitle {
+          font-size: 0.8rem;
+          color: #9ca3af;
+          font-weight: 500;
         }
 
-        .signup-form { display: flex; flex-direction: column; gap: 16px; }
-
-        .signup-input-group { position: relative; }
-        .signup-label { display: block; font-size: 0.75rem; font-weight: 700; color: #374151; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.04em; }
-        .dark .signup-label { color: #d1d5db; }
-        .signup-input-wrapper { position: relative; }
-        .signup-input-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #9ca3af; pointer-events: none; z-index: 1; }
-        .signup-input {
-          width: 100%; padding: 11px 16px 11px 42px;
+        /* Personalised banner */
+        .sp-personal-banner {
+          padding: 0.7rem 1rem;
           border-radius: 12px;
-          border: 1.5px solid rgba(0,0,0,0.1);
-          background: rgba(255,255,255,0.6);
-          font-size: 0.88rem; font-family: 'DM Sans', sans-serif;
-          outline: none; transition: all 0.2s; color: #1f2937;
+          background: linear-gradient(135deg, rgba(99,102,241,0.07), rgba(139,92,246,0.07));
+          border: 1px solid rgba(99,102,241,0.12);
+          margin-bottom: 1.25rem;
+          font-size: 0.8rem;
+          color: #4f46e5;
+          font-weight: 600;
+          line-height: 1.4;
         }
-        .dark .signup-input { background: rgba(30,30,50,0.6); border-color: rgba(255,255,255,0.08); color: #f3f4f6; }
-        .signup-input:focus { border-color: #6366f1; box-shadow: 0 0 0 4px rgba(99,102,241,0.1); }
-        .signup-input.error { border-color: #ef4444; box-shadow: 0 0 0 4px rgba(239,68,68,0.1); }
-        .signup-error-msg { font-size: 0.7rem; color: #ef4444; margin-top: 4px; display: flex; align-items: center; gap: 4px; }
 
-        .signup-inst-dropdown {
-          position: absolute; top: 100%; left: 0; right: 0; z-index: 20;
-          background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
-          box-shadow: 0 8px 24px rgba(0,0,0,0.12); max-height: 160px; overflow-y: auto;
+        .sp-input {
+          width: 100%;
+          padding: 10px 14px 10px 38px;
+          border-radius: 12px;
+          border: 1.5px solid #e5e7eb;
+          background: #f9fafb;
+          font-family: 'Outfit', sans-serif;
+          font-size: 0.88rem;
+          font-weight: 500;
+          color: #1f2937;
+          outline: none;
+          transition: all 0.2s ease;
         }
-        .dark .signup-inst-dropdown { background: #1e293b; border-color: #334155; }
-        .signup-inst-item { padding: 9px 14px; cursor: pointer; font-size: 0.82rem; color: #0f172a; border-bottom: 1px solid #f1f5f9; }
-        .signup-inst-item:hover { background: rgba(99,102,241,0.06); }
-        .dark .signup-inst-item { color: #f8fafc; border-color: #334155; }
+        .sp-input:focus {
+          border-color: #6366f1;
+          box-shadow: 0 0 0 4px rgba(99,102,241,0.1);
+          background: #fff;
+        }
+        .sp-input.err {
+          border-color: #ef4444;
+          box-shadow: 0 0 0 3px rgba(239,68,68,0.1);
+          background: rgba(239,68,68,0.03);
+        }
+        .sp-input::placeholder { color: #9ca3af; }
+        .sp-input:focus::placeholder { color: #c4b5fd; }
 
-        .signup-check-row { display: flex; align-items: flex-start; gap: 10px; }
-        .signup-check-row input[type="checkbox"] { width: 18px; height: 18px; margin-top: 2px; accent-color: #6366f1; }
-        .signup-check-label { font-size: 0.8rem; color: #64748b; font-weight: 500; line-height: 1.4; }
-        .dark .signup-check-label { color: #94a3b8; }
-        .signup-check-label a { color: #6366f1; text-decoration: none; font-weight: 600; }
+        .sp-step-body {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+          animation: sp-stepIn 0.3s ease both;
+        }
 
-        .signup-btn {
-          width: 100%; padding: 14px; border-radius: 14px; border: none;
-          font-size: 0.95rem; font-weight: 700; cursor: pointer;
-          transition: all 0.25s; font-family: 'Outfit', sans-serif;
-          display: flex; align-items: center; justify-content: center; gap: 8px;
+        .sp-label {
+          font-size: 0.72rem;
+          font-weight: 700;
+          color: #374151;
+          letter-spacing: 0.03em;
+          text-transform: uppercase;
+          display: block;
+          margin-bottom: 5px;
+        }
+        .sp-helper {
+          font-size: 0.65rem;
+          color: #94a3b8;
+          margin-top: 3px;
+          display: block;
+        }
+        .sp-err-msg {
+          font-size: 0.68rem;
+          color: #ef4444;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-weight: 500;
+          margin-top: 3px;
+        }
+
+        .sp-inst-dropdown {
+          position: absolute;
+          top: calc(100% + 4px);
+          left: 0; right: 0;
+          z-index: 50;
+          background: #fff;
+          border: 1px solid #e5e7eb;
+          border-radius: 12px;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+          max-height: 160px;
+          overflow-y: auto;
+        }
+        .sp-inst-item {
+          padding: 9px 14px;
+          cursor: pointer;
+          font-size: 0.82rem;
+          color: #1f2937;
+          border-bottom: 1px solid #f3f4f6;
+          transition: background 0.12s;
+          font-family: 'Outfit', sans-serif;
+        }
+        .sp-inst-item:hover { background: rgba(99,102,241,0.06); color: #6366f1; }
+        .sp-inst-item:last-child { border-bottom: none; }
+
+        .sp-check-row {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+        }
+        .sp-check-row input[type="checkbox"] {
+          width: 18px; height: 18px;
+          margin-top: 1px;
+          accent-color: #6366f1;
+          flex-shrink: 0;
+          cursor: pointer;
+        }
+        .sp-check-label {
+          font-size: 0.8rem;
+          color: #6b7280;
+          font-weight: 500;
+          line-height: 1.5;
+        }
+        .sp-check-label a { color: #6366f1; font-weight: 600; text-decoration: none; }
+        .sp-check-label a:hover { text-decoration: underline; }
+
+        .sp-trust-row {
+          margin-top: 0.75rem;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .sp-trust-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 0.72rem;
+          color: #6b7280;
+          font-weight: 500;
+        }
+        .sp-trust-check {
+          width: 16px; height: 16px;
+          border-radius: 50%;
+          background: rgba(16,185,129,0.1);
+          border: 1px solid rgba(16,185,129,0.2);
+          display: flex; align-items: center; justify-content: center;
+          flex-shrink: 0;
+        }
+
+        /* Review card */
+        .sp-review-card {
+          background: #f8faff;
+          border: 1px solid #e5e7eb;
+          border-radius: 14px;
+          padding: 1rem;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-bottom: 0.5rem;
+        }
+        .sp-review-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 0.78rem;
+        }
+        .sp-review-key { color: #9ca3af; font-weight: 500; }
+        .sp-review-val { color: #1f2937; font-weight: 600; text-align: right; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .sp-btn {
+          width: 100%; padding: 0.82rem; border-radius: 14px; border: none;
           background: linear-gradient(135deg, #6366f1, #8b5cf6);
-          color: white; box-shadow: 0 4px 16px rgba(99,102,241,0.3);
-          margin-top: 4px;
+          color: #fff; font-family: 'Outfit', sans-serif;
+          font-size: 0.9rem; font-weight: 700; cursor: pointer;
+          display: flex; align-items: center; justify-content: center; gap: 8px;
+          transition: all 0.2s ease;
+          box-shadow: 0 6px 20px rgba(99,102,241,0.3);
+          margin-top: 0.5rem;
         }
-        .signup-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(99,102,241,0.4); }
-        .signup-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .sp-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(99,102,241,0.4); }
+        .sp-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
-        .signup-footer { text-align: center; margin-top: 20px; font-size: 0.85rem; color: #6b7280; }
-        .dark .signup-footer { color: #9ca3af; }
-        .signup-footer a { color: #6366f1; font-weight: 600; text-decoration: none; }
-        .signup-footer a:hover { text-decoration: underline; }
+        .sp-btn-ghost {
+          width: 100%; padding: 0.72rem; border-radius: 14px;
+          border: 1.5px solid #e5e7eb;
+          background: transparent; color: #6b7280;
+          font-family: 'Outfit', sans-serif; font-size: 0.85rem; font-weight: 600;
+          cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;
+          transition: all 0.2s ease; margin-top: 0.4rem;
+        }
+        .sp-btn-ghost:hover { border-color: #6366f1; color: #6366f1; background: rgba(99,102,241,0.04); }
 
-        .signup-features { display: flex; justify-content: center; gap: 16px; margin-top: 16px; font-size: 0.7rem; color: #9ca3af; }
-        .signup-features span { display: flex; align-items: center; gap: 4px; }
+        .sp-spinner {
+          width: 16px; height: 16px;
+          border: 2.5px solid rgba(255,255,255,0.3);
+          border-top-color: #fff;
+          border-radius: 50%;
+          animation: sp-spin 0.75s linear infinite;
+          flex-shrink: 0;
+        }
+
+        .sp-social-proof {
+          text-align: center;
+          margin-top: 1rem;
+          font-size: 0.68rem;
+          color: #9ca3af;
+          display: flex;
+          justify-content: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .sp-social-proof span {
+          display: flex; align-items: center; gap: 4px; font-weight: 500;
+        }
+
+        .sp-footer {
+          text-align: center;
+          margin-top: 1.1rem;
+          font-size: 0.8rem;
+          color: #6b7280;
+        }
+        .sp-footer a { color: #6366f1; font-weight: 700; text-decoration: none; }
+        .sp-footer a:hover { text-decoration: underline; }
 
         @media (max-width: 480px) {
-          .signup-card { padding: 24px 20px; border-radius: 24px; }
+          .sp-card { padding: 1.5rem 1.25rem; border-radius: 20px; }
         }
       `}</style>
 
-      <div className="signup-container">
-        <div className="signup-card">
-          <div className="signup-logo">
-            <FiZap size={28} className="text-white" />
+      <div className="sp-page">
+
+        {/* ── Left Panel (desktop) ── */}
+        <div className="sp-left">
+          <div className="sp-left-orb" style={{ width: 320, height: 320, background: 'radial-gradient(circle,rgba(99,102,241,0.35) 0%,transparent 70%)', top: -80, left: -80 }} />
+          <div className="sp-left-orb" style={{ width: 280, height: 280, background: 'radial-gradient(circle,rgba(139,92,246,0.3) 0%,transparent 70%)', bottom: -60, right: -60 }} />
+
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <div className="sp-left-logo">
+              <div className="sp-left-logo-mark">
+                <FiZap size={22} color="#fff" />
+              </div>
+              <span className="sp-left-brand">Academe</span>
+            </div>
+
+            <h2 className="sp-left-headline">
+              Your campus<br />
+              <span>smarter than ever.</span>
+            </h2>
+
+            <p className="sp-left-sub">
+              Join thousands of students who manage their academic lives, discover opportunities, and stay connected — all in one place.
+            </p>
+
+            <div>
+              {BENEFITS.map((b, i) => (
+                <div key={b.text} className="sp-benefit" style={{ animationDelay: `${i * 0.1}s` }}>
+                  <div className="sp-benefit-icon">{b.icon}</div>
+                  <div className="sp-benefit-text">{b.text}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="sp-left-stats">
+              {[
+                { num: '15K+', label: 'Active Students' },
+                { num: '20', label: 'Universities' },
+                { num: '95%', label: 'Satisfaction' },
+              ].map(s => (
+                <div key={s.label} className="sp-stat">
+                  <div className="sp-stat-num">{s.num}</div>
+                  <div className="sp-stat-label">{s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{
+              marginTop: 24, padding: '12px 16px',
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: 12, display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              <div style={{ display: 'flex' }}>
+                {['🟣', '🔵', '🟢'].map((c, i) => (
+                  <div key={i} style={{
+                    width: 26, height: 26, borderRadius: '50%',
+                    background: ['#818cf8', '#60a5fa', '#34d399'][i],
+                    marginLeft: i > 0 ? -8 : 0,
+                    border: '2px solid rgba(15,23,42,0.7)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '0.55rem', fontWeight: 700, color: '#fff',
+                  }}>
+                    {['KU', 'UoN', 'JK'][i]}
+                  </div>
+                ))}
+              </div>
+              <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 500 }}>
+                Trusted by students at JKUAT, KU, UoN & more
+              </span>
+            </div>
           </div>
-          <h1 className="signup-title">Join Academe</h1>
-          <p className="signup-subtitle">Create your student account in seconds</p>
+        </div>
 
-          <form onSubmit={handleSubmit} className="signup-form">
-            {/* Full Name */}
-            <div className="signup-input-group">
-              <label className="signup-label">Full Name *</label>
-              <div className="signup-input-wrapper">
-                <FiUser size={18} className="signup-input-icon" />
-                <input type="text" name="full_name" value={formData.full_name} onChange={handleChange} placeholder="e.g. Alice Wanjiku" className={`signup-input ${errors.full_name ? 'error' : ''}`} required />
+        {/* ── Right Panel ── */}
+        <div className="sp-right">
+          <div className="sp-card">
+
+            {/* Header */}
+            <div className="sp-card-header">
+              <div className="sp-card-logo">
+                <FiZap size={24} color="#fff" />
               </div>
-              {errors.full_name && <span className="signup-error-msg"><FiAlertCircle size={12} /> {errors.full_name}</span>}
-            </div>
-
-            {/* Phone Number */}
-            <div className="signup-input-group">
-              <label className="signup-label">Phone Number *</label>
-              <div className="signup-input-wrapper">
-                <FiPhone size={18} className="signup-input-icon" />
-                <input type="tel" name="phone_number" value={formData.phone_number} onChange={handlePhoneChange} placeholder="+254 700 000 000" className={`signup-input ${errors.phone_number ? 'error' : ''}`} required />
+              <div className="sp-card-title">
+                {step === 0 && 'Create Account'}
+                {step === 1 && (firstName ? `Great choice, ${firstName}!` : 'Academic Details')}
+                {step === 2 && 'Almost there!'}
               </div>
-              {errors.phone_number && <span className="signup-error-msg"><FiAlertCircle size={12} /> {errors.phone_number}</span>}
-              <p style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: 3 }}>You'll receive an OTP for verification</p>
-            </div>
-
-            {/* Admission Number */}
-            <div className="signup-input-group">
-              <label className="signup-label">Admission Number *</label>
-              <div className="signup-input-wrapper">
-                <FiHash size={18} className="signup-input-icon" />
-                <input type="text" name="admission_number" value={formData.admission_number} onChange={handleChange} placeholder="e.g. I81/1229/2020" className={`signup-input ${errors.admission_number ? 'error' : ''}`} required />
-              </div>
-              {errors.admission_number && <span className="signup-error-msg"><FiAlertCircle size={12} /> {errors.admission_number}</span>}
-            </div>
-
-            {/* Email */}
-            <div className="signup-input-group">
-              <label className="signup-label">Email (optional)</label>
-              <div className="signup-input-wrapper">
-                <FiMail size={18} className="signup-input-icon" />
-                <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="you@example.com" className="signup-input" />
+              <div className="sp-card-subtitle">
+                {step === 0 && 'Your student profile starts here'}
+                {step === 1 && 'Tell us about your studies'}
+                {step === 2 && 'Review and confirm your details'}
               </div>
             </div>
 
-            {/* Class */}
-            <div className="signup-input-group">
-              <label className="signup-label">Class / Year of Study *</label>
-              <div className="signup-input-wrapper">
-                <FiBookOpen size={18} className="signup-input-icon" />
-                <input type="text" name="class_name" value={formData.class_name} onChange={handleChange} placeholder="e.g. 3rd year Microbiology" className={`signup-input ${errors.class_name ? 'error' : ''}`} required />
+            {/* Personalised banner */}
+            {step === 1 && formData.institution && (
+              <div className="sp-personal-banner">
+                🎓 You're joining from <strong>{formData.institution}</strong> — welcome to the community!
               </div>
-              {errors.class_name && <span className="signup-error-msg"><FiAlertCircle size={12} /> {errors.class_name}</span>}
-            </div>
+            )}
+            {step === 2 && firstName && (
+              <div className="sp-personal-banner">
+                👋 Hey <strong>{firstName}</strong>! You're just one tap away from joining Academe.
+              </div>
+            )}
 
-            {/* Institution with Autocomplete */}
-            <div className="signup-input-group" style={{ position: 'relative' }}>
-              <label className="signup-label">Institution *</label>
-              <div className="signup-input-wrapper">
-                <FiHome size={18} className="signup-input-icon" />
-                <input type="text" name="institution" value={formData.institution} onChange={handleInstitutionChange} onFocus={() => setShowInstitutionDropdown(true)} onBlur={() => setTimeout(() => setShowInstitutionDropdown(false), 200)} placeholder="e.g. Kenyatta University" className={`signup-input ${errors.institution ? 'error' : ''}`} required />
+            {/* Step Progress */}
+            <StepBar step={step} />
+
+            {/* ── Step 0: Personal ── */}
+            {step === 0 && (
+              <div className="sp-step-body">
+                <div>
+                  <label className="sp-label">Full Name *</label>
+                  <div style={{ position: 'relative' }}>
+                    <FiUser size={15} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
+                    <input
+                      type="text"
+                      className={`sp-input${errors.full_name ? ' err' : ''}`}
+                      value={formData.full_name}
+                      onChange={e => handleChange('full_name', e.target.value)}
+                      placeholder="e.g. Alice Wanjiku"
+                    />
+                  </div>
+                  {errors.full_name && <span className="sp-err-msg"><FiAlertCircle size={11} /> {errors.full_name}</span>}
+                </div>
+
+                <div>
+                  <label className="sp-label">Phone Number *</label>
+                  <div style={{ position: 'relative' }}>
+                    <FiPhone size={15} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
+                    <input
+                      type="tel"
+                      className={`sp-input${errors.phone_number ? ' err' : ''}`}
+                      value={formData.phone_number}
+                      onChange={e => handleChange('phone_number', e.target.value)}
+                      placeholder="+254 700 000 000"
+                    />
+                  </div>
+                  {errors.phone_number && <span className="sp-err-msg"><FiAlertCircle size={11} /> {errors.phone_number}</span>}
+                  <span className="sp-helper">You'll receive a one-time code for verification — no passwords needed.</span>
+                </div>
+
+                <button className="sp-btn" onClick={next}>
+                  Continue <FiArrowRight size={16} />
+                </button>
               </div>
-              {errors.institution && <span className="signup-error-msg"><FiAlertCircle size={12} /> {errors.institution}</span>}
-              {showInstitutionDropdown && formData.institution.length >= 2 && (
-                <div className="signup-inst-dropdown">
-                  {KENYAN_INSTITUTIONS.filter(i => i.toLowerCase().includes(formData.institution.toLowerCase())).map(inst => (
-                    <div key={inst} className="signup-inst-item" onMouseDown={() => selectInstitution(inst)}>🏫 {inst}</div>
+            )}
+
+            {/* ── Step 1: Academic ── */}
+            {step === 1 && (
+              <div className="sp-step-body">
+                <div style={{ position: 'relative' }}>
+                  <label className="sp-label">Institution *</label>
+                  <div style={{ position: 'relative' }}>
+                    <FiHome size={15} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none', zIndex: 1 }} />
+                    <input
+                      type="text"
+                      className={`sp-input${errors.institution ? ' err' : ''}`}
+                      value={formData.institution}
+                      onChange={e => { handleChange('institution', e.target.value); setShowInstDropdown(true); }}
+                      onFocus={() => setShowInstDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowInstDropdown(false), 180)}
+                      placeholder="e.g. Kenyatta University"
+                    />
+                  </div>
+                  {errors.institution && <span className="sp-err-msg"><FiAlertCircle size={11} /> {errors.institution}</span>}
+                  {showInstDropdown && formData.institution.length >= 2 && filteredInstitutions.length > 0 && (
+                    <div className="sp-inst-dropdown">
+                      {filteredInstitutions.map(inst => (
+                        <div key={inst} className="sp-inst-item" onMouseDown={() => { handleChange('institution', inst); setShowInstDropdown(false); }}>
+                          🏫 {inst}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="sp-label">Admission Number *</label>
+                  <div style={{ position: 'relative' }}>
+                    <FiHash size={15} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
+                    <input
+                      type="text"
+                      className={`sp-input${errors.admission_number ? ' err' : ''}`}
+                      value={formData.admission_number}
+                      onChange={e => handleChange('admission_number', e.target.value)}
+                      placeholder="e.g. I81/1229/2020"
+                    />
+                  </div>
+                  {errors.admission_number && <span className="sp-err-msg"><FiAlertCircle size={11} /> {errors.admission_number}</span>}
+                </div>
+
+                <div>
+                  <label className="sp-label">Class / Year of Study *</label>
+                  <div style={{ position: 'relative' }}>
+                    <FiBookOpen size={15} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
+                    <input
+                      type="text"
+                      className={`sp-input${errors.class_name ? ' err' : ''}`}
+                      value={formData.class_name}
+                      onChange={e => handleChange('class_name', e.target.value)}
+                      placeholder="e.g. 3rd Year Microbiology"
+                    />
+                  </div>
+                  {errors.class_name && <span className="sp-err-msg"><FiAlertCircle size={11} /> {errors.class_name}</span>}
+                </div>
+
+                <button className="sp-btn" onClick={next}>
+                  Continue <FiArrowRight size={16} />
+                </button>
+                <button className="sp-btn-ghost" onClick={back}>
+                  <FiArrowLeft size={14} /> Back
+                </button>
+              </div>
+            )}
+
+            {/* ── Step 2: Confirm ── */}
+            {step === 2 && (
+              <div className="sp-step-body">
+                <div>
+                  <label className="sp-label">Email (optional)</label>
+                  <div style={{ position: 'relative' }}>
+                    <FiMail size={15} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
+                    <input
+                      type="email"
+                      className="sp-input"
+                      value={formData.email}
+                      onChange={e => handleChange('email', e.target.value)}
+                      placeholder="you@example.com"
+                    />
+                  </div>
+                  <span className="sp-helper">For account recovery only — completely optional.</span>
+                </div>
+
+                {/* Review */}
+                <div>
+                  <label className="sp-label" style={{ marginBottom: 8 }}>Review your details</label>
+                  <div className="sp-review-card">
+                    {[
+                      { k: 'Name', v: formData.full_name },
+                      { k: 'Phone', v: formData.phone_number },
+                      { k: 'Institution', v: formData.institution },
+                      { k: 'Admission No.', v: formData.admission_number },
+                      { k: 'Class', v: formData.class_name },
+                    ].map(r => (
+                      <div key={r.k} className="sp-review-row">
+                        <span className="sp-review-key">{r.k}</span>
+                        <span className="sp-review-val">{r.v || '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Terms */}
+                <div>
+                  <div className="sp-check-row">
+                    <input
+                      type="checkbox"
+                      checked={agreedToTerms}
+                      onChange={e => { setAgreedToTerms(e.target.checked); if (errors.terms) setErrors(p => ({ ...p, terms: null })); }}
+                    />
+                    <label className="sp-check-label">
+                      I agree to the <Link to="/terms">Terms of Service</Link> and <Link to="/privacy">Privacy Policy</Link>
+                    </label>
+                  </div>
+                  {errors.terms && <span className="sp-err-msg" style={{ marginTop: 4 }}><FiAlertCircle size={11} /> {errors.terms}</span>}
+                </div>
+
+                {/* Trust indicators */}
+                <div className="sp-trust-row">
+                  {[
+                    { icon: <FiPhone size={10} />, text: 'Phone verification — no passwords' },
+                    { icon: <FiLock size={10} />, text: 'Your data is encrypted at rest' },
+                    { icon: <FiShield size={10} />, text: 'We never share personal data' },
+                  ].map(t => (
+                    <div key={t.text} className="sp-trust-item">
+                      <div className="sp-trust-check" style={{ color: '#10b981' }}>
+                        <FiCheck size={9} color="#10b981" />
+                      </div>
+                      {t.text}
+                    </div>
                   ))}
                 </div>
-              )}
+
+                <button className="sp-btn" onClick={handleSubmit} disabled={loading}>
+                  {loading ? <><div className="sp-spinner" /> Creating account…</> : <>Create Account <FiArrowRight size={15} /></>}
+                </button>
+                <button className="sp-btn-ghost" onClick={back}>
+                  <FiArrowLeft size={14} /> Back
+                </button>
+              </div>
+            )}
+
+            {/* Social Proof */}
+            <div className="sp-social-proof">
+              <span><FiStar size={10} color="#f59e0b" /> Rated by students</span>
+              <span><FiUsers size={10} /> JKUAT · KU · UoN</span>
+              <span><FiCheck size={10} color="#10b981" /> Free Forever</span>
             </div>
 
-            {/* Terms Checkbox */}
-            <div className="signup-check-row">
-              <input type="checkbox" checked={agreedToTerms} onChange={(e) => { setAgreedToTerms(e.target.checked); if (errors.terms) setErrors({ ...errors, terms: null }); }} />
-              <label className="signup-check-label">
-                I agree to the <Link to="/terms" onClick={(e) => e.stopPropagation()}>Terms of Service</Link> and <Link to="/privacy" onClick={(e) => e.stopPropagation()}>Privacy Policy</Link>
-              </label>
+            <div className="sp-footer">
+              Already have an account? <Link to="/login">Sign in</Link>
             </div>
-            {errors.terms && <span className="signup-error-msg"><FiAlertCircle size={12} /> {errors.terms}</span>}
-
-            <button type="submit" disabled={loading} className="signup-btn">
-              {loading ? (
-                <>
-                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Creating account...
-                </>
-              ) : (
-                <>
-                  Create Account <FiArrowRight size={16} />
-                </>
-              )}
-            </button>
-          </form>
-
-          <p className="signup-footer">
-            Already have an account?{' '}
-            <Link to="/login">Login here</Link>
-          </p>
-
-          <div className="signup-features">
-            <span><FiShield size={10} /> Secure</span>
-            <span><FiUsers size={10} /> 5,000+ Students</span>
-            <span><FiCheck size={10} /> Free Forever</span>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
