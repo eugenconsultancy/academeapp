@@ -282,7 +282,7 @@ export default function App() {
       )}
 
       <main id="main-content"
-        className={`min-h-screen transition-[padding] duration-300 ${showChrome
+        className={`min-h-screen overflow-x-hidden transition-[padding] duration-300 ${showChrome
           ? [
             'pt-16',
             'pb-20 md:pb-8',
@@ -380,7 +380,7 @@ export default function App() {
                 <Route path="/admin/tickets" element={<ProtectedRoute allowedRoles={['admin']}><AdminTicketsPage /></ProtectedRoute>} />
 
                 {/* Chat – new open chat routes */}
-                <Route path="/chat" element={<Navigate to="/chats" replace />} />   {/* redirect base /chat to list */}
+                <Route path="/chat" element={<Navigate to="/chats" replace />} />
                 <Route path="/chats" element={<ProtectedRoute><ChatsPage /></ProtectedRoute>} />
                 <Route path="/chat/:conversationId" element={<ProtectedRoute><ChatDetail /></ProtectedRoute>} />
 
@@ -400,27 +400,130 @@ export default function App() {
       )}
 
       <style>{`
+        /* ============================================
+           GLOBAL OVERFLOW PROTECTION
+           ============================================ */
+        html, body, #root, .app {
+          overflow-x: hidden !important;
+          max-width: 100% !important;
+          width: 100% !important;
+          position: relative;
+        }
+
+        /* Prevent any element from causing horizontal scroll */
+        * {
+          max-width: 100vw;
+          box-sizing: border-box;
+        }
+
+        /* Fix for main content area */
+        main {
+          overflow-x: hidden !important;
+          width: 100% !important;
+        }
+
+        /* ============================================
+           WATERMARK STYLES WITH KEYBOARD HANDLING
+           ============================================ */
+        .watermark-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 0;
+          pointer-events: none;
+          user-select: none;
+          overflow: hidden;
+          transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+
+        /* Hide watermark when keyboard is open (viewport height reduced) */
+        @media (max-height: 450px) {
+          .watermark-overlay {
+            opacity: 0 !important;
+            visibility: hidden !important;
+            display: none !important;
+          }
+        }
+
+        /* Additional keyboard detection via body class */
+        body.keyboard-open .watermark-overlay {
+          opacity: 0 !important;
+          visibility: hidden !important;
+          display: none !important;
+        }
+
+        /* Hide fixed elements when keyboard is open */
+        body.keyboard-open .fixed,
+        body.keyboard-open [style*="position: fixed"],
+        body.keyboard-open .bottom-nav,
+        body.keyboard-open .bn-nav {
+          display: none !important;
+        }
+
+        .watermark-text {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%) rotate(-15deg);
+          font-family: 'Bricolage Grotesque', 'Outfit', system-ui, sans-serif;
+          font-weight: 900;
+          font-size: clamp(6rem, 15vw, 12rem);
+          letter-spacing: -0.05em;
+          text-transform: uppercase;
+          color: rgba(79, 107, 255, 0.04);
+          white-space: nowrap;
+          pointer-events: none;
+          transition: all 0.3s ease;
+        }
+
+        .dark .watermark-text {
+          color: rgba(129, 140, 248, 0.05);
+        }
+
+        /* ============================================
+           ANIMATIONS
+           ============================================ */
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(8px); }
           to   { opacity: 1; transform: translateY(0); }
         }
         .animate-fadeIn { animation: fadeIn 0.25s ease-out; }
 
+        /* ============================================
+           RESPONSIVE SIDEBAR
+           ============================================ */
         @media (max-width: 767px) {
           .sb-root { display: none !important; }
           .mobile-sidebar-drawer .sb-root { display: flex !important; }
         }
 
+        /* ============================================
+           PRINT STYLES
+           ============================================ */
         @media print {
           .app { background: white !important; }
-          nav, .sidebar, .bottom-nav, .offline-indicator, .fixed { display: none !important; }
+          nav, .sidebar, .bottom-nav, .offline-indicator, .fixed, .watermark-overlay { 
+            display: none !important; 
+          }
           main { padding: 0 !important; margin: 0 !important; }
         }
 
+        /* ============================================
+           REDUCED MOTION SUPPORT
+           ============================================ */
         .reduce-motion *, .reduce-motion *::before, .reduce-motion *::after {
           animation-duration: 0.01ms !important;
           animation-iteration-count: 1 !important;
           transition-duration: 0.01ms !important;
+        }
+
+        /* ============================================
+           SAFE AREA INSETS
+           ============================================ */
+        .pb-safe {
+          padding-bottom: env(safe-area-inset-bottom, 1rem);
+        }
+        .pt-safe {
+          padding-top: env(safe-area-inset-top, 1rem);
         }
       `}</style>
     </div>

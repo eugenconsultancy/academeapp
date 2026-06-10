@@ -1,49 +1,41 @@
-// src/components/layout/AppLayout.jsx
+// C:\Users\GATARA-BJTU\academe\frontend\src\components\layout\AppLayout.jsx
+
 import { useEffect, useRef } from 'react';
 
 export default function AppLayout({ children }) {
-    const watermarkRef = useRef(null);
+  const watermarkRef = useRef(null);
 
-    // Optional: animate the gradient based on scroll position
-    useEffect(() => {
-        const handleScroll = () => {
-            if (watermarkRef.current) {
-                const scrollY = window.scrollY;
-                const maxScroll = document.body.scrollHeight - window.innerHeight;
-                const progress = maxScroll > 0 ? scrollY / maxScroll : 0;
-                // Shift the gradient angle (0 to 30 degrees)
-                const angle = 10 + progress * 20;
-                watermarkRef.current.style.setProperty('--watermark-angle', `${angle}deg`);
-            }
-        };
-        window.addEventListener('scroll', handleScroll);
-        return () => window.removeEventListener('scroll', handleScroll);
-    }, []);
+  // Optional: animate the gradient based on scroll position
+  useEffect(() => {
+    const handleScroll = () => {
+      if (watermarkRef.current) {
+        const scrollY = window.scrollY;
+        const maxScroll = document.body.scrollHeight - window.innerHeight;
+        const progress = maxScroll > 0 ? scrollY / maxScroll : 0;
+        const angle = 10 + progress * 20;
+        watermarkRef.current.style.setProperty('--watermark-angle', `${angle}deg`);
+      }
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
-    return (
-        <div style={{ position: 'relative', minHeight: '100vh', overflow: 'hidden' }}>
-            {/* Enhanced Watermark Layer */}
-            <div className="watermark-overlay" ref={watermarkRef}>
-                {/* Grid pattern */}
-                <div className="watermark-grid" />
+  return (
+    <div style={{ position: 'relative', minHeight: '100vh', overflow: 'hidden' }}>
+      {/* Enhanced Watermark Layer - hides on keyboard open */}
+      <div className="watermark-overlay" ref={watermarkRef}>
+        <div className="watermark-grid" />
+        <span className="watermark-text watermark-text-main">ACADEME</span>
+        <span className="watermark-text watermark-text-secondary">ACADEME</span>
+        <div className="watermark-dots" />
+      </div>
 
-                {/* Main text layer – large, semi‑transparent, rotated */}
-                <span className="watermark-text watermark-text-main">ACADEME</span>
+      {/* Main Page Content */}
+      <main style={{ position: 'relative', zIndex: 1 }}>
+        {children}
+      </main>
 
-                {/* Secondary text – smaller, different rotation, even fainter */}
-                <span className="watermark-text watermark-text-secondary">ACADEME</span>
-
-                {/* Accent dot pattern (optional) */}
-                <div className="watermark-dots" />
-            </div>
-
-            {/* Main Page Content */}
-            <main style={{ position: 'relative', zIndex: 1 }}>
-                {children}
-            </main>
-
-            {/* Inline styles for modern watermark (overrides any existing .watermark-* classes) */}
-            <style>{`
+      <style>{`
         .watermark-overlay {
           position: fixed;
           inset: 0;
@@ -54,9 +46,27 @@ export default function AppLayout({ children }) {
           --watermark-angle: 15deg;
           --watermark-color: #4F6BFF;
           --watermark-color-light: #7DA8FF;
+          visibility: visible;
+          opacity: 1;
+          transition: opacity 0.3s ease, visibility 0.3s ease;
         }
 
-        /* Grid pattern – subtle lines */
+        /* Hide watermark when keyboard is open (viewport height reduced) */
+        @media (max-height: 450px) {
+          .watermark-overlay {
+            opacity: 0;
+            visibility: hidden;
+            display: none !important;
+          }
+        }
+
+        /* Also hide on small devices when focused on input */
+        body.keyboard-open .watermark-overlay {
+          opacity: 0;
+          visibility: hidden;
+          display: none !important;
+        }
+
         .watermark-grid {
           position: absolute;
           inset: 0;
@@ -67,7 +77,6 @@ export default function AppLayout({ children }) {
           animation: watermarkSlowMove 60s linear infinite;
         }
 
-        /* Dot pattern – organic, modern */
         .watermark-dots {
           position: absolute;
           inset: 0;
@@ -76,7 +85,6 @@ export default function AppLayout({ children }) {
           opacity: 0.6;
         }
 
-        /* Base text styles */
         .watermark-text {
           position: absolute;
           font-family: 'Bricolage Grotesque', 'Outfit', system-ui, sans-serif;
@@ -91,7 +99,6 @@ export default function AppLayout({ children }) {
           transition: transform 0.3s ease-out;
         }
 
-        /* Main text – large, bold, gradient */
         .watermark-text-main {
           font-size: clamp(8rem, 18vw, 16rem);
           letter-spacing: -0.04em;
@@ -108,7 +115,6 @@ export default function AppLayout({ children }) {
           filter: drop-shadow(0 2px 8px rgba(79,107,255,0.06));
         }
 
-        /* Secondary text – smaller, offset, much fainter */
         .watermark-text-secondary {
           font-size: clamp(4rem, 10vw, 8rem);
           transform: translate(calc(-50% + 30px), calc(-50% - 20px)) rotate(calc(var(--watermark-angle) - 25deg));
@@ -121,23 +127,16 @@ export default function AppLayout({ children }) {
           filter: blur(0.5px);
         }
 
-        /* Animation for the grid – subtle drift */
         @keyframes watermarkSlowMove {
           0% { background-position: 0 0; }
           100% { background-position: 80px 80px; }
         }
 
-        /* Reduce motion if user prefers */
         @media (prefers-reduced-motion: reduce) {
-          .watermark-grid {
-            animation: none;
-          }
-          .watermark-text {
-            transition: none;
-          }
+          .watermark-grid { animation: none; }
+          .watermark-text { transition: none; }
         }
 
-        /* Dark mode adjustments (if needed) */
         .dark .watermark-text-main {
           background: linear-gradient(
             var(--watermark-angle),
@@ -146,9 +145,7 @@ export default function AppLayout({ children }) {
             rgba(165,180,252,0.1) 100%
           );
         }
-        .dark .watermark-text-secondary {
-          background: rgba(165,180,252,0.03);
-        }
+        .dark .watermark-text-secondary { background: rgba(165,180,252,0.03); }
         .dark .watermark-grid {
           background-image: 
             repeating-linear-gradient(transparent, transparent 39px, rgba(165,180,252,0.06) 40px),
@@ -157,7 +154,25 @@ export default function AppLayout({ children }) {
         .dark .watermark-dots {
           background-image: radial-gradient(circle at 20% 30%, rgba(165,180,252,0.05) 1px, transparent 1px);
         }
+
+        /* Keyboard detection script */
+        <script>
+          (function() {
+            if (typeof window !== 'undefined') {
+              var originalHeight = window.innerHeight;
+              window.addEventListener('resize', function() {
+                var currentHeight = window.innerHeight;
+                if (currentHeight < originalHeight * 0.7) {
+                  document.body.classList.add('keyboard-open');
+                } else {
+                  document.body.classList.remove('keyboard-open');
+                }
+                originalHeight = currentHeight;
+              });
+            }
+          })();
+        </script>
       `}</style>
-        </div>
-    );
+    </div>
+  );
 }

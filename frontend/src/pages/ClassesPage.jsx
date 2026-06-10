@@ -298,7 +298,6 @@ export default function ClassesPage() {
         setClassIdToManage(null);
         setManualClassId('');
         setSelectedClassId('');
-        // If class rep, auto-detect
         if (isClassRep) {
             try {
                 const res = await classesApi.getRepresentedClass();
@@ -310,7 +309,6 @@ export default function ClassesPage() {
                 }
             } catch { /* fallback */ }
         }
-        // For admins (or if auto-detect failed), fetch the list of class groups
         if (user?.role === 'admin') {
             try {
                 const res = await apiClient.get('/classes/class-groups/');
@@ -452,13 +450,11 @@ export default function ClassesPage() {
                         </div>
 
                         <div className="cp-header-actions">
-                            {/* Online/offline status – now reactive */}
                             <span className={`cp-status-pill ${isOnline ? 'cp-status-online' : 'cp-status-offline'}`}>
                                 {isOnline ? <FiWifi size={13} /> : <FiWifiOff size={13} />}
                                 {isOnline ? 'Online' : 'Offline'}
                             </span>
 
-                            {/* Tab switch Today / Week */}
                             <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
                                 <button
                                     onClick={() => setViewTab('today')}
@@ -723,7 +719,6 @@ export default function ClassesPage() {
                                             </button>
                                         </>
                                     ) : (
-                                        // Fallback if no groups loaded – keep the original UUID input
                                         <>
                                             <label className="cp-id-label">Class Group ID (UUID)</label>
                                             <input
@@ -784,9 +779,16 @@ export default function ClassesPage() {
     );
 }
 
-// ── STYLES (injected once) ──────────────────────
+// ── STYLES (injected once) with COMPLETE MOBILE OVERFLOW FIXES ──────────────────────
 const STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap');
+
+  /* ===== GLOBAL OVERFLOW FIXES ===== */
+  html, body, #root, .cp-wrap {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
 
   .cp-wrap * { box-sizing: border-box; }
   .cp-wrap { font-family: 'DM Sans', sans-serif; min-height: 100vh; position: relative; }
@@ -872,6 +874,24 @@ const STYLES = `
   .dark .cp-page-date { color: #94a3b8; }
   .cp-header-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; flex-shrink: 0; }
 
+  /* ===== RESPONSIVE BUTTON FIXES ===== */
+  @media (max-width: 480px) {
+    .cp-header-actions {
+      justify-content: flex-start;
+      gap: 8px;
+    }
+    .cp-btn {
+      padding: 6px 12px;
+      font-size: 0.7rem;
+      white-space: normal;
+      text-align: center;
+    }
+    .cp-status-pill {
+      padding: 6px 10px;
+      font-size: 0.7rem;
+    }
+  }
+
   .cp-btn {
     display: inline-flex; align-items: center; gap: 8px;
     padding: 10px 18px; border-radius: 12px; border: none;
@@ -932,6 +952,7 @@ const STYLES = `
     box-shadow: 0 2px 14px rgba(0,0,0, 0.05), inset 0 1px 0 rgba(255,255,255, 0.95);
     transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s;
     cursor: default; position: relative; overflow: hidden;
+    min-width: 0;
   }
   .cp-stat::before {
     content: ''; position: absolute;
@@ -957,7 +978,8 @@ const STYLES = `
   }
   .cp-stat-val {
     font-family: 'Bricolage Grotesque', sans-serif;
-    font-size: 2rem; font-weight: 800;
+    font-size: clamp(1.5rem, 6vw, 2rem);
+    font-weight: 800;
     letter-spacing: -0.06em; line-height: 1;
     color: #0f172a;
   }
@@ -1039,6 +1061,8 @@ const STYLES = `
     font-family: 'Bricolage Grotesque', sans-serif;
     font-size: 1.05rem; font-weight: 700; color: #0f172a;
     letter-spacing: -0.02em; line-height: 1.25;
+    word-break: break-word;
+    overflow-wrap: break-word;
   }
   .dark .cp-card-unit { color: #f1f5f9; }
   .cp-lecturer-badge {
@@ -1052,7 +1076,7 @@ const STYLES = `
 
   .cp-card-meta { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.75rem; color: #64748b; margin-bottom: 10px; }
   .dark .cp-card-meta { color: #94a3b8; }
-  .cp-card-meta span { display: flex; align-items: center; gap: 5px; }
+  .cp-card-meta span { display: flex; align-items: center; gap: 5px; word-break: break-word; overflow-wrap: break-word; }
 
   .cp-progress-wrap { margin-bottom: 10px; }
   .cp-progress-labels { display: flex; justify-content: space-between; margin-bottom: 4px; }
@@ -1144,12 +1168,24 @@ const STYLES = `
     padding: 12px 14px; border-radius: 14px;
     background: rgba(6,182,212, 0.05); border: 1px solid rgba(6,182,212, 0.12);
     gap: 12px; transition: background 0.2s, transform 0.2s;
+    flex-wrap: wrap;
+  }
+  @media (max-width: 560px) {
+    .cp-nearby-item {
+      flex-direction: column;
+      align-items: flex-start;
+    }
   }
   .cp-nearby-item:hover { background: rgba(6,182,212, 0.09); transform: translateX(3px); }
   .dark .cp-nearby-item { background: rgba(6,182,212, 0.06); border-color: rgba(6,182,212,0.1); }
   .cp-nearby-dot { width: 8px; height: 8px; border-radius: 50%; background: #06b6d4; box-shadow: 0 0 6px rgba(6,182,212,0.5); flex-shrink: 0; }
   .cp-nearby-info { flex: 1; min-width: 0; }
-  .cp-nearby-name { font-size: 0.84rem; font-weight: 700; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cp-nearby-name { 
+    font-size: 0.84rem; font-weight: 700; color: #0f172a; 
+    white-space: normal; 
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
   .dark .cp-nearby-name { color: #f1f5f9; }
   .cp-nearby-meta { font-size: 0.7rem; color: #64748b; margin-top: 2px; }
   .dark .cp-nearby-meta { color: #94a3b8; }
@@ -1220,7 +1256,12 @@ const STYLES = `
     font-family: 'Bricolage Grotesque', sans-serif;
     font-size: 2.4rem; font-weight: 800; letter-spacing: -0.06em; line-height: 1;
   }
-  .cp-weekly-stat-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: #94a3b8; margin-top: 5px; }
+  .cp-weekly-stat-label { 
+    font-size: 0.72rem; font-weight: 700; text-transform: uppercase; 
+    letter-spacing: 0.07em; color: #94a3b8; margin-top: 5px;
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
   .cp-weekly-bar-track {
     height: 10px; border-radius: 99px;
     background: rgba(0,0,0, 0.06); overflow: hidden;
@@ -1304,6 +1345,12 @@ const STYLES = `
   .cp-id-input::placeholder { color:#94a3b8; }
   .cp-id-cancel { display:block; width:100%; padding:10px; border:none; background:transparent; font-size:.82rem; color:#94a3b8; cursor:pointer; margin-top:8px; transition:color .15s; }
   .cp-id-cancel:hover { color:#ef4444; }
+
+  /* ===== WEEKLY TIMETABLE OVERFLOW FIX ===== */
+  .cp-root > div:last-child .space-y-2 > div {
+    overflow-x: auto;
+    max-width: 100%;
+  }
 
   @keyframes cpSpin { to { transform: rotate(360deg); } }
   .cp-spin { animation: cpSpin 0.8s linear infinite; }
