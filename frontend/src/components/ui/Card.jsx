@@ -1,3 +1,4 @@
+// src/components/ui/Card.jsx - REFACTORED: Visual Hierarchy & Responsive Design
 import { useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
@@ -14,7 +15,7 @@ const accentGradients = {
   true: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a78bfa 100%)',
 };
 
-const padMap = { none: 0, xs: 8, sm: 14, md: 22, lg: 32, xl: 44 };
+const padMap = { none: 0, xs: 8, sm: 12, md: 16, lg: 20, xl: 24 };
 
 export default function Card({
   children,
@@ -48,13 +49,19 @@ export default function Card({
   const [isHovered, setIsHovered] = useState(false);
   const cardRef = useRef(null);
 
-  const handleMouseMove = useCallback((e) => {
-    if (!cardRef.current || !hover) return;
-    const rect = cardRef.current.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    setMousePosition({ x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) });
-  }, [hover]);
+  const handleMouseMove = useCallback(
+    (e) => {
+      if (!cardRef.current || !hover) return;
+      const rect = cardRef.current.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / rect.width;
+      const y = (e.clientY - rect.top) / rect.height;
+      setMousePosition({
+        x: Math.max(0, Math.min(1, x)),
+        y: Math.max(0, Math.min(1, y)),
+      });
+    },
+    [hover]
+  );
 
   const handleMouseEnter = useCallback(() => {
     setIsHovered(true);
@@ -65,16 +72,20 @@ export default function Card({
     setMousePosition({ x: 0.5, y: 0.5 });
   }, []);
 
-  const accentGrad = accent ? (accentGradients[accent] || accentGradients.indigo) : null;
+  const accentGrad = accent ? accentGradients[accent] || accentGradients.indigo : null;
   const glowFill = glow && glowColor ? `${glowColor}14` : undefined;
   const glowBorder = glow && glowColor ? `${glowColor}40` : undefined;
-  const actualPadding = noPad ? 0 : (padMap[padding] ?? padMap.md);
+  const actualPadding = noPad ? 0 : padMap[padding] ?? padMap.md;
 
-  // ── Dynamic lighting variables ───────────────────────────────────
   const lightX = mousePosition.x * 100;
   const lightY = mousePosition.y * 100;
-  const lightAngle = Math.atan2(mousePosition.y - 0.5, mousePosition.x - 0.5) * (180 / Math.PI);
-  const lightDistance = Math.hypot(mousePosition.x - 0.5, mousePosition.y - 0.5);
+  const lightAngle =
+    Math.atan2(mousePosition.y - 0.5, mousePosition.x - 0.5) *
+    (180 / Math.PI);
+  const lightDistance = Math.hypot(
+    mousePosition.x - 0.5,
+    mousePosition.y - 0.5
+  );
 
   const dynamicStyle = {
     '--mouse-x': mousePosition.x,
@@ -103,7 +114,9 @@ export default function Card({
         selected && 'ac-selected',
         isHovered && 'ac-hovered',
         className,
-      ].filter(Boolean).join(' ')}
+      ]
+        .filter(Boolean)
+        .join(' ')}
       style={dynamicStyle}
       onClick={selectable ? onSelect : onClick}
       onMouseMove={handleMouseMove}
@@ -114,10 +127,10 @@ export default function Card({
       {/* Accent bar (top) */}
       {accent && <div aria-hidden="true" className="ac-accent-bar" />}
 
-      {/* Ambient light overlay (dynamic radial gradient) */}
+      {/* Ambient light overlay */}
       <div className="ac-ambient-light" aria-hidden="true" />
 
-      {/* Reflective overlay (glossy diagonal) */}
+      {/* Reflective overlay */}
       <div className="ac-reflection" aria-hidden="true" />
 
       {/* Edge highlight glow */}
@@ -125,11 +138,15 @@ export default function Card({
 
       {/* Image */}
       {image && (
-        <div className="relative overflow-hidden" style={{ height: imageHeight }}>
+        <div style={{ height: imageHeight, overflow: 'hidden' }}>
           <img
             src={image}
             alt={imageAlt}
-            className="w-full h-full object-cover"
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+            }}
             loading="lazy"
           />
         </div>
@@ -138,8 +155,14 @@ export default function Card({
       {/* Header */}
       {header && (
         <div
-          className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700/50"
-          style={{ padding: actualPadding }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: '1px solid rgba(226, 232, 240, 0.5)',
+            padding: actualPadding,
+          }}
+          className="dark:border-gray-700/30"
         >
           {header}
           {collapsible && (
@@ -148,7 +171,23 @@ export default function Card({
                 e.stopPropagation();
                 setIsExpanded(!isExpanded);
               }}
-              className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              style={{
+                padding: 6,
+                borderRadius: 8,
+                border: 'none',
+                background: 'rgba(0, 0, 0, 0.04)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(0, 0, 0, 0.08)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(0, 0, 0, 0.04)';
+              }}
               aria-label={isExpanded ? 'Collapse' : 'Expand'}
             >
               {isExpanded ? <FiChevronUp size={18} /> : <FiChevronDown size={18} />}
@@ -164,8 +203,19 @@ export default function Card({
             e.stopPropagation();
             setIsExpanded(!isExpanded);
           }}
-          className="flex items-center justify-between w-full font-semibold text-gray-800 dark:text-gray-200"
-          style={{ padding: actualPadding }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            width: '100%',
+            fontWeight: 600,
+            fontSize: '0.95rem',
+            padding: actualPadding,
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
         >
           <span>{collapsibleTitle}</span>
           {isExpanded ? <FiChevronUp size={18} /> : <FiChevronDown size={18} />}
@@ -182,8 +232,12 @@ export default function Card({
       {/* Footer */}
       {footer && (!collapsible || isExpanded) && (
         <div
-          className="border-t border-gray-100 dark:border-gray-700/50 bg-gray-50/50 dark:bg-gray-800/30"
-          style={{ padding: actualPadding }}
+          style={{
+            borderTop: '1px solid rgba(226, 232, 240, 0.5)',
+            padding: actualPadding,
+            background: 'rgba(0, 0, 0, 0.02)',
+          }}
+          className="dark:border-gray-700/30 dark:bg-gray-800/20"
         >
           {footer}
         </div>
@@ -191,19 +245,48 @@ export default function Card({
 
       {/* Loading overlay */}
       {loading && (
-        <div className="ac-loading-overlay">
-          <svg className="animate-spin h-8 w-8 text-indigo-500" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 10,
+            background: 'rgba(255, 255, 255, 0.8)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          className="dark:bg-gray-900/80"
+        >
+          <svg
+            className="animate-spin"
+            style={{
+              height: 32,
+              width: 32,
+              color: '#6366f1',
+            }}
+            viewBox="0 0 24 24"
+            fill="none"
+          >
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+              opacity="0.25"
+            />
+            <path
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+              opacity="0.75"
+            />
           </svg>
         </div>
       )}
     </div>
   );
 
-  // ═══════════════════════════════════════════════════════════════
-  // RENDER WITH PREMIUM STYLES
-  // ═══════════════════════════════════════════════════════════════
   return (
     <>
       <style>{`
@@ -211,47 +294,43 @@ export default function Card({
         .ac-card {
           font-family: 'DM Sans', system-ui, sans-serif;
           position: relative;
-          border-radius: 18px;
-          background: rgba(255,255,255,0.82);
-          backdrop-filter: blur(24px) saturate(180%);
-          -webkit-backdrop-filter: blur(24px) saturate(180%);
-          border: 1px solid rgba(182, 161, 161, 0.7);
+          border-radius: 16px;
+          background: rgba(255, 255, 255, 0.8);
+          backdrop-filter: blur(20px) saturate(180%);
+          -webkit-backdrop-filter: blur(20px) saturate(180%);
+          border: 1px solid rgba(226, 232, 240, 0.8);
           box-shadow:
-            0 1px 2px rgba(0,0,0,0.04),         /* tight edge */
-            0 4px 16px rgba(0,0,0,0.04),        /* mid ambient */
-            0 8px 32px rgba(0,0,0,0.06),        /* far penumbra */
-            inset 0 1px 0 rgba(255,255,255,0.9), /* top inner highlight */
-            inset 0 -1px 0 rgba(0,0,0,0.04);     /* bottom inner shadow */
-          transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1.2),
-                      box-shadow 0.4s ease,
-                      border-color 0.4s ease;
+            0 1px 3px rgba(0, 0, 0, 0.05),
+            0 4px 12px rgba(0, 0, 0, 0.06),
+            inset 0 1px 0 rgba(255, 255, 255, 0.9);
+          transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+                      box-shadow 0.3s ease,
+                      border-color 0.3s ease;
           word-wrap: break-word;
           overflow: hidden;
           isolation: isolate;
         }
+
         .dark .ac-card {
-          background: rgba(15,14,26,0.85);
-          border-color: rgba(255,255,255,0.06);
+          background: rgba(13, 17, 23, 0.85);
+          border-color: rgba(255, 255, 255, 0.08);
           box-shadow:
-            0 1px 2px rgba(0,0,0,0.3),
-            0 4px 20px rgba(0,0,0,0.35),
-            0 8px 40px rgba(0,0,0,0.5),
-            inset 0 1px 0 rgba(255,255,255,0.03),
-            inset 0 -1px 0 rgba(0,0,0,0.2);
+            0 1px 3px rgba(0, 0, 0, 0.3),
+            0 4px 16px rgba(0, 0, 0, 0.35),
+            inset 0 1px 0 rgba(255, 255, 255, 0.04);
         }
 
         /* ── Elevated Depth ────────────────────────────────── */
         .ac-card.ac-elevated {
           box-shadow:
-            0 2px 8px rgba(0,0,0,0.06),
-            0 8px 32px rgba(0,0,0,0.08),
-            0 16px 48px rgba(0,0,0,0.04);
+            0 2px 8px rgba(0, 0, 0, 0.08),
+            0 12px 32px rgba(0, 0, 0, 0.1);
         }
+
         .dark .ac-card.ac-elevated {
           box-shadow:
-            0 2px 10px rgba(0,0,0,0.4),
-            0 12px 40px rgba(0,0,0,0.5),
-            0 20px 60px rgba(0,0,0,0.3);
+            0 2px 10px rgba(0, 0, 0, 0.4),
+            0 12px 40px rgba(0, 0, 0, 0.5);
         }
 
         /* ── No Border ─────────────────────────────────────── */
@@ -259,48 +338,63 @@ export default function Card({
           border-color: transparent;
         }
 
-        /* ── Hover (base transform, overridden by dynamic) ── */
+        /* ── Hover Effects ─────────────────────────────────── */
         .ac-card.ac-hover {
-          transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1.2),
-                      box-shadow 0.4s ease,
-                      border-color 0.4s ease;
+          transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+                      box-shadow 0.3s ease,
+                      border-color 0.3s ease;
         }
+
         .ac-card.ac-hover:hover {
           transform: translateY(-3px) scale(1.005);
-        }
-
-        /* ── Glow (static, enhanced by dynamic) ───────────── */
-        .ac-card.ac-glow:hover {
-          border-color: var(--glow-border, rgba(99,102,241,0.4));
           box-shadow:
-            0 0 0 4px var(--glow-fill, rgba(99,102,241,0.08)),
-            0 16px 40px rgba(99,102,241,0.12);
+            0 2px 8px rgba(0, 0, 0, 0.08),
+            0 12px 32px rgba(0, 0, 0, 0.12);
+          border-color: rgba(99, 102, 241, 0.3);
         }
 
-        /* ── Accent Gradient Bar ───────────────────────────── */
+        .dark .ac-card.ac-hover:hover {
+          box-shadow:
+            0 2px 10px rgba(0, 0, 0, 0.4),
+            0 12px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        /* ── Glow Effect ───────────────────────────────── */
+        .ac-card.ac-glow:hover {
+          border-color: var(--glow-border, rgba(99, 102, 241, 0.4));
+          box-shadow:
+            0 0 0 4px var(--glow-fill, rgba(99, 102, 241, 0.08)),
+            0 12px 32px rgba(99, 102, 241, 0.12);
+        }
+
+        /* ── Accent Bar ────────────────────────────────────── */
         .ac-card.ac-accent::before {
           content: '';
           position: absolute;
           top: 0;
           left: 0;
           right: 0;
-          height: 3.5px;
+          height: 3px;
           background: var(--accent-grad);
           z-index: 2;
-          border-radius: 18px 18px 0 0;
+          border-radius: 16px 16px 0 0;
           background-size: 200% 200%;
           animation: acGradientShift 4s ease-in-out infinite;
         }
+
         @keyframes acGradientShift {
           0%, 100% { background-position: 0% 50%; }
           50% { background-position: 100% 50%; }
         }
 
-        /* ── Clickable & Selected ──────────────────────────── */
+        /* ── Clickable & Selected ──────────────────────────────── */
         .ac-card.ac-clickable { cursor: pointer; }
+
         .ac-card.ac-selected {
-          border-color: #4144f5;
-          box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+          border-color: #6366f1;
+          box-shadow:
+            0 0 0 2px rgba(99, 102, 241, 0.15),
+            0 4px 12px rgba(0, 0, 0, 0.06);
         }
 
         /* ── Ambient Light Overlay ─────────────────────────── */
@@ -311,26 +405,28 @@ export default function Card({
           pointer-events: none;
           background: radial-gradient(
             circle at var(--light-x, 50%) var(--light-y, 50%),
-            rgba(255,255,255,0.15) 0%,
-            rgba(255,255,255,0.02) 50%,
+            rgba(255, 255, 255, 0.15) 0%,
+            rgba(255, 255, 255, 0.02) 50%,
             transparent 70%
           );
           opacity: 0;
           transition: opacity 0.3s ease;
         }
+
         .dark .ac-ambient-light {
           background: radial-gradient(
             circle at var(--light-x, 50%) var(--light-y, 50%),
-            rgba(99,102,241,0.15) 0%,
-            rgba(99,102,241,0.05) 50%,
+            rgba(99, 102, 241, 0.12) 0%,
+            rgba(99, 102, 241, 0.04) 50%,
             transparent 70%
           );
         }
+
         .ac-card.ac-hovered .ac-ambient-light {
           opacity: 1;
         }
 
-        /* ── Reflective Overlay (glossy diagonal) ──────────── */
+        /* ── Reflective Overlay ────────────────────────────── */
         .ac-reflection {
           position: absolute;
           inset: 0;
@@ -338,77 +434,100 @@ export default function Card({
           pointer-events: none;
           background: linear-gradient(
             calc(var(--light-angle, 135deg) + 45deg),
-            rgba(255,255,255,0.3) 0%,
-            rgba(255,255,255,0.05) 40%,
+            rgba(255, 255, 255, 0.25) 0%,
+            rgba(255, 255, 255, 0.04) 40%,
             transparent 60%
           );
           opacity: 0;
           transition: opacity 0.3s ease;
           mix-blend-mode: overlay;
         }
+
         .dark .ac-reflection {
           background: linear-gradient(
             calc(var(--light-angle, 135deg) + 45deg),
-            rgba(255,255,255,0.08) 0%,
-            rgba(255,255,255,0.02) 40%,
+            rgba(255, 255, 255, 0.06) 0%,
+            rgba(255, 255, 255, 0.01) 40%,
             transparent 60%
           );
         }
+
         .ac-card.ac-hovered .ac-reflection {
           opacity: 1;
         }
 
-        /* ── Edge Highlight (dynamic inner glow) ───────────── */
+        /* ── Edge Highlight ────────────────────────────────── */
         .ac-edge-highlight {
           position: absolute;
           inset: 0;
           z-index: 3;
           pointer-events: none;
-          border-radius: 18px;
-          box-shadow: 
-            inset 1px 1px 0 rgba(255,255,255,0.4),
-            inset -1px -1px 0 rgba(0,0,0,0.05);
+          border-radius: 16px;
+          box-shadow:
+            inset 1px 1px 0 rgba(255, 255, 255, 0.4),
+            inset -1px -1px 0 rgba(0, 0, 0, 0.05);
           opacity: 0.6;
           transition: opacity 0.3s ease;
         }
+
         .dark .ac-edge-highlight {
-          box-shadow: 
-            inset 1px 1px 0 rgba(255,255,255,0.05),
-            inset -1px -1px 0 rgba(0,0,0,0.2);
+          box-shadow:
+            inset 1px 1px 0 rgba(255, 255, 255, 0.05),
+            inset -1px -1px 0 rgba(0, 0, 0, 0.2);
         }
+
         .ac-card.ac-hovered .ac-edge-highlight {
           opacity: 0.8;
         }
 
-        /* ── Body & Loading ─────────────────────────────────── */
+        /* ── Body & Loading ────────────────────────────────– */
         .ac-body {
           position: relative;
           z-index: 4;
           word-break: break-word;
         }
-        .ac-loading-overlay {
-          position: absolute;
-          inset: 0;
-          z-index: 10;
-          background: rgba(255,255,255,0.6);
-          backdrop-filter: blur(4px);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
 
-        /* ── Accent bar element (redundant with pseudo? keep both for compatibility) ── */
+        /* ── Accent Bar Element ────────────────────────────– */
         .ac-accent-bar {
           position: absolute;
           top: 0;
           left: 0;
           right: 0;
-          height: 3.5px;
+          height: 3px;
           background: var(--accent-grad);
           z-index: 2;
-          border-radius: 18px 18px 0 0;
+          border-radius: 16px 16px 0 0;
           background-size: 200% 200%;
           animation: acGradientShift 4s ease-in-out infinite;
+        }
+
+        /* ── Mobile Responsive ─────────────────────────────– */
+        @media (max-width: 640px) {
+          .ac-card {
+            border-radius: 12px;
+          }
+          .ac-card.ac-accent::before,
+          .ac-accent-bar {
+            border-radius: 12px 12px 0 0;
+          }
+          .ac-edge-highlight {
+            border-radius: 12px;
+          }
+        }
+
+        /* ── Reduced Motion ────────────────────────────────– */
+        @media (prefers-reduced-motion: reduce) {
+          .ac-card,
+          .ac-card.ac-hover,
+          .ac-card.ac-glow {
+            transition: none;
+          }
+          .ac-ambient-light,
+          .ac-reflection,
+          .ac-edge-highlight {
+            transition: none;
+            opacity: 0 !important;
+          }
         }
       `}</style>
 
@@ -418,11 +537,13 @@ export default function Card({
 }
 
 // ═══════════════════════════════════════════════════════════════
-// MODAL PORTAL HELPERS (unchanged)
+// MODAL PORTAL HELPERS
 // ═══════════════════════════════════════════════════════════════
 
 export function Portal({ children, container = null }) {
-  const target = container || (typeof document !== 'undefined' ? document.body : null);
+  const target =
+    container ||
+    (typeof document !== 'undefined' ? document.body : null);
   if (!target) return children;
   return createPortal(children, target);
 }
@@ -432,13 +553,34 @@ export function CardModal({ isOpen, onClose, children, className = '' }) {
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn ${className}`}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(0, 0, 0, 0.5)',
+        backdropFilter: 'blur(6px)',
+        padding: 16,
+      }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
-        className="relative w-full max-w-md mx-4 bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-slideUp"
+        style={{
+          position: 'relative',
+          width: '100%',
+          maxWidth: 460,
+          background: '#ffffff',
+          borderRadius: 16,
+          boxShadow: '0 20px 60px rgba(0, 0, 0, 0.2)',
+          border: '1px solid rgba(226, 232, 240, 0.8)',
+          overflow: 'hidden',
+          animation: 'modalSlideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        }}
+        className={`dark:bg-gray-900 dark:border-gray-700/50 ${className}`}
         onClick={(e) => e.stopPropagation()}
       >
         {children}
