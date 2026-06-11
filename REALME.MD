@@ -633,3 +633,8 @@ CHAPTERS:
  Connecting a domain
 
  ALSO CAN THE BUILD COMMAND RUN IF THERE IS A MISSING DEPENDANCY IN BACKEND INSTALLATION? ALSO PROVUDE TERMINAL COMMANDS TO CHECK IF ALL THE REQUUREMENTS CALLED IN THE PROJECT WERE INSTALLED AN AVAILABLE IN REQUIREMENTS.TXT.
+
+
+
+
+ im having an issue in the mobile view for my application where when a user want to input keyboad entries, the keyboard occupies the while screen with a white background, making the login/entry form to move out of the viewable view of the user. so whch s=file to check for the issue?

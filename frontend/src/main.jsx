@@ -81,7 +81,7 @@ const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <StrictMode>
     <ErrorBoundary fallback={<div className="p-8 text-center">Something went wrong.</div>}>
-      <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <HashRouter>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider>
             <FontProvider>

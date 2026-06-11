@@ -18,9 +18,9 @@ export default function Sidebar({ collapsed, onToggle }) {
     { path: '/', icon: FiHome, label: 'Home', color: '#6366f1' },
     { path: '/announcements', icon: FiBell, label: 'Announcements', color: '#f59e0b' },
     { path: '/blog', icon: FiBookOpen, label: 'Blog', color: '#ec4899' },
-    { path: '/opportunities', icon: FiBriefcase, label: 'Opportunities', color: '#10b981' },
+    { path: '/opportunities', icon: FiBriefcase, label: 'Opportunities', color: '#099b6a' },
     { path: '/found-items', icon: FiPackage, label: 'Found Items', color: '#3b82f6' },
-    { path: '/classes', icon: FiBook, label: 'Classes', color: '#8b5cf6' },
+    { path: '/classes', icon: FiBook, label: 'Classes', color: '#6f40dd' },
     { path: '/nearby-classes', icon: FiNavigation, label: 'Nearby Classes', color: '#06b6d4' },
     { path: '/campus-map', icon: FiMapPin, label: 'Campus Map', color: '#84cc16' },
   ];

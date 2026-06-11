@@ -72,6 +72,8 @@ TEMPLATES = [
 WSGI_APPLICATION = 'academe.wsgi.application'
 ASGI_APPLICATION = 'academe.asgi.application'
 
+# for prodcution im shifting to postgre 
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -221,7 +223,7 @@ JAZZMIN_SETTINGS = {
     "language_chooser": False,
 }
 
-# ✅ Stripped down – the engine handles all visual layout
+# Stripped down – the engine handles all visual layout
 JAZZMIN_UI_TWEAKS = {
     "navbar_small_text": False,
     "footer_small_text": True,
@@ -232,7 +234,7 @@ JAZZMIN_UI_TWEAKS = {
     "sidebar": "sidebar-dark-primary",
 }
 
-# ✅ REMOVED JAZZMIN_DASHBOARD – the engine injects its own layout
+#  REMOVED JAZZMIN_DASHBOARD – the engine injects its own layout
 
 ADMIN_SITE_HEADER = "Academe Administration"
 ADMIN_SITE_TITLE = "Academe Admin Portal"

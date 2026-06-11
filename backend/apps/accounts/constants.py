@@ -9,7 +9,7 @@ from common.constants import UserRole
 
 
 # ============================================
-# ROLE HIERARCHY & PERMISSIONS
+# ROLE HIERARCHY & PERMISSIONSh 
 # ============================================
 
 class RoleHierarchy:

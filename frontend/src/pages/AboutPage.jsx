@@ -11,7 +11,7 @@ const features = [
     icon: FiPackage, 
     title: 'Found Items', 
     desc: 'Secure lost & found with escrow payments that protect both finders and owners.',
-    color: '#3b82f6', 
+    color: '#2c6bcf', 
     bg: 'rgba(59,130,246,0.1)',
     emoji: '📦'
   },

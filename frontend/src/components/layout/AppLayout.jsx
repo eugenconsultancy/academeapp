@@ -44,7 +44,7 @@ export default function AppLayout({ children }) {
           user-select: none;
           overflow: hidden;
           --watermark-angle: 15deg;
-          --watermark-color: #4F6BFF;
+          --watermark-color: #2642cc;
           --watermark-color-light: #7DA8FF;
           visibility: visible;
           opacity: 1;

@@ -11,6 +11,8 @@ env/
 .venv/
 *.sqlite3
 *.db
+.REALME.MD
+.threejs.md
 
 # Django
 *.log

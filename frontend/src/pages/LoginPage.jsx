@@ -72,7 +72,14 @@ const FEATURES = [
 // ------------------------------------------------------------
 function OTPInput({ value, onChange, onComplete }) {
   const inputs = useRef([]);
-  const digits = (value + '      ').slice(0, 6).split('');
+  const hasCalledComplete = useRef(false);
+
+  // Reset the complete flag when value changes externally
+  useEffect(() => {
+    if (value.length < 6) {
+      hasCalledComplete.current = false;
+    }
+  }, [value]);
 
   const handleKey = (e, idx) => {
     if (e.key === 'Backspace') {
@@ -94,15 +101,26 @@ function OTPInput({ value, onChange, onComplete }) {
     const newVal = arr.join('').replace(/ /g, '').slice(0, 6);
     onChange(newVal);
     if (idx < 5) inputs.current[idx + 1]?.focus();
-    if (newVal.length === 6) onComplete?.(newVal);
+    // Only call onComplete once when 6 digits are reached
+    if (newVal.length === 6 && !hasCalledComplete.current) {
+      hasCalledComplete.current = true;
+      onComplete?.(newVal);
+    }
   };
 
   const handlePaste = (e) => {
     e.preventDefault();
     const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
     onChange(pasted);
-    if (pasted.length === 6) { inputs.current[5]?.focus(); onComplete?.(pasted); }
-    else inputs.current[Math.min(pasted.length, 5)]?.focus();
+    if (pasted.length === 6) {
+      inputs.current[5]?.focus();
+      if (!hasCalledComplete.current) {
+        hasCalledComplete.current = true;
+        onComplete?.(pasted);
+      }
+    } else {
+      inputs.current[Math.min(pasted.length, 5)]?.focus();
+    }
   };
 
   return (
@@ -111,8 +129,9 @@ function OTPInput({ value, onChange, onComplete }) {
         <input
           key={idx}
           ref={el => inputs.current[idx] = el}
-          type="text"
+          type="tel"
           inputMode="numeric"
+          pattern="[0-9]*"
           maxLength={1}
           value={value[idx] || ''}
           onKeyDown={e => handleKey(e, idx)}
@@ -122,14 +141,14 @@ function OTPInput({ value, onChange, onComplete }) {
           style={{
             width: 44, height: 52,
             borderRadius: 12,
-            border: value[idx] ? '2px solid #6366f1' : '2px solid #e5e7eb',
+            border: value[idx] ? '2px solid #3d3fc0' : '2px solid #e5e7eb',
             background: value[idx] ? 'rgba(99,102,241,0.06)' : '#f9fafb',
             textAlign: 'center',
             fontSize: '1.3rem',
             fontWeight: 700,
             outline: 'none',
             transition: 'all 0.15s ease',
-            caretColor: 'transparent',
+            caretColor: '#6366f1',
             color: '#1f2937',
             boxShadow: value[idx] ? '0 0 0 4px rgba(99,102,241,0.12)' : 'none',
             fontFamily: 'Outfit, sans-serif',
@@ -173,7 +192,7 @@ function StepProgress({ step }) {
                   : <span style={{ fontSize: '0.75rem', fontWeight: 700, color: active ? '#fff' : '#9ca3af' }}>{i + 1}</span>
                 }
               </div>
-              <span style={{ fontSize: '0.65rem', fontWeight: 600, color: (done || active) ? '#6366f1' : '#9ca3af', letterSpacing: '0.02em' }}>
+              <span style={{ fontSize: '0.65rem', fontWeight: 600, color: (done || active) ? '#3234b9' : '#9ca3af', letterSpacing: '0.02em' }}>
                 {s.label}
               </span>
             </div>
@@ -216,7 +235,7 @@ function AuthMethodTabs({ method, onChange }) {
           style={{
             flex: 1, padding: '8px 12px', border: 'none', borderRadius: 10,
             background: method === tab.id ? '#fff' : 'transparent',
-            color: method === tab.id ? '#6366f1' : '#6b7280',
+            color: method === tab.id ? '#3f41bb' : '#6b7280',
             fontWeight: method === tab.id ? 700 : 500,
             fontSize: '0.82rem',
             cursor: 'pointer',
@@ -246,6 +265,7 @@ export default function LoginPage() {
   const [authMethod, setAuthMethod] = useState('otp');
   const [carouselIdx, setCarouselIdx] = useState(0);
   const [greeting, setGreeting] = useState({ text: '', icon: null });
+  const verifyingRef = useRef(false); // Prevent double verification
 
   const { login, biometricLogin } = useAuth();
   const navigate = useNavigate();
@@ -299,18 +319,33 @@ export default function LoginPage() {
 
   const verifyOTP = async (e) => {
     if (e?.preventDefault) e.preventDefault();
-    if (otp.length < 6) { toast.error('Enter all 6 digits'); return; }
+
+    // Prevent double verification
+    if (verifyingRef.current) return;
+
+    if (otp.length < 6) {
+      toast.error('Enter all 6 digits');
+      return;
+    }
+
+    verifyingRef.current = true;
     setLoading(true);
+
     try {
       await login(phone, otp);
       setStep('done');
       toast.success('Welcome back! 🎉');
       setTimeout(() => navigate('/'), 800);
     } catch (err) {
-      toast.error(err.message || 'Invalid OTP. Try again.');
+      const errorMsg = err.response?.data?.error || err.message || 'Invalid OTP. Try again.';
+      // Only show error if it's a real failure, not a race condition
+      if (errorMsg !== 'Invalid OTP. Try again.' || !verifyingRef.current) {
+        toast.error(errorMsg);
+      }
       setOtp('');
     } finally {
       setLoading(false);
+      verifyingRef.current = false;
     }
   };
 
@@ -334,10 +369,11 @@ export default function LoginPage() {
     }
   };
 
-  const handleOTPComplete = (val) => {
+  const handleOTPComplete = useCallback((val) => {
     setOtp(val);
-    if (val.length === 6) setTimeout(() => verifyOTP(), 100);
-  };
+    // Don't auto-verify here - let the user click the button or the form handle it
+    // The onComplete is just for setting the value
+  }, []);
 
   const feat = FEATURES[carouselIdx];
 
@@ -355,7 +391,7 @@ export default function LoginPage() {
         }
         @keyframes lp-pulse {
           0%,100% { box-shadow: 0 0 24px rgba(99,102,241,0.35), 0 0 64px rgba(99,102,241,0.12); }
-          50% { box-shadow: 0 0 40px rgba(99,102,241,0.55), 0 0 90px rgba(139,92,246,0.22); }
+          50% { box-shadow: 0 0 40px rgba(117, 119, 218, 0.55), 0 0 90px rgba(139,92,246,0.22); }
         }
         @keyframes lp-grad {
           0% { background-position: 0% 50%; }
@@ -377,7 +413,7 @@ export default function LoginPage() {
 
         .lp-wrap {
           font-family: 'Outfit', sans-serif;
-          min-height: 100vh;
+          min-height: 100dvh;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -455,7 +491,7 @@ export default function LoginPage() {
 
         .lp-logo-mark {
           width: 60px; height: 60px;
-          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a78bfa 100%);
+          background: linear-gradient(135deg, #4e50c0 0%, #8b5cf6 50%, #a78bfa 100%);
           border-radius: 17px;
           display: flex; align-items: center; justify-content: center;
           margin: 0 auto 0.9rem;
@@ -466,7 +502,7 @@ export default function LoginPage() {
           font-family: 'Bricolage Grotesque', sans-serif;
           font-size: 1.75rem; font-weight: 800;
           letter-spacing: -0.04em;
-          background: linear-gradient(135deg, #6366f1, #8b5cf6, #a78bfa);
+          background: linear-gradient(135deg, #5052c2, #5a2ebe, #a78bfa);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -482,7 +518,7 @@ export default function LoginPage() {
           line-height: 1.5;
           margin-bottom: 0.6rem;
         }
-        .lp-tagline-hl { color: #6366f1; font-weight: 600; }
+        .lp-tagline-hl { color: #5658d1; font-weight: 600; }
 
         /* Social proof */
         .lp-social-proof {
@@ -609,7 +645,7 @@ export default function LoginPage() {
           font-family: 'Outfit', sans-serif;
           font-size: 0.92rem;
           font-weight: 500;
-          color: #111827;
+          color: #1f2937;
           outline: none;
           transition: all 0.2s ease;
         }
@@ -656,7 +692,7 @@ export default function LoginPage() {
 
         .lp-back {
           width: 100%; padding: 0.55rem; border: none;
-          background: transparent; color: #9ca3af;
+          background: transparent; color: #4a4e53;
           font-family: 'Outfit', sans-serif; font-size: 0.78rem;
           font-weight: 500; cursor: pointer;
           display: flex; align-items: center; justify-content: center; gap: 0.4rem;
@@ -667,7 +703,7 @@ export default function LoginPage() {
         .lp-divider {
           display: flex; align-items: center; gap: 0.6rem;
           margin: 0.75rem 0;
-          color: #9ca3af; font-size: 0.68rem; font-weight: 600;
+          color: #2c2e33; font-size: 0.68rem; font-weight: 600;
           text-transform: uppercase; letter-spacing: 0.06em;
         }
         .lp-divider::before, .lp-divider::after {
@@ -679,10 +715,10 @@ export default function LoginPage() {
           font-size: 0.8rem; color: #6b7280;
         }
         .lp-footer a {
-          color: #6366f1; font-weight: 700;
+          color: #393bcc; font-weight: 700;
           text-decoration: none; transition: color 0.15s;
         }
-        .lp-footer a:hover { color: #4f46e5; text-decoration: underline; }
+        .lp-footer a:hover { color: #403aa8; text-decoration: underline; }
 
         .lp-spinner {
           width: 16px; height: 16px;
@@ -745,7 +781,7 @@ export default function LoginPage() {
                 className="lp-carousel-dot"
                 style={{
                   width: i === carouselIdx ? 18 : 6,
-                  background: i === carouselIdx ? '#6366f1' : '#e5e7eb',
+                  background: i === carouselIdx ? '#3032a7' : '#e5e7eb',
                 }}
               />
             ))}
@@ -792,7 +828,7 @@ export default function LoginPage() {
                 <label className="lp-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span>Verification Code</span>
                   {resendTimer > 0 && (
-                    <span style={{ color: '#9ca3af', fontWeight: 400, fontSize: '0.7rem' }}>Resend in {resendTimer}s</span>
+                    <span style={{ color: '#303133', fontWeight: 400, fontSize: '0.7rem' }}>Resend in {resendTimer}s</span>
                   )}
                 </label>
                 <span className="lp-helper" style={{ marginBottom: '0.5rem', display: 'block' }}>
@@ -805,7 +841,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     className="lp-resend"
-                    disabled={resendTimer > 0}
+                    disabled={resendTimer > 0 || loading}
                     onClick={requestOTP}
                   >
                     {resendTimer > 0 ? `Resend in ${resendTimer}s` : 'Resend OTP'}
@@ -843,7 +879,7 @@ export default function LoginPage() {
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             gap: '0.4rem', marginTop: '0.85rem',
-            fontSize: '0.68rem', color: '#9ca3af', fontWeight: 500,
+            fontSize: '0.68rem', color: '#191a1b', fontWeight: 500,
           }}>
             <FiShield size={11} /> End-to-end encrypted &nbsp;·&nbsp; No passwords stored
           </div>

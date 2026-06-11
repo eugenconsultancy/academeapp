@@ -155,9 +155,30 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
     return () => document.removeEventListener('keydown', handler);
   }, [closeAll]);
 
+  // ═══════════════════════════════════════════════════════════════
+  // FIXED: Navigation Drawer Stability (prevents "jump" when opening)
+  // Uses position-locking instead of overflow: hidden to avoid scrollbar width changes
+  // ═══════════════════════════════════════════════════════════════
   useEffect(() => {
-    document.body.style.overflow = mobileOpen ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
+    if (mobileOpen) {
+      const scrollY = window.scrollY;
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = '100%';
+    } else {
+      const scrollY = document.body.style.top;
+      document.body.style.position = '';
+      document.body.style.top = '';
+      window.scrollTo(0, parseInt(scrollY || '0') * -1);
+    }
+    return () => {
+      const scrollY = document.body.style.top;
+      document.body.style.position = '';
+      document.body.style.top = '';
+      if (scrollY) {
+        window.scrollTo(0, parseInt(scrollY) * -1);
+      }
+    };
   }, [mobileOpen]);
 
   const handleChatClick = () => {

@@ -178,10 +178,12 @@
     overflow-x: hidden !important;
     max-width: 100% !important;
     width: 100% !important;
+    height: 100dvh;
   }
 
   body {
-    @apply antialiased min-h-screen;
+    @apply antialiased;
+    min-height: 100dvh;
     font-family: var(--font-body);
     font-size: var(--text-base);
     font-weight: 400;
@@ -197,6 +199,21 @@
     text-rendering: optimizeLegibility;
     overflow-x: hidden !important;
     max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  #root, .app {
+    min-height: 100dvh;
+    width: 100%;
+    overflow-x: hidden !important;
+    position: relative;
+  }
+
+  main {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden !important;
+    height: 100%;
     width: 100% !important;
   }
 
@@ -749,6 +766,11 @@ html, body, #root, .app, .cp-wrap, .hp-root {
   width: 100% !important;
 }
 
+/* Dynamic viewport height for mobile keyboard */
+.min-h-screen {
+  min-height: 100dvh;
+}
+
 /* Ensure all containers respect viewport */
 *, *::before, *::after {
   max-width: 100vw;
@@ -759,6 +781,16 @@ html, body, #root, .app, .cp-wrap, .hp-root {
 p, h1, h2, h3, h4, h5, h6, span, a, li, .text-truncate {
   word-break: break-word;
   overflow-wrap: break-word;
+}
+
+/* Keyboard-aware hiding using visibility + opacity (no layout reflows) */
+body.keyboard-open .bn-nav,
+body.keyboard-open .watermark-overlay,
+body.keyboard-open .fixed-bottom {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease-out;
 }
 
 /* Remove backdrop filter on inputs for mobile devices to prevent keyboard masking */
@@ -798,7 +830,9 @@ p, h1, h2, h3, h4, h5, h6, span, a, li, .text-truncate {
   body.keyboard-open [style*="position: fixed"],
   body.keyboard-open .bn-nav,
   body.keyboard-open .watermark-overlay {
-    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
   }
   
   body.keyboard-open {
@@ -846,6 +880,7 @@ body.modal-open.keyboard-open {
   input[type="email"],
   input[type="password"],
   input[type="number"],
+  input[type="tel"],
   select,
   textarea {
     font-size: 16px !important;

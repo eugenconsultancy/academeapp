@@ -1,3 +1,4 @@
+// C:\Users\GATARA-BJTU\academe\frontend\src\pages\CampusMapPage.jsx
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useGeolocation } from '../hooks/useGeolocation';
@@ -8,15 +9,17 @@ import {
     FiMapPin, FiNavigation, FiSearch, FiFilter, FiRefreshCw,
     FiHome, FiChevronRight, FiX, FiExternalLink, FiClock,
     FiTarget, FiArrowUp, FiAlertCircle, FiStar, FiShare2,
-    FiList, FiMap, FiCopy
+    FiList, FiMap, FiCopy, FiInfo
 } from 'react-icons/fi';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from 'react-leaflet';
+import MarkerClusterGroup from 'react-leaflet-cluster';
 import L from 'leaflet';
 
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
+// Fix Leaflet default icon issue
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
     iconRetinaUrl: markerIcon2x,
@@ -24,7 +27,17 @@ L.Icon.Default.mergeOptions({
     shadowUrl: markerShadow,
 });
 
-// ─── Haversine distance (client‑side) ─────────────────────────────
+// Custom user location marker
+const userIcon = new L.Icon({
+    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+    shadowUrl: markerShadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41]
+});
+
+// ─── Haversine distance (client‑side, display only) ─────────────────────────────
 function calculateDistance(lat1, lon1, lat2, lon2) {
     const R = 6371e3;
     const φ1 = (lat1 * Math.PI) / 180;
@@ -39,7 +52,7 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 }
 
 function estimateWalkTime(meters) {
-    return Math.round(meters / 1.4 / 60);
+    return Math.max(1, Math.round(meters / 80));
 }
 
 function formatDistance(meters) {
@@ -59,8 +72,20 @@ function ChangeMapView({ center, zoom }) {
     return null;
 }
 
+// Loading overlay component
+function MapLoadingOverlay({ isVisible }) {
+    if (!isVisible) return null;
+    return (
+        <div className="absolute inset-0 z-[1000] bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm flex flex-col items-center justify-center rounded-xl">
+            <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p className="text-indigo-600 dark:text-indigo-400 font-medium">Getting your location...</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Please enable GPS for accurate venue distances</p>
+        </div>
+    );
+}
+
 export default function CampusMapPage() {
-    const { location, error: geoError, loading: geoLoading, getLocation } = useGeolocation();
+    const { location, error: geoError, loading: geoLoading, getLocation } = useGeolocation({ autoRequest: true });
     const [venues, setVenues] = useState([]);
     const [loading, setLoading] = useState(false);
     const [search, setSearch] = useState('');
@@ -81,9 +106,22 @@ export default function CampusMapPage() {
         catch { return []; }
     });
     const [showShareToast, setShowShareToast] = useState(false);
+    const [showLoadingOverlay, setShowLoadingOverlay] = useState(true);
+    const [mapReady, setMapReady] = useState(false);
+
+    // Hide loading overlay after location is obtained or timeout
+    useEffect(() => {
+        if (location) {
+            const timer = setTimeout(() => setShowLoadingOverlay(false), 500);
+            return () => clearTimeout(timer);
+        } else if (!geoLoading && geoError) {
+            const timer = setTimeout(() => setShowLoadingOverlay(false), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [location, geoLoading, geoError]);
 
     useEffect(() => {
-        getLocation();        // request location on mount
+        getLocation();
         fetchAllVenues();
     }, []);
 
@@ -105,7 +143,7 @@ export default function CampusMapPage() {
         setLoading(true); setFetchError(null);
         try {
             const data = await GeoService.listVenues({ limit: 100 });
-            setVenues(Array.isArray(data) ? data : data?.data || []);
+            setVenues(Array.isArray(data) ? data : data?.results || []);
         } catch (err) {
             setFetchError('Failed to load venues. Please try again.');
         } finally { setLoading(false); }
@@ -118,8 +156,8 @@ export default function CampusMapPage() {
         }
         setLoading(true); setFetchError(null);
         try {
-            const data = await GeoService.getNearbyVenues(location.latitude, location.longitude, { limit: 30 });
-            setVenues(Array.isArray(data) ? data : data?.data || []);
+            const data = await GeoService.getNearbyVenues(location.latitude, location.longitude, { limit: 30, max_distance: 1000 });
+            setVenues(Array.isArray(data) ? data : data?.results || []);
             setSortBy('distance');
         } catch (err) {
             setFetchError('Failed to find nearby venues.');
@@ -214,12 +252,27 @@ export default function CampusMapPage() {
     };
 
     const centerMap = location ? [location.latitude, location.longitude] : [0, 0];
-    const mapZoom = location ? 16 : 13;
+    const mapZoom = location ? 16 : 14;
+
+    // Polyline for directions (straight line with disclaimer)
+    const polylinePositions = directions && selectedVenue && location ? [
+        [location.latitude, location.longitude],
+        [selectedVenue.latitude, selectedVenue.longitude]
+    ] : [];
+
+    // Create cluster custom icon (optional)
+    const createClusterCustomIcon = (cluster) => {
+        return L.divIcon({
+            html: `<div class="custom-cluster-icon">${cluster.getChildCount()}</div>`,
+            className: 'marker-cluster-custom',
+            iconSize: L.point(40, 40, true),
+        });
+    };
 
     return (
         <>
             <style>{`
-        .cm-root { font-family: 'Outfit', system-ui, -apple-system, sans-serif; max-width: 1200px; margin: 0 auto; padding: 28px 20px 80px; animation: cmIn .4s cubic-bezier(0.16,1,0.3,1) both; }
+        .cm-root { font-family: 'Outfit', system-ui, -apple-system, sans-serif; max-width: 1200px; margin: 0 auto; padding: 28px 20px 80px; animation: cmIn .4s cubic-bezier(0.16,1,0.3,1) both; overflow-x: hidden; }
         @keyframes cmIn { from {opacity:0;transform:translateY(16px)} to {opacity:1;transform:translateY(0)} }
         .cm-breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; font-weight: 600; color: #94a3b8; margin-bottom: 24px; flex-wrap: wrap; }
         .cm-breadcrumb a { color: #6366f1; text-decoration: none; display: flex; align-items: center; gap: 4px; }
@@ -229,7 +282,7 @@ export default function CampusMapPage() {
         .cm-view-toggle { display: flex; background: rgba(0,0,0,0.03); border-radius: 10px; overflow: hidden; }
         .cm-view-btn { flex: 1; padding: 8px 14px; border: none; background: transparent; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 0.82rem; cursor: pointer; color: #64748b; display: flex; align-items: center; gap: 6px; justify-content: center; transition: all 0.15s; }
         .cm-view-btn.active { background: #6366f1; color: #fff; }
-        .cm-location-info { display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: rgba(6,182,212,0.06); border: 1px solid rgba(6,182,212,0.12); border-radius: 10px; font-size: 0.78rem; color: #0891b2; margin-bottom: 16px; }
+        .cm-location-info { display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: rgba(6,182,212,0.06); border: 1px solid rgba(6,182,212,0.12); border-radius: 10px; font-size: 0.78rem; color: #0891b2; margin-bottom: 16px; flex-wrap: wrap; }
         .cm-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
         .cm-search-wrap { position: relative; flex: 1; min-width: 180px; }
         .cm-search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8; }
@@ -253,20 +306,20 @@ export default function CampusMapPage() {
         .cm-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
         .dark .cm-card { background: rgba(15,23,42,0.85); border-color: rgba(255,255,255,0.05); }
         .cm-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
-        .cm-card-name { font-size: 0.9rem; font-weight: 700; color: #0f172a; }
+        .cm-card-name { font-size: 0.9rem; font-weight: 700; color: #0f172a; word-break: break-word; }
         .dark .cm-card-name { color: #f8fafc; }
         .cm-card-type { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 99px; font-size: 0.65rem; font-weight: 700; background: rgba(99,102,241,0.1); color: #6366f1; text-transform: capitalize; }
         .cm-card-meta { font-size: 0.72rem; color: #94a3b8; margin-top: 4px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-        .cm-card-distance { font-size: 0.85rem; font-weight: 700; color: #059669; margin-top: 8px; display: flex; align-items: center; gap: 6px; }
+        .cm-card-distance { font-size: 0.85rem; font-weight: 700; color: #059669; margin-top: 8px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
         .cm-card-actions { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
         .cm-card-btn { flex: 1; padding: 8px 12px; border-radius: 8px; border: none; font-family: 'Outfit', sans-serif; font-size: 0.72rem; font-weight: 700; cursor: pointer; transition: all 0.15s; text-align: center; display: flex; align-items: center; justify-content: center; gap: 4px; }
         .cm-card-btn-maps { background: #6366f1; color: #fff; }
         .cm-card-btn-dir { background: #10b981; color: #fff; }
         .cm-card-btn-fav { background: transparent; border: 1px solid #e2e8f0; color: #f59e0b; }
         .cm-empty { text-align: center; padding: 64px 24px; color: #94a3b8; }
-        .cm-map-wrapper { border-radius: 16px; overflow: hidden; margin-bottom: 16px; height: 500px; }
+        .cm-map-wrapper { border-radius: 16px; overflow: hidden; margin-bottom: 16px; height: 500px; position: relative; }
         .cm-map-container { height: 100%; width: 100%; }
-        .leaflet-container { font-family: 'Outfit', sans-serif; }
+        .leaflet-container { font-family: 'Outfit', sans-serif; z-index: 10; }
         .cm-modal-overlay { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 20px; }
         .cm-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(6px); }
         .cm-modal { position: relative; z-index: 61; width: 100%; max-width: 520px; background: rgba(255,255,255,0.96); border-radius: 24px; backdrop-filter: blur(28px); box-shadow: 0 24px 64px rgba(0,0,0,0.18); animation: cmIn .22s cubic-bezier(0.16,1,0.3,1) both; overflow: hidden; max-height: 90vh; overflow-y: auto; }
@@ -286,6 +339,27 @@ export default function CampusMapPage() {
         .cm-back-top { position: fixed; bottom: 24px; right: 24px; width: 44px; height: 44px; border-radius: 50%; background: #6366f1; color: #fff; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 40; box-shadow: 0 4px 16px rgba(99,102,241,0.4); transition: all 0.2s; }
         .cm-toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1e293b; color: white; padding: 10px 20px; border-radius: 12px; font-weight: 600; font-size: 0.85rem; z-index: 100; animation: cmIn .2s ease; }
         .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+        
+        /* Custom cluster marker style */
+        .marker-cluster-custom {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border-radius: 50%;
+            color: white;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 14px rgba(99,102,241,0.4);
+            border: 2px solid rgba(255,255,255,0.8);
+        }
+        
+        @media (max-width: 768px) {
+            .cm-map-wrapper { height: 400px; }
+            .cm-grid { grid-template-columns: 1fr; }
+            .cm-bar { flex-direction: column; }
+            .cm-search-wrap { width: 100%; }
+            .cm-select, .cm-btn { width: 100%; justify-content: center; }
+        }
         `}</style>
 
             <div className="cm-root">
@@ -368,28 +442,77 @@ export default function CampusMapPage() {
 
                 {!loading && viewMode === 'map' && (
                     <div className="cm-map-wrapper">
-                        <MapContainer center={centerMap} zoom={mapZoom} className="cm-map-container" scrollWheelZoom={true} aria-label="Interactive campus map">
+                        <MapContainer
+                            center={centerMap}
+                            zoom={mapZoom}
+                            className="cm-map-container"
+                            scrollWheelZoom={true}
+                            aria-label="Interactive campus map"
+                        >
                             <ChangeMapView center={centerMap} zoom={mapZoom} />
                             <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                            {location && <Marker position={[location.latitude, location.longitude]}><Popup>You are here</Popup></Marker>}
-                            {filteredVenues.map((venue) => (
-                                venue.latitude && venue.longitude ? (
-                                    <Marker key={venue.id} position={[venue.latitude, venue.longitude]} eventHandlers={{ click: () => setSelectedVenue(venue) }}>
-                                        <Popup>
-                                            <div style={{ minWidth: '160px' }}>
-                                                <strong>{venue.name}</strong>
-                                                <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '4px 0' }}>{venue.venue_type} – {venue.building_code || ''}</p>
-                                                {venue.distance_display && <p style={{ fontSize: '0.8rem', fontWeight: 600, color: '#059669' }}>{venue.distance_display} • {venue.walking_time_minutes} min walk</p>}
-                                                <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
-                                                    <button className="cm-card-btn cm-card-btn-maps" style={{ flex: 1 }} onClick={() => openInMaps(venue)}>Maps</button>
-                                                    <button className="cm-card-btn cm-card-btn-dir" style={{ flex: 1 }} onClick={() => handleGetDirections(venue)}>Directions</button>
+
+                            {/* User Location Marker */}
+                            {location && (
+                                <Marker position={[location.latitude, location.longitude]} icon={userIcon}>
+                                    <Popup>You are here</Popup>
+                                </Marker>
+                            )}
+
+                            {/* Directions Polyline with disclaimer */}
+                            {polylinePositions.length === 2 && (
+                                <Polyline
+                                    positions={polylinePositions}
+                                    color="#6366f1"
+                                    weight={3}
+                                    opacity={0.8}
+                                    dashArray="5, 10"
+                                />
+                            )}
+
+                            {/* Venue Markers with Clustering */}
+                            <MarkerClusterGroup
+                                chunkedLoading
+                                maxClusterRadius={50}
+                                disableClusteringAtZoom={18}
+                                spiderfyOnMaxZoom={true}
+                                showCoverageOnHover={false}
+                                iconCreateFunction={createClusterCustomIcon}
+                            >
+                                {filteredVenues.map((venue) => (
+                                    venue.latitude && venue.longitude ? (
+                                        <Marker
+                                            key={venue.id}
+                                            position={[venue.latitude, venue.longitude]}
+                                            eventHandlers={{ click: () => setSelectedVenue(venue) }}
+                                        >
+                                            <Popup>
+                                                <div style={{ minWidth: '160px' }}>
+                                                    <strong>{venue.name}</strong>
+                                                    <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '4px 0' }}>{venue.venue_type} – {venue.building_code || ''}</p>
+                                                    {venue.distance_display && <p style={{ fontSize: '0.8rem', fontWeight: 600, color: '#059669' }}>{venue.distance_display} • {venue.walking_time_minutes} min walk</p>}
+                                                    <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+                                                        <button className="cm-card-btn cm-card-btn-maps" style={{ flex: 1 }} onClick={() => openInMaps(venue)}>Maps</button>
+                                                        <button className="cm-card-btn cm-card-btn-dir" style={{ flex: 1 }} onClick={() => handleGetDirections(venue)}>Directions</button>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </Popup>
-                                    </Marker>
-                                ) : null
-                            ))}
+                                            </Popup>
+                                        </Marker>
+                                    ) : null
+                                ))}
+                            </MarkerClusterGroup>
                         </MapContainer>
+
+                        {/* Loading Overlay */}
+                        <MapLoadingOverlay isVisible={showLoadingOverlay && !location && !geoError} />
+
+                        {/* Polyline Disclaimer Note */}
+                        {polylinePositions.length === 2 && (
+                            <div className="absolute bottom-3 left-3 z-[1000] bg-black/70 text-white text-xs px-3 py-1.5 rounded-full flex items-center gap-2">
+                                <FiInfo size={12} />
+                                Straight-line distance only (not walking path)
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -460,6 +583,9 @@ export default function CampusMapPage() {
                                 </p>
                                 <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: 8 }}>
                                     From your current location to {selectedVenue.name}
+                                </p>
+                                <p className="text-xs text-amber-600 dark:text-amber-400 mt-3 italic">
+                                    ⚠️ Straight-line distance estimate. Actual walking path may differ.
                                 </p>
                             </div>
                         </div>

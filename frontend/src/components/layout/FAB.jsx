@@ -89,7 +89,7 @@ export default function FAB() {
                     }
                 }}
             >
-                {/* Menu Items (popup above FAB) */}
+                {/* Menu Items (popup above FAB,, modify this to allow if the fab is up the screen, it should pop up below, in short be dynamic) */}
                 {open && (
                     <div className="absolute bottom-full right-0 mb-4 flex flex-col items-end gap-3 animate-slideUp">
                         {menuItems.map((item, index) => (

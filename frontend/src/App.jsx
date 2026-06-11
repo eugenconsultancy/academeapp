@@ -186,6 +186,22 @@ export default function App() {
     }
   }, [user, setChatUser]);
 
+  // ═══════════════════════════════════════════════════════════════
+  // KEYBOARD DETECTION using visualViewport API
+  // ═══════════════════════════════════════════════════════════════
+  useEffect(() => {
+    if (!window.visualViewport) return;
+
+    const handleResize = () => {
+      // Detects when the keyboard has taken up space
+      const isKeyboardOpen = window.visualViewport.height < window.innerHeight - 150;
+      document.body.classList.toggle('keyboard-open', isKeyboardOpen);
+    };
+
+    window.visualViewport.addEventListener('resize', handleResize);
+    return () => window.visualViewport.removeEventListener('resize', handleResize);
+  }, []);
+
   const isAuthPage = ['/login', '/signup', '/forgot-password', '/reset-password'].includes(location.pathname);
 
   const handleToggleSidebar = useCallback(() => {
@@ -214,10 +230,27 @@ export default function App() {
 
   useEffect(() => { setMobileSidebarOpen(false); }, [location.pathname]);
 
+  // ═══════════════════════════════════════════════════════════════
+  // NAVIGATION DRAWER STABILITY (prevents "jump" when opening)
+  // ═══════════════════════════════════════════════════════════════
   useEffect(() => {
-    if (mobileSidebarOpen) document.body.style.overflow = 'hidden';
-    else document.body.style.overflow = '';
-    return () => { document.body.style.overflow = ''; };
+    if (mobileSidebarOpen) {
+      const scrollY = window.scrollY;
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = '100%';
+    } else {
+      const scrollY = document.body.style.top;
+      document.body.style.position = '';
+      document.body.style.top = '';
+      window.scrollTo(0, parseInt(scrollY || '0') * -1);
+    }
+    return () => {
+      const scrollY = document.body.style.top;
+      document.body.style.position = '';
+      document.body.style.top = '';
+      window.scrollTo(0, parseInt(scrollY || '0') * -1);
+    };
   }, [mobileSidebarOpen]);
 
   useEffect(() => {
@@ -435,28 +468,26 @@ export default function App() {
           transition: opacity 0.3s ease, visibility 0.3s ease;
         }
 
-        /* Hide watermark when keyboard is open (viewport height reduced) */
+        /* Hide watermark when keyboard is open using visibility + opacity */
         @media (max-height: 450px) {
           .watermark-overlay {
             opacity: 0 !important;
             visibility: hidden !important;
-            display: none !important;
           }
         }
 
-        /* Additional keyboard detection via body class */
+        /* Additional keyboard detection via body class - uses visibility not display */
         body.keyboard-open .watermark-overlay {
           opacity: 0 !important;
           visibility: hidden !important;
-          display: none !important;
         }
 
-        /* Hide fixed elements when keyboard is open */
-        body.keyboard-open .fixed,
-        body.keyboard-open [style*="position: fixed"],
-        body.keyboard-open .bottom-nav,
-        body.keyboard-open .bn-nav {
-          display: none !important;
+        /* Hide fixed elements when keyboard is open - using visibility + opacity */
+        body.keyboard-open .bn-nav,
+        body.keyboard-open .fixed-bottom {
+          visibility: hidden !important;
+          opacity: 0 !important;
+          pointer-events: none !important;
         }
 
         .watermark-text {
