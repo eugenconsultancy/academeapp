@@ -4,7 +4,7 @@ import ReactDOM from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import { Toaster, toast } from 'react-hot-toast';
+import { Toaster } from 'react-hot-toast';
 import App from './App.jsx';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -19,12 +19,37 @@ import './styles/fonts.css';
 import './index.css';
 
 // ═══════════════════════════════════════════════════════════════
-// TANSTACK QUERY CONFIGURATION WITH INTELLIGENT ERROR FILTERING
+// CRITICAL-PATH VIEWPORT HEIGHT INITIALISATION
+//
+// Run synchronously (before React mounts) so there is never a
+// frame where --visual-vh is missing and elements flash to
+// incorrect heights.
+//
+// Strategy:
+//   • Use window.visualViewport.height when available (most
+//     accurate — already excludes the keyboard).
+//   • Fall back to window.innerHeight.
+//   • Write --visual-vh to <html> so every CSS calc() using it
+//     has a value from the very first paint.
+// ═══════════════════════════════════════════════════════════════
+(function initVisualVh() {
+  const setVh = (h) => {
+    document.documentElement.style.setProperty('--visual-vh', `${h * 0.01}px`);
+  };
+
+  if (window.visualViewport) {
+    setVh(window.visualViewport.height);
+  } else {
+    setVh(window.innerHeight);
+  }
+})();
+
+// ═══════════════════════════════════════════════════════════════
+// TANSTACK QUERY CONFIGURATION
 // ═══════════════════════════════════════════════════════════════
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error, query) => {
-      // Ignore 404s (expected) or specific handled errors like weather failing
       if (error?.response?.status !== 404 && query.queryKey[0] !== 'weather') {
         console.error('[Query Cache Error]:', error.message);
       }
@@ -32,7 +57,6 @@ const queryClient = new QueryClient({
   }),
   mutationCache: new MutationCache({
     onError: (error) => {
-      // Suppress specific validation-related errors from flooding the console
       if (error.message !== 'No claim ID') {
         console.error('[Mutation Cache Error]:', error.message);
       }
@@ -43,9 +67,7 @@ const queryClient = new QueryClient({
       staleTime: 1000 * 60 * 5,
       gcTime: 1000 * 60 * 30,
       retry: (failureCount, error) => {
-        // Stop retrying on 401 Unauthorized – the user needs to login again
         if (error?.response?.status === 401) return false;
-        // Retry up to 2 more times for other errors
         return failureCount < 2;
       },
       refetchOnWindowFocus: true,
@@ -61,21 +83,23 @@ const queryClient = new QueryClient({
 });
 
 // ═══════════════════════════════════════════════════════════════
-// GLOBAL ERROR & APP INITIALIZATION
+// GLOBAL ERROR HANDLER & APP INITIALISATION
 // ═══════════════════════════════════════════════════════════════
-window.addEventListener('unhandledrejection', (e) => console.error('[Unhandled Rejection]:', e.reason));
+window.addEventListener('unhandledrejection', (e) =>
+  console.error('[Unhandled Rejection]:', e.reason)
+);
 
 async function initializeApp() {
   try {
     await offlineStorage.performMaintenance();
-  } catch (error) {
+  } catch {
     console.warn('[App] Offline storage init failed');
   }
 }
 initializeApp();
 
 // ═══════════════════════════════════════════════════════════════
-// RENDER APP
+// RENDER
 // ═══════════════════════════════════════════════════════════════
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
@@ -93,7 +117,8 @@ root.render(
                 <Toaster
                   position="top-center"
                   toastOptions={{
-                    className: '!bg-white dark:!bg-slate-800 !text-slate-800 dark:!text-slate-100 shadow-lg border border-black/5',
+                    className:
+                      '!bg-white dark:!bg-slate-800 !text-slate-800 dark:!text-slate-100 shadow-lg border border-black/5',
                   }}
                 />
               </AuthProvider>
@@ -107,7 +132,7 @@ root.render(
 );
 
 // ═══════════════════════════════════════════════════════════════
-// PWA SERVICE WORKER REGISTRATION
+// PWA SERVICE WORKER
 // ═══════════════════════════════════════════════════════════════
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {

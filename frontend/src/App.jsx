@@ -1,5 +1,5 @@
 // C:\Users\GATARA-BJTU\academe\frontend\src\App.jsx
-import { useState, Suspense, lazy, useEffect, useCallback } from 'react';
+import { useState, Suspense, lazy, useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import { useTheme } from './contexts/ThemeContext';
@@ -63,10 +63,8 @@ const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const SearchResultsPage = lazy(() => import('./pages/SearchResultsPage'));
 const ResourceUploadPage = lazy(() => import('./pages/ResourceUploadPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
-// ── Support Pages ──────────────────────────────────────────
 const MyTicketsPage = lazy(() => import('./pages/MyTicketsPage'));
 const AdminTicketsPage = lazy(() => import('./pages/AdminTicketsPage'));
-// ── New Chat Pages ────────────────────────────────────────
 const ChatsPage = lazy(() => import('./pages/ChatsPage'));
 const ChatDetail = lazy(() => import('./pages/ChatDetail'));
 
@@ -75,6 +73,10 @@ const ChatDetail = lazy(() => import('./pages/ChatDetail'));
 // ═══════════════════════════════════════════════════════════════
 const MOBILE_BREAKPOINT = 768;
 const SIDEBAR_BREAKPOINT = 1024;
+
+// Keyboard is considered "open" when visual viewport shrinks by more than 150px.
+// This threshold avoids false positives from browser chrome resizing.
+const KEYBOARD_THRESHOLD = 150;
 
 const ROUTE_TITLES = {
   '/': 'Home',
@@ -161,6 +163,68 @@ function ProtectedRoute({ children, allowedRoles = [] }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// KEYBOARD DETECTION HOOK
+// Uses the Visual Viewport API as primary, falls back to window resize.
+// Sets a CSS custom property --visual-vh on <html> so layouts can use
+// calc(var(--visual-vh, 1vh) * 100) instead of 100vh.
+// ═══════════════════════════════════════════════════════════════
+function useKeyboardDetection() {
+  // Store the "stable" layout height so we can diff against it.
+  const stableHeightRef = useRef(
+    typeof window !== 'undefined' ? window.innerHeight : 0
+  );
+
+  useEffect(() => {
+    const root = document.documentElement;
+
+    // Helper: update the CSS custom property and toggle class
+    const update = (visualHeight) => {
+      // --visual-vh: 1% of the *current* visual viewport height.
+      // Use this instead of `vh` units in CSS.
+      root.style.setProperty('--visual-vh', `${visualHeight * 0.01}px`);
+
+      const diff = stableHeightRef.current - visualHeight;
+      const keyboardOpen = diff > KEYBOARD_THRESHOLD;
+      document.body.classList.toggle('keyboard-open', keyboardOpen);
+    };
+
+    // ── Visual Viewport API (preferred — fires only for keyboard, not scroll) ──
+    if (window.visualViewport) {
+      const onVVResize = () => {
+        // Only update the stable height when the keyboard is NOT open
+        // (i.e. layout viewport and visual viewport match)
+        const vvHeight = window.visualViewport.height;
+        const diff = stableHeightRef.current - vvHeight;
+        if (diff <= KEYBOARD_THRESHOLD) {
+          // keyboard not open → update stable reference
+          stableHeightRef.current = window.innerHeight;
+        }
+        update(vvHeight);
+      };
+
+      window.visualViewport.addEventListener('resize', onVVResize);
+      // Initialise immediately
+      update(window.visualViewport.height);
+
+      return () => window.visualViewport.removeEventListener('resize', onVVResize);
+    }
+
+    // ── Fallback: window resize (less precise but still helpful) ──
+    const onWindowResize = () => {
+      const h = window.innerHeight;
+      if (h > stableHeightRef.current - KEYBOARD_THRESHOLD) {
+        stableHeightRef.current = h; // viewport expanded, reset stable
+      }
+      update(h);
+    };
+
+    window.addEventListener('resize', onWindowResize);
+    update(window.innerHeight);
+    return () => window.removeEventListener('resize', onWindowResize);
+  }, []);
+}
+
+// ═══════════════════════════════════════════════════════════════
 // APP
 // ═══════════════════════════════════════════════════════════════
 export default function App() {
@@ -179,28 +243,13 @@ export default function App() {
   const location = useLocation();
   const setChatUser = useChatStore((s) => s.setUser);
 
+  // ── Keyboard / visual viewport detection ──
+  useKeyboardDetection();
+
   // Keep chat store's user in sync with auth user
   useEffect(() => {
-    if (user) {
-      setChatUser(user);
-    }
+    if (user) setChatUser(user);
   }, [user, setChatUser]);
-
-  // ═══════════════════════════════════════════════════════════════
-  // KEYBOARD DETECTION using visualViewport API
-  // ═══════════════════════════════════════════════════════════════
-  useEffect(() => {
-    if (!window.visualViewport) return;
-
-    const handleResize = () => {
-      // Detects when the keyboard has taken up space
-      const isKeyboardOpen = window.visualViewport.height < window.innerHeight - 150;
-      document.body.classList.toggle('keyboard-open', isKeyboardOpen);
-    };
-
-    window.visualViewport.addEventListener('resize', handleResize);
-    return () => window.visualViewport.removeEventListener('resize', handleResize);
-  }, []);
 
   const isAuthPage = ['/login', '/signup', '/forgot-password', '/reset-password'].includes(location.pathname);
 
@@ -230,9 +279,7 @@ export default function App() {
 
   useEffect(() => { setMobileSidebarOpen(false); }, [location.pathname]);
 
-  // ═══════════════════════════════════════════════════════════════
-  // NAVIGATION DRAWER STABILITY (prevents "jump" when opening)
-  // ═══════════════════════════════════════════════════════════════
+  // ── Navigation drawer scroll lock (prevents layout jump) ──
   useEffect(() => {
     if (mobileSidebarOpen) {
       const scrollY = window.scrollY;
@@ -284,14 +331,17 @@ export default function App() {
   const showChrome = user && !isAuthPage;
 
   return (
-    <div className="app min-h-screen transition-colors duration-300 bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <div className="app transition-colors duration-300 bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
       <ScrollToTop />
 
-      <div className="watermark-overlay">
+      <div className="watermark-overlay" aria-hidden="true">
         <span className="watermark-text">ACADEME</span>
       </div>
 
-      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:bg-indigo-600 focus:text-white focus:rounded-lg focus:shadow-lg">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:bg-indigo-600 focus:text-white focus:rounded-lg focus:shadow-lg"
+      >
         Skip to main content
       </a>
 
@@ -305,26 +355,48 @@ export default function App() {
 
       {showChrome && isMobile && (
         <>
-          <div aria-hidden="true" onClick={handleCloseMobileSidebar}
-            className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${mobileSidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`} />
-          <div role="dialog" aria-modal="true" aria-label="Navigation menu"
-            className={`fixed top-0 left-0 h-full z-50 w-[280px] max-w-[85vw] transition-transform duration-300 ease-out ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+          <div
+            aria-hidden="true"
+            onClick={handleCloseMobileSidebar}
+            className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${mobileSidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation menu"
+            className={`fixed top-0 left-0 h-full z-50 w-[280px] max-w-[85vw] transition-transform duration-300 ease-out ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+          >
             <Sidebar collapsed={false} onToggle={handleCloseMobileSidebar} isMobileOverlay />
           </div>
         </>
       )}
 
-      <main id="main-content"
-        className={`min-h-screen overflow-x-hidden transition-[padding] duration-300 ${showChrome
-          ? [
-            'pt-16',
-            'pb-20 md:pb-8',
-            sidebarCollapsed ? 'md:pl-[66px]' : 'md:pl-[238px]',
-          ].join(' ')
-          : ''
-          }`}>
+      {/*
+        KEY FIX: main uses min-h expressed via --visual-vh so it always
+        tracks the *visible* viewport, not the full layout viewport behind the
+        keyboard.  pb-safe ensures the bottom nav / FAB area is not obscured by
+        system UI on notched devices.
+      */}
+      <main
+        id="main-content"
+        className={`overflow-x-hidden transition-[padding] duration-300 ${showChrome
+            ? [
+              'pt-16',
+              'pb-20 md:pb-8',
+              sidebarCollapsed ? 'md:pl-[66px]' : 'md:pl-[238px]',
+            ].join(' ')
+            : ''
+          }`}
+        style={{ minHeight: 'calc(var(--visual-vh, 1vh) * 100)' }}
+      >
         <ErrorBoundary>
-          <Suspense fallback={<div className="flex items-center justify-center min-h-[60vh]"><SkeletonLoader type="page" brandName="" loadingText="Loading page..." /></div>}>
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center" style={{ minHeight: 'calc(var(--visual-vh, 1vh) * 60)' }}>
+                <SkeletonLoader type="page" brandName="" loadingText="Loading page..." />
+              </div>
+            }
+          >
             <div key={location.pathname} className="animate-fadeIn">
               <Routes location={location}>
                 {/* Auth */}
@@ -412,7 +484,7 @@ export default function App() {
                 <Route path="/my-tickets" element={<ProtectedRoute><MyTicketsPage /></ProtectedRoute>} />
                 <Route path="/admin/tickets" element={<ProtectedRoute allowedRoles={['admin']}><AdminTicketsPage /></ProtectedRoute>} />
 
-                {/* Chat – new open chat routes */}
+                {/* Chat */}
                 <Route path="/chat" element={<Navigate to="/chats" replace />} />
                 <Route path="/chats" element={<ProtectedRoute><ChatsPage /></ProtectedRoute>} />
                 <Route path="/chat/:conversationId" element={<ProtectedRoute><ChatDetail /></ProtectedRoute>} />
@@ -442,21 +514,20 @@ export default function App() {
           width: 100% !important;
           position: relative;
         }
-
-        /* Prevent any element from causing horizontal scroll */
-        * {
+        *, *::before, *::after {
           max-width: 100vw;
           box-sizing: border-box;
         }
-
-        /* Fix for main content area */
         main {
           overflow-x: hidden !important;
           width: 100% !important;
         }
 
         /* ============================================
-           WATERMARK STYLES WITH KEYBOARD HANDLING
+           WATERMARK — hides when keyboard is open.
+           Uses visibility+opacity (no reflow) and
+           also a media query for when visualViewport
+           isn't available.
            ============================================ */
         .watermark-overlay {
           position: fixed;
@@ -467,27 +538,24 @@ export default function App() {
           overflow: hidden;
           transition: opacity 0.3s ease, visibility 0.3s ease;
         }
-
-        /* Hide watermark when keyboard is open using visibility + opacity */
         @media (max-height: 450px) {
           .watermark-overlay {
             opacity: 0 !important;
             visibility: hidden !important;
           }
         }
-
-        /* Additional keyboard detection via body class - uses visibility not display */
         body.keyboard-open .watermark-overlay {
           opacity: 0 !important;
           visibility: hidden !important;
         }
 
-        /* Hide fixed elements when keyboard is open - using visibility + opacity */
+        /* Hide bottom chrome when keyboard open */
         body.keyboard-open .bn-nav,
         body.keyboard-open .fixed-bottom {
           visibility: hidden !important;
           opacity: 0 !important;
           pointer-events: none !important;
+          transition: opacity 0.1s ease-out, visibility 0.1s ease-out;
         }
 
         .watermark-text {
@@ -503,9 +571,7 @@ export default function App() {
           color: rgba(79, 107, 255, 0.04);
           white-space: nowrap;
           pointer-events: none;
-          transition: all 0.3s ease;
         }
-
         .dark .watermark-text {
           color: rgba(129, 140, 248, 0.05);
         }
@@ -532,14 +598,14 @@ export default function App() {
            ============================================ */
         @media print {
           .app { background: white !important; }
-          nav, .sidebar, .bottom-nav, .offline-indicator, .fixed, .watermark-overlay { 
-            display: none !important; 
+          nav, .sidebar, .bottom-nav, .offline-indicator, .fixed, .watermark-overlay {
+            display: none !important;
           }
           main { padding: 0 !important; margin: 0 !important; }
         }
 
         /* ============================================
-           REDUCED MOTION SUPPORT
+           REDUCED MOTION
            ============================================ */
         .reduce-motion *, .reduce-motion *::before, .reduce-motion *::after {
           animation-duration: 0.01ms !important;
@@ -548,14 +614,10 @@ export default function App() {
         }
 
         /* ============================================
-           SAFE AREA INSETS
+           SAFE AREA INSETS (notched devices)
            ============================================ */
-        .pb-safe {
-          padding-bottom: env(safe-area-inset-bottom, 1rem);
-        }
-        .pt-safe {
-          padding-top: env(safe-area-inset-top, 1rem);
-        }
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom, 1rem); }
+        .pt-safe { padding-top:    env(safe-area-inset-top,    1rem); }
       `}</style>
     </div>
   );
