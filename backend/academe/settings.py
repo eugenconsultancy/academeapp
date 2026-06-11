@@ -49,6 +49,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'common.middleware.RateLimitMiddleware',
+    'common.middleware.UpdateLastSeenMiddleware',
 ]
 
 ROOT_URLCONF = 'academe.urls'

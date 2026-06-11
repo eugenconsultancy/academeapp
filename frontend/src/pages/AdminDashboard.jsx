@@ -300,7 +300,7 @@ export default function AdminDashboard() {
         .dark .ad-tab:hover { color: #f8fafc; }
 
         .ad-search { display: flex; gap: 8px; margin-bottom: 16px; }
-        .ad-search input { width: 100%; padding: 9px 14px; border-radius: 12px; border: 1.5px solid #e2e8f0; background: rgba(255,255,255,0.8); font-family: 'Outfit', sans-serif; font-size: 0.84rem; outline: none; transition: all 0.2s; backdrop-filter: blur(12px); }
+        .ad-search input { width: 100%; padding: 9px 14px; border-radius: 12px; border: 1.5px solid #e2e8f0; background: rgba(255,255,255,0.8); font-family: 'Outfit', sans-serif; font-size: 0.84rem; outline: none; transition: all 0.2s; backdrop-filter: blur(12px); box-sizing: border-box; }
         .ad-search input:focus { border-color: #6366f1; box-shadow: 0 0 0 4px rgba(99,102,241,0.08); }
         .dark .ad-search input { background: rgba(15,23,42,0.8); border-color: #334155; color: #f8fafc; }
 
@@ -311,24 +311,125 @@ export default function AdminDashboard() {
         .ad-stat-value { font-size: 1.8rem; font-weight: 900; background: linear-gradient(135deg, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
         .ad-stat-label { font-size: 0.7rem; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
 
-        .ad-card { background: rgba(255,255,255,0.85); border: 1px solid rgba(0,0,0,0.05); border-radius: 14px; padding: 16px; margin-bottom: 8px; backdrop-filter: blur(12px); transition: all 0.2s; animation: slideIn 0.3s ease both; }
+        /* ── FIXED: User Card Grid with uniform height ── */
+        .ad-user-grid {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        
+        .ad-card {
+          background: rgba(255,255,255,0.85);
+          border: 1px solid rgba(0,0,0,0.05);
+          border-radius: 14px;
+          padding: 14px 16px;
+          backdrop-filter: blur(12px);
+          transition: all 0.2s;
+          animation: slideIn 0.3s ease both;
+          min-height: 72px;
+          display: flex;
+          align-items: stretch;
+          overflow: hidden;
+        }
         .ad-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); transform: translateY(-1px); }
         .dark .ad-card { background: rgba(15,23,42,0.85); border-color: rgba(255,255,255,0.05); }
-        .ad-card-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-        .ad-card-info { flex: 1; min-width: 0; }
-        .ad-card-title { font-size: 0.9rem; font-weight: 700; color: #0f172a; line-height: 1.3; }
-        .dark .ad-card-title { color: #f8fafc; }
-        .ad-card-meta { font-size: 0.75rem; color: #94a3b8; margin-top: 4px; display: flex; gap: 12px; flex-wrap: wrap; }
-        .ad-card-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
 
-        .ad-badge { display: inline-flex; align-items: center; gap: 3px; padding: 4px 10px; border-radius: 99px; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.01em; }
+        /* ── FIXED: Row layout with flex-wrap control ── */
+        .ad-card-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
+          width: 100%;
+          min-width: 0;
+        }
+        
+        .ad-card-info {
+          flex: 1 1 0%;
+          min-width: 0;
+          overflow: hidden;
+        }
+        
+        .ad-card-title {
+          font-size: 0.9rem;
+          font-weight: 700;
+          color: #0f172a;
+          line-height: 1.3;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 100%;
+        }
+        .dark .ad-card-title { color: #f8fafc; }
+
+        /* ── FIXED: Meta text with truncation ── */
+        .ad-card-meta {
+          font-size: 0.73rem;
+          color: #94a3b8;
+          margin-top: 4px;
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+        .ad-card-meta span {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 180px;
+        }
+        .ad-card-meta .meta-separator {
+          color: #cbd5e1;
+          flex-shrink: 0;
+        }
+
+        /* ── FIXED: Actions area with horizontal badge layout ── */
+        .ad-card-actions {
+          display: flex;
+          gap: 6px;
+          flex-shrink: 0;
+          align-items: center;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          max-width: 50%;
+        }
+
+        /* ── FIXED: Badges as inline-flex pills ── */
+        .ad-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          padding: 3px 9px;
+          border-radius: 99px;
+          font-size: 0.66rem;
+          font-weight: 700;
+          letter-spacing: 0.01em;
+          white-space: nowrap;
+          flex-shrink: 0;
+          line-height: 1.4;
+        }
         .ad-badge-green { background: rgba(16,185,129,0.12); color: #059669; }
         .ad-badge-yellow { background: rgba(245,158,11,0.12); color: #d97706; }
         .ad-badge-red { background: rgba(239,68,68,0.12); color: #dc2626; }
         .ad-badge-blue { background: rgba(99,102,241,0.12); color: #6366f1; }
         .ad-badge-gray { background: rgba(107,114,128,0.12); color: #6b7280; }
 
-        .ad-btn-sm { padding: 7px 14px; border-radius: 8px; border: none; font-family: 'Outfit', sans-serif; font-size: 0.73rem; font-weight: 700; cursor: pointer; transition: all 0.2s cubic-bezier(0.34,1.56,0.64,1); color: #fff; display: inline-flex; align-items: center; gap: 4px; }
+        .ad-btn-sm {
+          padding: 6px 12px;
+          border-radius: 8px;
+          border: none;
+          font-family: 'Outfit', sans-serif;
+          font-size: 0.7rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.34,1.56,0.64,1);
+          color: #fff;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
         .ad-btn-sm:hover { transform: translateY(-1px); }
         .ad-btn-sm:active { transform: scale(0.97); }
         .ad-btn-sm:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
@@ -342,7 +443,17 @@ export default function AdminDashboard() {
         .dark .ad-btn-view { background: rgba(15,23,42,0.6); border-color: #334155; color: #94a3b8; }
         .ad-btn-assign { background: linear-gradient(135deg, #6366f1, #4f46e5); box-shadow: 0 4px 12px rgba(99,102,241,0.25); }
 
-        .role-select { padding: 6px 10px; border-radius: 8px; border: 1px solid #e2e8f0; background: rgba(255,255,255,0.8); font-family: 'Outfit', sans-serif; font-size: 0.8rem; color: #0f172a; margin-right: 6px; }
+        .role-select {
+          padding: 5px 8px;
+          border-radius: 8px;
+          border: 1px solid #e2e8f0;
+          background: rgba(255,255,255,0.8);
+          font-family: 'Outfit', sans-serif;
+          font-size: 0.72rem;
+          color: #0f172a;
+          max-width: 110px;
+          flex-shrink: 0;
+        }
         .dark .role-select { background: #1e293b; border-color: #334155; color: #f8fafc; }
 
         .ad-modal-overlay { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; padding: 20px; }
@@ -369,15 +480,30 @@ export default function AdminDashboard() {
         .ad-empty { text-align: center; padding: 48px 24px; color: #94a3b8; }
         .ad-empty-icon { font-size: 2.5rem; margin-bottom: 12px; display: block; margin-left: auto; margin-right: auto; }
 
-        .role-scope-list { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
-        .role-scope-item { background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.15); border-radius: 6px; padding: 2px 8px; font-size: 0.7rem; font-weight: 600; color: #6366f1; }
+        .role-scope-list { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+        .role-scope-item { background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.15); border-radius: 6px; padding: 2px 8px; font-size: 0.7rem; font-weight: 600; color: #6366f1; white-space: nowrap; }
 
-        /* ✅ FIX: Overview tab cards now respond to dark mode */
         .ad-overview-card { background: rgba(255,255,255,0.85); border: 1px solid rgba(0,0,0,0.05); border-radius: 14px; padding: 16px; cursor: pointer; text-align: center; backdrop-filter: blur(12px); transition: all 0.2s; }
         .ad-overview-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); transform: translateY(-1px); }
         .dark .ad-overview-card { background: rgba(15,23,42,0.85); border-color: rgba(255,255,255,0.05); }
         .ad-overview-card .ad-overview-label { font-weight: 700; color: #0f172a; font-size: 0.9rem; }
         .dark .ad-overview-card .ad-overview-label { color: #f8fafc; }
+
+        /* Mobile responsive fixes */
+        @media (max-width: 640px) {
+          .ad-card-row {
+            flex-direction: column;
+            gap: 8px;
+          }
+          .ad-card-actions {
+            max-width: 100%;
+            justify-content: flex-start;
+            width: 100%;
+          }
+          .ad-card-meta span {
+            max-width: 140px;
+          }
+        }
       `}</style>
 
       <div className="ad-root">
@@ -417,7 +543,6 @@ export default function AdminDashboard() {
                   <div className="ad-stat"><div className="ad-stat-value">{safeStr(stats?.active_roles) || '0'}</div><div className="ad-stat-label">Roles</div></div>
                   <div className="ad-stat"><div className="ad-stat-value">{safeStr(stats?.announcements_count) || '0'}</div><div className="ad-stat-label">Announcements</div></div>
                 </div>
-                {/* ✅ FIXED: Overview grid now uses responsive dark‑mode classes */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
                   {TABS.filter(t => t.id !== 'overview').map(tab => (
                     <button key={tab.id} onClick={() => setActiveTab(tab.id)} className="ad-overview-card">
@@ -435,71 +560,61 @@ export default function AdminDashboard() {
                   <input placeholder="Search users by name, email or phone..." value={search} onChange={e => setSearch(e.target.value)} />
                 </div>
                 {users && users.length > 0 ? (
-                  users.filter(u => !search ||
-                    u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-                    u.email?.toLowerCase().includes(search.toLowerCase()) ||
-                    u.phone_number?.includes(search)
-                  ).map(u => (
-                    <div key={u.id} className="ad-card">
-                      <div className="ad-card-row">
-                        <div className="ad-card-info">
-                          <div className="ad-card-title">{u.full_name || 'N/A'}</div>
-                          <div className="ad-card-meta">
-                            {u.email || 'No email'} · {u.phone_number || 'No phone'} · {u.institution || 'No institution'} · {u.class_name || 'No class'}
+                  <div className="ad-user-grid">
+                    {users.filter(u => !search ||
+                      u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
+                      u.email?.toLowerCase().includes(search.toLowerCase()) ||
+                      u.phone_number?.includes(search)
+                    ).map(u => (
+                      <div key={u.id} className="ad-card">
+                        <div className="ad-card-row">
+                          <div className="ad-card-info">
+                            <div className="ad-card-title" title={u.full_name}>{u.full_name || 'N/A'}</div>
+                            <div className="ad-card-meta">
+                              <span title={u.email || ''}>{u.email || 'No email'}</span>
+                              <span className="meta-separator">{'\u00B7'}</span>
+                              <span title={u.phone_number || ''}>{u.phone_number || 'No phone'}</span>
+                              <span className="meta-separator">{'\u00B7'}</span>
+                              <span title={u.institution || ''}>{u.institution || 'No institution'}</span>
+                            </div>
+                            {u.active_roles && u.active_roles.length > 0 && (
+                              <div className="role-scope-list">
+                                {u.active_roles.map(r => (
+                                  <span key={r.id} className="role-scope-item" title={r.scope_name}>
+                                    {r.role.replace('_', ' ')} – {r.scope_name || 'All'}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                          {u.active_roles && u.active_roles.length > 0 && (
-                            <div className="role-scope-list" style={{ marginTop: 6 }}>
-                              {u.active_roles.map(r => (
-                                <span key={r.id} className="role-scope-item" title={r.scope_name}>
-                                  {r.role.replace('_', ' ')} – {r.scope_name || 'All'}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                          {u.past_roles_count > 0 && (
-                            <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 4 }}>
-                              +{u.past_roles_count} past role(s)
-                            </div>
-                          )}
-                        </div>
-                        <div className="ad-card-actions">
-                          <span className="ad-badge ad-badge-blue">{u.role}</span>
-                          <span className={`ad-badge ${u.is_active ? 'ad-badge-green' : 'ad-badge-red'}`}>
-                            {u.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                          <select
-                            className="role-select"
-                            defaultValue={u.role}
-                            onChange={(e) => updateUserRoleMutation.mutate({ userId: u.id, role: e.target.value })}
-                            disabled={updateUserRoleMutation.isPending}
-                          >
-                            <option value="student">Student</option>
-                            <option value="class_rep">Class Rep</option>
-                            <option value="student_leader">Student Leader</option>
-                            <option value="faculty_rep">Faculty Rep</option>
-                            <option value="faculty_officer">Faculty Officer</option>
-                            <option value="admin">Admin</option>
-                          </select>
-                          <button
-                            className="ad-btn-sm ad-btn-assign"
-                            onClick={() => openAssignModal(u)}
-                            disabled={assignRoleMutation.isPending}
-                            title="Assign scoped role"
-                          >
-                            <FiUserPlus size={12} /> Assign
-                          </button>
-                          <button
-                            className="ad-btn-sm ad-btn-delete"
-                            onClick={() => deactivateUserMutation.mutate(u.id)}
-                            disabled={deactivateUserMutation.isPending}
-                            title="Deactivate user"
-                          >
-                            <FiSlash size={12} /> Deactivate
-                          </button>
+                          <div className="ad-card-actions">
+                            <span className="ad-badge ad-badge-blue">{u.role}</span>
+                            <span className={`ad-badge ${u.is_active ? 'ad-badge-green' : 'ad-badge-red'}`}>
+                              {u.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                            <select
+                              className="role-select"
+                              defaultValue={u.role}
+                              onChange={(e) => updateUserRoleMutation.mutate({ userId: u.id, role: e.target.value })}
+                              disabled={updateUserRoleMutation.isPending}
+                            >
+                              <option value="student">Student</option>
+                              <option value="class_rep">Class Rep</option>
+                              <option value="student_leader">Student Leader</option>
+                              <option value="faculty_rep">Faculty Rep</option>
+                              <option value="admin">Admin</option>
+                            </select>
+                            <button className="ad-btn-sm ad-btn-assign" onClick={() => openAssignModal(u)} disabled={assignRoleMutation.isPending} title="Assign scoped role">
+                              <FiUserPlus size={12} /> Assign
+                            </button>
+                            <button className="ad-btn-sm ad-btn-delete" onClick={() => deactivateUserMutation.mutate(u.id)} disabled={deactivateUserMutation.isPending} title="Deactivate user">
+                              <FiSlash size={12} />
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 ) : (
                   <div className="ad-empty"><FiUsers size={32} style={{ opacity: 0.4 }} /><p>No users found</p></div>
                 )}
@@ -517,12 +632,7 @@ export default function AdminDashboard() {
                   </div>
                   <div className="ad-modal-body">
                     <p>Choose the role and the class group (scope) for this user.</p>
-                    <select
-                      className="role-select"
-                      style={{ width: '100%', marginBottom: 12 }}
-                      id="assign-role-type"
-                      defaultValue="class_rep"
-                    >
+                    <select className="role-select" style={{ width: '100%', marginBottom: 12, maxWidth: '100%' }} id="assign-role-type" defaultValue="class_rep">
                       <option value="class_rep">Class Representative</option>
                       <option value="student_leader">Student Leader</option>
                       <option value="faculty_rep">Faculty Representative</option>
@@ -530,12 +640,7 @@ export default function AdminDashboard() {
                     {classGroupsLoading ? (
                       <p>Loading class groups...</p>
                     ) : (
-                      <select
-                        className="role-select"
-                        style={{ width: '100%' }}
-                        id="assign-class-group"
-                        required
-                      >
+                      <select className="role-select" style={{ width: '100%', maxWidth: '100%' }} id="assign-class-group" required>
                         <option value="">Select a class group...</option>
                         {classGroups.map(g => (
                           <option key={g.id} value={g.id}>{g.name} ({g.institution})</option>
@@ -544,31 +649,20 @@ export default function AdminDashboard() {
                     )}
                   </div>
                   <div className="ad-modal-footer">
-                    <button className="ad-modal-btn ad-modal-cancel" onClick={() => setAssignModalOpen(false)}>
-                      Cancel
-                    </button>
-                    <button
-                      className="ad-modal-btn ad-modal-delete"
-                      style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
+                    <button className="ad-modal-btn ad-modal-cancel" onClick={() => setAssignModalOpen(false)}>Cancel</button>
+                    <button className="ad-modal-btn ad-modal-delete" style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
                       onClick={() => {
                         const roleType = document.getElementById('assign-role-type').value;
                         const classGroupId = document.getElementById('assign-class-group').value;
-                        if (!classGroupId) {
-                          toast.error('Please select a class group');
-                          return;
-                        }
+                        if (!classGroupId) { toast.error('Please select a class group'); return; }
                         assignRoleMutation.mutate({
-                          user_id: selectedUserForRole.id,
-                          role: roleType,
-                          scope_type: 'class',
-                          scope_id: classGroupId,
+                          user_id: selectedUserForRole.id, role: roleType, scope_type: 'class', scope_id: classGroupId,
                           scope_name: classGroups.find(g => g.id === classGroupId)?.name || '',
                           start_date: new Date().toISOString(),
                           end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
                         });
                       }}
-                      disabled={assignRoleMutation.isPending}
-                    >
+                      disabled={assignRoleMutation.isPending}>
                       {assignRoleMutation.isPending ? 'Assigning...' : 'Assign Role'}
                     </button>
                   </div>
@@ -583,22 +677,20 @@ export default function AdminDashboard() {
                   <div key={item.id} className="ad-card">
                     <div className="ad-card-row">
                       <div className="ad-card-info">
-                        <div className="ad-card-title">{safeStr(item.title)}</div>
+                        <div className="ad-card-title" title={safeStr(item.title)}>{safeStr(item.title)}</div>
                         <div className="ad-card-meta">
-                          <span>{safeStr(item.category)}</span><span>•</span>
-                          <span>{safeStr(item.location_found)}</span><span>•</span>
+                          <span>{safeStr(item.category)}</span><span className="meta-separator">{'\u00B7'}</span>
+                          <span>{safeStr(item.location_found)}</span><span className="meta-separator">{'\u00B7'}</span>
                           <span>{safeStr(item.found_date)}</span>
                         </div>
                       </div>
                       <div className="ad-card-actions">
-                        <span className={`ad-badge ${item.is_claimed ? 'ad-badge-green' : 'ad-badge-yellow'}`}>
-                          {item.is_claimed ? 'Claimed' : 'Available'}
-                        </span>
+                        <span className={`ad-badge ${item.is_claimed ? 'ad-badge-green' : 'ad-badge-yellow'}`}>{item.is_claimed ? 'Claimed' : 'Available'}</span>
                         <span className="ad-badge ad-badge-blue">{item.status}</span>
                       </div>
                     </div>
                   </div>
-                )) : <div className="ad-empty"><div className="ad-empty-icon">📦</div><p>No items found</p></div>}
+                )) : <div className="ad-empty"><div className="ad-empty-icon">{'\uD83D\uDCE6'}</div><p>No items found</p></div>}
               </>
             )}
 
@@ -608,10 +700,10 @@ export default function AdminDashboard() {
                   <div key={claim.id} className="ad-card">
                     <div className="ad-card-row">
                       <div className="ad-card-info">
-                        <div className="ad-card-title">{safeStr(claim.item_title)}</div>
+                        <div className="ad-card-title" title={safeStr(claim.item_title)}>{safeStr(claim.item_title)}</div>
                         <div className="ad-card-meta">
-                          <span>Claimant: {safeStr(claim.claimant_name)}</span><span>•</span>
-                          <span>{safeStr(claim.claimant_phone)}</span><span>•</span>
+                          <span>Claimant: {safeStr(claim.claimant_name)}</span><span className="meta-separator">{'\u00B7'}</span>
+                          <span>{safeStr(claim.claimant_phone)}</span><span className="meta-separator">{'\u00B7'}</span>
                           <span>{new Date(claim.created_at).toLocaleDateString()}</span>
                         </div>
                       </div>
@@ -626,7 +718,7 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                   </div>
-                )) : <div className="ad-empty"><div className="ad-empty-icon">✅</div><p>No claims found</p></div>}
+                )) : <div className="ad-empty"><div className="ad-empty-icon">{'\u2705'}</div><p>No claims found</p></div>}
               </>
             )}
 
@@ -636,10 +728,10 @@ export default function AdminDashboard() {
                   <div key={report.id} className="ad-card">
                     <div className="ad-card-row">
                       <div className="ad-card-info">
-                        <div className="ad-card-title">{safeStr(report.announcement_title) || safeStr(report.content_title) || 'Reported Content'}</div>
+                        <div className="ad-card-title" title={safeStr(report.announcement_title) || safeStr(report.content_title)}>{safeStr(report.announcement_title) || safeStr(report.content_title) || 'Reported Content'}</div>
                         <div className="ad-card-meta">
-                          <span>By: {safeStr(report.reported_by_name)}</span><span>•</span>
-                          <span>Reason: {safeStr(report.reason)}</span><span>•</span>
+                          <span>By: {safeStr(report.reported_by_name)}</span><span className="meta-separator">{'\u00B7'}</span>
+                          <span>Reason: {safeStr(report.reason)}</span><span className="meta-separator">{'\u00B7'}</span>
                           <span>{new Date(report.created_at).toLocaleDateString()}</span>
                         </div>
                       </div>
@@ -651,196 +743,35 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                   </div>
-                )) : <div className="ad-empty"><div className="ad-empty-icon">🚩</div><p>No reports found</p></div>}
+                )) : <div className="ad-empty"><div className="ad-empty-icon">{'\uD83D\uDEA9'}</div><p>No reports found</p></div>}
               </>
             )}
 
-            {activeTab === 'announcements' && (
-              <>
-                {announcements && announcements.length > 0 ? announcements.map(a => (
-                  <div key={a.id} className="ad-card">
-                    <div className="ad-card-row">
-                      <div className="ad-card-info">
-                        <div className="ad-card-title">{safeStr(a.title)}</div>
-                        <div className="ad-card-meta">
-                          <span>By: {a.posted_by?.full_name || a.posted_by?.name || (typeof a.posted_by === 'string' ? a.posted_by : 'Admin')}</span>
-                          <span>•</span>
-                          <span>{new Date(a.created_at).toLocaleDateString()}</span>
-                        </div>
-                      </div>
-                      <div className="ad-card-actions">
-                        <span className={`ad-badge ${a.is_urgent ? 'ad-badge-red' : 'ad-badge-blue'}`}>{a.is_urgent ? '🚨 Urgent' : 'Normal'}</span>
-                        <button className="ad-btn-sm ad-btn-delete" onClick={() => handleDeleteClick(a, 'announcement')}><FiTrash2 size={12} /> Delete</button>
-                      </div>
-                    </div>
+            {/* Delete Confirmation Modal */}
+            {deleteConfirm && (
+              <div className="ad-modal-overlay">
+                <div className="ad-modal-backdrop" onClick={() => setDeleteConfirm(null)} />
+                <div className="ad-modal">
+                  <div className="ad-modal-header">
+                    <div className="ad-modal-icon"><FiAlertTriangle size={20} /></div>
+                    <div className="ad-modal-title">Delete {deleteConfirm.type === 'blog' ? 'Blog Post' : 'Announcement'}</div>
                   </div>
-                )) : <div className="ad-empty"><div className="ad-empty-icon">📢</div><p>No announcements found</p></div>}
-              </>
-            )}
-
-            {activeTab === 'opportunities' && (
-              <>
-                {opportunities && opportunities.length > 0 ? opportunities.map(o => (
-                  <div key={o.id} className="ad-card">
-                    <div className="ad-card-row">
-                      <div className="ad-card-info">
-                        <div className="ad-card-title">{safeStr(o.title)}</div>
-                        <div className="ad-card-meta">
-                          <span>{safeStr(o.category)}</span><span>•</span>
-                          <span>{new Date(o.created_at).toLocaleDateString()}</span>
-                        </div>
-                      </div>
-                    </div>
+                  <div className="ad-modal-body">
+                    <p>Are you sure you want to delete this item? This action cannot be undone.</p>
+                    <span className="ad-modal-highlight">{deleteConfirm.title}</span>
                   </div>
-                )) : <div className="ad-empty"><div className="ad-empty-icon">💼</div><p>No opportunities found</p></div>}
-              </>
-            )}
-
-            {activeTab === 'classes' && (
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                  <h3 style={{ fontWeight: 700, margin: 0 }}>All Timetable Entries (Admin View)</h3>
-                  <Link to="/classes/manage" className="ad-link">Manage Timetable <FiExternalLink size={12} /></Link>
-                </div>
-                {classes && classes.length > 0 ? classes.map(entry => (
-                  <div key={entry.id} className="ad-card">
-                    <div className="ad-card-row">
-                      <div className="ad-card-info">
-                        <div className="ad-card-title">{safeStr(entry.unit_name)}</div>
-                        <div className="ad-card-meta">
-                          <span>Day: {entry.day_of_week}</span><span>•</span>
-                          <span>{entry.start_time} – {entry.end_time}</span><span>•</span>
-                          <span>Venue: {entry.venue}</span><span>•</span>
-                          <span>Lecturer: {entry.lecturer}</span><span>•</span>
-                          <span>Class: {entry.class_group_name}</span><span>•</span>
-                          <span>Institution: {entry.institution}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )) : <div className="ad-empty"><FiBook size={32} style={{ opacity: 0.4 }} /><p>No timetable entries found across the platform.</p></div>}
-              </div>
-            )}
-
-            {activeTab === 'attendance' && (
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                  <h3 style={{ fontWeight: 700, margin: 0 }}>Recent Attendance Records</h3>
-                  <Link to="/classes/attendance" className="ad-link">Full Summary <FiEye size={12} /></Link>
-                </div>
-                {attendanceRecords && attendanceRecords.length > 0 ? attendanceRecords.map(rec => (
-                  <div key={rec.id} className="ad-card">
-                    <div className="ad-card-row">
-                      <div className="ad-card-info">
-                        <div className="ad-card-title">{safeStr(rec.student_name)} – {safeStr(rec.unit_name)}</div>
-                        <div className="ad-card-meta">
-                          <span>{safeStr(rec.date)}</span><span>•</span>
-                          <span>{safeStr(rec.sync_method)}</span>
-                        </div>
-                      </div>
-                      <div className="ad-card-actions">
-                        <span className="ad-badge ad-badge-green">Present</span>
-                      </div>
-                    </div>
-                  </div>
-                )) : <div className="ad-empty"><FiClipboard size={32} style={{ opacity: 0.4 }} /><p>No attendance records found</p></div>}
-              </div>
-            )}
-
-            {activeTab === 'blog' && (
-              <div>
-                {blogPosts && blogPosts.length > 0 ? blogPosts.map(post => (
-                  <div key={post.id} className="ad-card">
-                    <div className="ad-card-row">
-                      <div className="ad-card-info">
-                        <div className="ad-card-title">{safeStr(post.title)}</div>
-                        <div className="ad-card-meta">
-                          <span>by {post.author?.full_name || 'Unknown'}</span>
-                          <span>•</span>
-                          <span className={`ad-badge ${post.is_hidden ? 'ad-badge-gray' : 'ad-badge-blue'}`}>
-                            {post.is_hidden ? 'Hidden' : 'Visible'}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="ad-card-actions">
-                        <button className="ad-btn-sm ad-btn-view" onClick={() => hideBlogMutation.mutate(post.slug)} disabled={hideBlogMutation.isPending}>
-                          {post.is_hidden ? <FiEyeShow size={12} /> : <FiEyeOff size={12} />}
-                          {post.is_hidden ? 'Show' : 'Hide'}
-                        </button>
-                        <button className="ad-btn-sm ad-btn-delete" onClick={() => handleDeleteClick(post, 'blog')}><FiTrash2 size={12} /> Delete</button>
-                      </div>
-                    </div>
-                  </div>
-                )) : <div className="ad-empty"><FiEdit2 size={32} style={{ opacity: 0.4 }} /><p>No blog posts found</p></div>}
-              </div>
-            )}
-
-            {activeTab === 'system' && (
-              <div>
-                <div className="ad-stats" style={{ marginBottom: 24 }}>
-                  <div className="ad-stat">
-                    <div className="ad-stat-value">{safeStr(systemHealth?.pending_offline_sync) || '‑'}</div>
-                    <div className="ad-stat-label">Pending Sync</div>
-                  </div>
-                  <div className="ad-stat">
-                    <div className="ad-stat-value">{safeStr(systemHealth?.active_alerts) || '‑'}</div>
-                    <div className="ad-stat-label">Active Alerts</div>
-                  </div>
-                  <div className="ad-stat">
-                    <div className="ad-stat-value">{safeStr(systemHealth?.cpu_usage) || '‑'}</div>
-                    <div className="ad-stat-label">CPU %</div>
-                  </div>
-                  <div className="ad-stat">
-                    <div className="ad-stat-value">{safeStr(systemHealth?.memory_usage) || '‑'}</div>
-                    <div className="ad-stat-label">Memory</div>
+                  <div className="ad-modal-footer">
+                    <button className="ad-modal-btn ad-modal-cancel" onClick={() => setDeleteConfirm(null)} disabled={deleteAnnouncementMutation.isPending || deleteBlogMutation.isPending}>
+                      <FiX size={14} /> Cancel
+                    </button>
+                    <button className="ad-modal-btn ad-modal-delete" onClick={handleConfirmDelete} disabled={deleteAnnouncementMutation.isPending || deleteBlogMutation.isPending}>
+                      {deleteAnnouncementMutation.isPending || deleteBlogMutation.isPending ? 'Deleting...' : <><FiTrash2 size={14} /> Delete Permanently</>}
+                    </button>
                   </div>
                 </div>
-                <h3 style={{ fontWeight: 700, marginBottom: 12 }}>System Alerts</h3>
-                {systemHealth?.alerts?.length > 0 ? (
-                  systemHealth.alerts.map((alert, i) => (
-                    <div key={i} className="ad-card" style={{ borderLeft: '4px solid #f59e0b' }}>
-                      <div className="ad-card-title" style={{ color: '#d97706' }}>
-                        <FiAlertTriangle size={14} style={{ marginRight: 6 }} />
-                        {safeStr(alert.message)}
-                      </div>
-                      <div className="ad-card-meta" style={{ marginTop: 4 }}>
-                        {safeStr(alert.timestamp)}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="ad-empty"><FiCheckCircle size={32} style={{ color: '#10b981' }} /><p>System healthy – no active alerts.</p></div>
-                )}
               </div>
             )}
           </>
-        )}
-
-        {/* Delete Confirmation Modal */}
-        {deleteConfirm && (
-          <div className="ad-modal-overlay">
-            <div className="ad-modal-backdrop" onClick={() => setDeleteConfirm(null)} />
-            <div className="ad-modal">
-              <div className="ad-modal-header">
-                <div className="ad-modal-icon"><FiAlertTriangle size={20} /></div>
-                <div className="ad-modal-title">Delete {deleteConfirm.type === 'blog' ? 'Blog Post' : 'Announcement'}</div>
-              </div>
-              <div className="ad-modal-body">
-                <p>Are you sure you want to delete this item? This action cannot be undone.</p>
-                <span className="ad-modal-highlight">{deleteConfirm.title}</span>
-              </div>
-              <div className="ad-modal-footer">
-                <button className="ad-modal-btn ad-modal-cancel" onClick={() => setDeleteConfirm(null)} disabled={deleteAnnouncementMutation.isPending || deleteBlogMutation.isPending}>
-                  <FiX size={14} /> Cancel
-                </button>
-                <button className="ad-modal-btn ad-modal-delete" onClick={handleConfirmDelete} disabled={deleteAnnouncementMutation.isPending || deleteBlogMutation.isPending}>
-                  {deleteAnnouncementMutation.isPending || deleteBlogMutation.isPending ? 'Deleting...' : (
-                    <><FiTrash2 size={14} /> Delete Permanently</>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
         )}
       </div>
     </>

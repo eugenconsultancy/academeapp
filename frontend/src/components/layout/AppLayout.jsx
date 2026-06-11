@@ -24,7 +24,6 @@ export default function AppLayout({ children }) {
     <div
       style={{
         position: 'relative',
-        // Use --visual-vh so the container shrinks with the keyboard
         minHeight: 'calc(var(--visual-vh, 1vh) * 100)',
         overflow: 'hidden',
       }}
@@ -64,14 +63,7 @@ export default function AppLayout({ children }) {
           transition: opacity 0.3s ease, visibility 0.3s ease;
         }
 
-        /* ── Keyboard-aware hiding ─────────────────────────
-           Strategy A: media query fallback for browsers that
-           don't support the Visual Viewport API.
-           Strategy B: body.keyboard-open class set by
-           useKeyboardDetection() in App.jsx.
-           Both use visibility + opacity (no display:none). */
-
-        /* Fallback: if viewport height is very small, keyboard is likely open */
+        /* ── Keyboard-aware hiding ───────────────────────── */
         @media (max-height: 450px) {
           .watermark-overlay {
             opacity: 0;
@@ -79,7 +71,6 @@ export default function AppLayout({ children }) {
           }
         }
 
-        /* Primary: toggled by the Visual Viewport API hook */
         body.keyboard-open .watermark-overlay {
           opacity: 0;
           visibility: hidden;
@@ -120,11 +111,11 @@ export default function AppLayout({ children }) {
         }
 
         /* ═══════════════════════════════════════════════════
-           WATERMARK TEXT
+           WATERMARK TEXT — now uses font variable from context
            ═══════════════════════════════════════════════ */
         .watermark-text {
           position: absolute;
-          font-family: 'Bricolage Grotesque', 'Outfit', system-ui, sans-serif;
+          font-family: var(--font-heading, 'Bricolage Grotesque', 'Outfit', system-ui, sans-serif);
           font-weight: 900;
           text-transform: uppercase;
           white-space: nowrap;
@@ -172,21 +163,13 @@ export default function AppLayout({ children }) {
            ANIMATIONS
            ═══════════════════════════════════════════════ */
         @keyframes watermarkSlowMove {
-          0% {
-            background-position: 0 0;
-          }
-          100% {
-            background-position: 80px 80px;
-          }
+          0% { background-position: 0 0; }
+          100% { background-position: 80px 80px; }
         }
 
         @media (prefers-reduced-motion: reduce) {
-          .watermark-grid {
-            animation: none;
-          }
-          .watermark-text {
-            transition: none;
-          }
+          .watermark-grid { animation: none; }
+          .watermark-text { transition: none; }
         }
 
         /* ═══════════════════════════════════════════════════

@@ -1,3 +1,5 @@
+// C:\Users\GATARA-BJTU\academe\frontend\src\pages\ChatsPage.jsx
+
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { chatApi } from '../api/chatApi';
@@ -769,9 +771,10 @@ export default function ChatsPage() {
   const setConversations = useChatStore(s => s.setConversations);
   const navigate = useNavigate();
 
-  const fetchConversations = useCallback(async () => {
+  const fetchConversations = useCallback(async (archived = false) => {
     try {
-      const res = await chatApi.getConversations();
+      setLoading(true);
+      const res = await chatApi.getConversations(archived);
       setConversations(res.data);
     } catch (err) {
       console.error('Fetch conversations error:', err);
@@ -781,9 +784,16 @@ export default function ChatsPage() {
     }
   }, [setConversations]);
 
+  // Fetch on mount
   useEffect(() => {
-    fetchConversations();
+    fetchConversations(false);
   }, [fetchConversations]);
+
+  // Refetch when tab changes
+  useEffect(() => {
+    const isArchived = activeTab === 'archived';
+    fetchConversations(isArchived);
+  }, [activeTab, fetchConversations]);
 
   const handleSearch = useCallback(async (q) => {
     setSearchQuery(q);
@@ -831,16 +841,14 @@ export default function ChatsPage() {
     return msgDate.toLocaleDateString();
   };
 
-  // Filter conversations based on tab
+  // Filter conversations based on tab (client-side filter as fallback)
   const filteredConversations = useMemo(() => {
     switch (activeTab) {
       case 'unread':
         return conversations.filter(c => c.unread_count > 0);
-      case 'archived':
-        return conversations.filter(c => !c.is_active);
       case 'all':
       default:
-        return conversations.filter(c => c.is_active);
+        return conversations;
     }
   }, [conversations, activeTab]);
 
@@ -950,7 +958,7 @@ export default function ChatsPage() {
                       </div>
                       <div className="cp-result-info">
                         <p className="cp-result-name">{student.full_name}</p>
-                        <p className="cp-result-sub">{student.class_name || 'Student'}</p>
+                        <p className="cp-result-sub">{student.class_name || student.institution || 'Student'}</p>
                       </div>
                       <FiChevronRight size={15} style={{ color: 'var(--cp-muted)', flexShrink: 0 }} />
                     </div>
@@ -1012,6 +1020,7 @@ export default function ChatsPage() {
               </p>
               {filteredConversations.map((conv, i) => {
                 const isUnread = conv.unread_count > 0;
+                const participant = conv.participant;
                 return (
                   <div
                     key={conv.id}
@@ -1023,25 +1032,29 @@ export default function ChatsPage() {
                   >
                     <div className="cp-avatar-wrap">
                       <div className="cp-avatar cp-avatar-lg">
-                        {conv.participant_name?.[0]?.toUpperCase() || '?'}
+                        {participant?.full_name?.[0]?.toUpperCase() || '?'}
                       </div>
-                      {conv.participant_status === 'online' && (
+                      {participant?.is_online && (
                         <div className="cp-online-dot" />
                       )}
                     </div>
 
                     <div className="cp-conv-body">
                       <div className="cp-conv-top">
-                        <span className="cp-conv-name">{conv.participant_name}</span>
+                        <span className="cp-conv-name">
+                          {participant?.full_name || 'Unknown'}
+                        </span>
                         <span className="cp-conv-time">
                           <FiClock size={10} />
                           {formatTime(conv.last_message_at)}
                         </span>
                       </div>
                       <p className="cp-conv-meta">
-                        {conv.participant_status === 'online'
-                          ? '🟢 Active now'
-                          : `Last seen ${formatTime(conv.participant_last_active)}`}
+                        {participant?.is_online
+                          ? '\uD83D\uDFE2 Active now'
+                          : participant?.last_active
+                            ? `Last seen ${formatTime(participant.last_active)}`
+                            : ''}
                       </p>
                       <p className="cp-conv-preview">
                         {conv.last_message_preview || 'No messages yet'}

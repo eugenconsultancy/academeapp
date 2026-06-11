@@ -1,5 +1,7 @@
+// C:\Users\GATARA-BJTU\academe\frontend\src\pages\MyTicketsPage.jsx
+
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { supportApi } from '../api/supportApi';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
@@ -8,7 +10,7 @@ import {
     FiMessageSquare, FiChevronRight, FiRefreshCw, FiArrowLeft,
     FiCircle, FiClock, FiCheckCircle, FiXCircle, FiAlertCircle,
     FiPlus, FiSearch, FiInbox, FiUser, FiCalendar, FiTag,
-    FiSend, FiPaperclip
+    FiSend, FiPaperclip, FiX, FiEye
 } from 'react-icons/fi';
 
 const STATUS_CONFIG = {
@@ -16,25 +18,25 @@ const STATUS_CONFIG = {
         color: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800',
         icon: FiAlertCircle,
         label: 'Open',
-        dot: '🟡'
+        dot: '\uD83D\uDFE1'
     },
     in_progress: {
         color: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800',
         icon: FiClock,
         label: 'In Progress',
-        dot: '🔵'
+        dot: '\uD83D\uDD35'
     },
     resolved: {
         color: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800',
         icon: FiCheckCircle,
         label: 'Resolved',
-        dot: '🟢'
+        dot: '\uD83D\uDFE2'
     },
     closed: {
         color: 'bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700',
         icon: FiXCircle,
         label: 'Closed',
-        dot: '⚫'
+        dot: '\u26AB'
     },
 };
 
@@ -49,6 +51,9 @@ const FILTER_OPTIONS = [
 export default function MyTicketsPage() {
     const [selectedTicket, setSelectedTicket] = useState(null);
     const [filter, setFilter] = useState('all');
+    const [viewModalOpen, setViewModalOpen] = useState(false);
+    const [viewTicketData, setViewTicketData] = useState(null);
+    const [replyText, setReplyText] = useState('');
     const queryClient = useQueryClient();
 
     const { data: tickets, isLoading, refetch } = useQuery({
@@ -62,12 +67,41 @@ export default function MyTicketsPage() {
         enabled: !!selectedTicket,
     });
 
+    // ── Send Reply Mutation ──
+    const replyMutation = useMutation({
+        mutationFn: ({ ticketId, message }) => supportApi.sendReply(ticketId, message),
+        onSuccess: () => {
+            toast.success('Reply sent');
+            setReplyText('');
+            queryClient.invalidateQueries({ queryKey: ['ticket', selectedTicket] });
+            queryClient.invalidateQueries({ queryKey: ['my-tickets'] });
+        },
+        onError: (err) => toast.error(err?.response?.data?.error || 'Failed to send reply'),
+    });
+
     const handleSelectTicket = (id) => {
         setSelectedTicket(id);
     };
 
     const handleBackToList = () => {
         setSelectedTicket(null);
+    };
+
+    const handleViewTicket = (ticket) => {
+        setViewTicketData(ticket);
+        setViewModalOpen(true);
+    };
+
+    const handleSendReply = () => {
+        if (!replyText.trim() || !selectedTicket) return;
+        replyMutation.mutate({ ticketId: selectedTicket, message: replyText.trim() });
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSendReply();
+        }
     };
 
     // Filter tickets
@@ -311,6 +345,9 @@ export default function MyTicketsPage() {
                     color: #0f172a;
                     font-size: 0.95rem;
                     margin-bottom: 0.25rem;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
                 }
                 
                 .dark .st-ticket-title {
@@ -343,6 +380,8 @@ export default function MyTicketsPage() {
                     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
                     border: 1px solid rgba(0, 0, 0, 0.05);
                     overflow: hidden;
+                    display: flex;
+                    flex-direction: column;
                 }
                 
                 .dark .st-detail-panel {
@@ -364,6 +403,8 @@ export default function MyTicketsPage() {
                 
                 .st-detail-body {
                     padding: 2rem;
+                    flex: 1;
+                    overflow-y: auto;
                 }
                 
                 .st-conversation-item {
@@ -481,6 +522,191 @@ export default function MyTicketsPage() {
                 .dark .st-back-btn:hover {
                     background: #0f172a;
                 }
+
+                /* ── FIXED: Reply form mobile responsive ── */
+                .st-reply-form {
+                    padding: 1rem 2rem;
+                    border-top: 1px solid #f1f5f9;
+                    background: #fafbfc;
+                    display: flex;
+                    gap: 0.75rem;
+                    align-items: flex-end;
+                    flex-shrink: 0;
+                }
+                .dark .st-reply-form {
+                    border-color: #334155;
+                    background: #0f172a;
+                }
+                .st-reply-input {
+                    flex: 1;
+                    min-width: 0;
+                    padding: 0.75rem 1rem;
+                    border-radius: 12px;
+                    border: 1.5px solid #e2e8f0;
+                    background: white;
+                    font-family: 'Outfit', sans-serif;
+                    font-size: 0.85rem;
+                    resize: none;
+                    outline: none;
+                    transition: all 0.2s;
+                    box-sizing: border-box;
+                    min-height: 44px;
+                    max-height: 120px;
+                }
+                .dark .st-reply-input {
+                    background: #1e293b;
+                    border-color: #334155;
+                    color: #f1f5f9;
+                }
+                .st-reply-input:focus {
+                    border-color: #6366f1;
+                    box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+                }
+                .st-send-btn {
+                    padding: 0.75rem 1.25rem;
+                    border-radius: 12px;
+                    border: none;
+                    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                    color: white;
+                    font-family: 'Outfit', sans-serif;
+                    font-size: 0.85rem;
+                    font-weight: 700;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    gap: 0.5rem;
+                    white-space: nowrap;
+                    flex-shrink: 0;
+                    transition: all 0.2s;
+                    box-shadow: 0 4px 12px rgba(99,102,241,0.3);
+                }
+                .st-send-btn:hover:not(:disabled) {
+                    transform: translateY(-1px);
+                    box-shadow: 0 6px 16px rgba(99,102,241,0.4);
+                }
+                .st-send-btn:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                }
+
+                /* ── View button for mobile ── */
+                .st-view-btn {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 4px;
+                    padding: 4px 10px;
+                    border-radius: 8px;
+                    border: 1.5px solid #e2e8f0;
+                    background: white;
+                    color: #6366f1;
+                    font-family: 'Outfit', sans-serif;
+                    font-size: 0.7rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    white-space: nowrap;
+                    flex-shrink: 0;
+                }
+                .st-view-btn:hover {
+                    background: rgba(99,102,241,0.08);
+                    border-color: #6366f1;
+                }
+                .dark .st-view-btn {
+                    background: #1e293b;
+                    border-color: #334155;
+                }
+
+                /* ── Modal for mobile view ── */
+                .st-modal-overlay {
+                    position: fixed;
+                    inset: 0;
+                    z-index: 70;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 20px;
+                }
+                .st-modal-backdrop {
+                    position: fixed;
+                    inset: 0;
+                    background: rgba(0,0,0,0.4);
+                    backdrop-filter: blur(6px);
+                    animation: stFadeIn 0.2s ease;
+                }
+                .st-modal {
+                    position: relative;
+                    z-index: 71;
+                    width: 100%;
+                    max-width: 600px;
+                    max-height: 85vh;
+                    background: white;
+                    border-radius: 20px;
+                    box-shadow: 0 24px 64px rgba(0,0,0,0.18);
+                    overflow-y: auto;
+                }
+                .dark .st-modal {
+                    background: #1e293b;
+                }
+                .st-modal-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 1.25rem 1.5rem;
+                    border-bottom: 1px solid #f1f5f9;
+                    position: sticky;
+                    top: 0;
+                    background: white;
+                    z-index: 1;
+                }
+                .dark .st-modal-header {
+                    background: #1e293b;
+                    border-color: #334155;
+                }
+                .st-modal-close {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 10px;
+                    border: 1.5px solid #e2e8f0;
+                    background: white;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    color: #64748b;
+                    transition: all 0.2s;
+                }
+                .st-modal-close:hover {
+                    background: rgba(239,68,68,0.08);
+                    color: #ef4444;
+                    border-color: #ef4444;
+                }
+                .dark .st-modal-close {
+                    background: #0f172a;
+                    border-color: #334155;
+                }
+                .st-modal-body {
+                    padding: 1.5rem;
+                }
+
+                @media (max-width: 640px) {
+                    .st-reply-form {
+                        padding: 0.75rem 1rem;
+                        gap: 0.5rem;
+                    }
+                    .st-send-btn {
+                        padding: 0.75rem 1rem;
+                        font-size: 0.8rem;
+                    }
+                    .st-reply-input {
+                        font-size: 0.8rem;
+                    }
+                    .st-detail-header {
+                        padding: 1rem 1.25rem;
+                    }
+                    .st-detail-body {
+                        padding: 1rem 1.25rem;
+                    }
+                }
                 
                 @media (max-width: 1024px) {
                     .st-list-panel {
@@ -494,7 +720,7 @@ export default function MyTicketsPage() {
                     {/* Hero Section */}
                     <div className="st-hero">
                         <div className="st-hero-content">
-                            <div className="flex justify-between items-start flex-wrap gap-4">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
                                 <div>
                                     <h1 className="st-hero-title">Support Center</h1>
                                     <p className="st-hero-subtitle">Track your requests and get help from our team</p>
@@ -567,24 +793,33 @@ export default function MyTicketsPage() {
                                                 onClick={() => handleSelectTicket(ticket.id)}
                                                 className={`st-ticket-card ${selectedTicket === ticket.id ? 'selected' : ''}`}
                                             >
-                                                <div className="flex justify-between items-start gap-3">
-                                                    <div className="flex-1 min-w-0">
-                                                        <h3 className="st-ticket-title truncate">{ticket.title}</h3>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
+                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                        <h3 className="st-ticket-title" title={ticket.title}>{ticket.title}</h3>
                                                         <div className="st-ticket-meta">
-                                                            <span className="flex items-center gap-1">
+                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                                 <FiCalendar size={12} />
                                                                 {new Date(ticket.created_at).toLocaleDateString()}
                                                             </span>
-                                                            <span className="flex items-center gap-1">
+                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                                 <FiTag size={12} />
                                                                 {ticket.category}
                                                             </span>
                                                         </div>
                                                     </div>
-                                                    <span className={`st-status-badge ${status.color}`}>
-                                                        <StatusIcon size={12} />
-                                                        {status.label}
-                                                    </span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                                        <span className={`st-status-badge ${status.color}`}>
+                                                            <StatusIcon size={12} />
+                                                            {status.label}
+                                                        </span>
+                                                        <button
+                                                            className="st-view-btn"
+                                                            onClick={(e) => { e.stopPropagation(); handleViewTicket(ticket); }}
+                                                            title="Quick view"
+                                                        >
+                                                            <FiEye size={12} /> View
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         );
@@ -610,24 +845,15 @@ export default function MyTicketsPage() {
                                                 <button onClick={handleBackToList} className="st-back-btn lg:hidden">
                                                     <FiArrowLeft size={16} /> Back to list
                                                 </button>
-                                                <div className="flex justify-between items-start gap-4">
-                                                    <div className="flex-1">
-                                                        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
+                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2" style={{ wordBreak: 'break-word' }}>
                                                             {ticketDetail.title}
                                                         </h2>
                                                         <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400 flex-wrap">
-                                                            <span className="flex items-center gap-1">
-                                                                <FiTag size={14} />
-                                                                {ticketDetail.category}
-                                                            </span>
-                                                            <span className="flex items-center gap-1">
-                                                                <FiCalendar size={14} />
-                                                                {new Date(ticketDetail.created_at).toLocaleString()}
-                                                            </span>
-                                                            <span className="flex items-center gap-1">
-                                                                <FiUser size={14} />
-                                                                Ticket #{ticketDetail.id?.substring(0, 8)}
-                                                            </span>
+                                                            <span className="flex items-center gap-1"><FiTag size={14} />{ticketDetail.category}</span>
+                                                            <span className="flex items-center gap-1"><FiCalendar size={14} />{new Date(ticketDetail.created_at).toLocaleString()}</span>
+                                                            <span className="flex items-center gap-1"><FiUser size={14} />Ticket #{ticketDetail.id?.substring(0, 8)}</span>
                                                         </div>
                                                     </div>
                                                     {(() => {
@@ -635,8 +861,7 @@ export default function MyTicketsPage() {
                                                         const StatusIcon = status.icon;
                                                         return (
                                                             <span className={`st-status-badge ${status.color}`}>
-                                                                <StatusIcon size={14} />
-                                                                {status.label}
+                                                                <StatusIcon size={14} />{status.label}
                                                             </span>
                                                         );
                                                     })()}
@@ -652,12 +877,10 @@ export default function MyTicketsPage() {
                                                         </div>
                                                         <div>
                                                             <p className="font-semibold text-sm text-gray-900 dark:text-white">You</p>
-                                                            <p className="text-xs text-gray-500">
-                                                                {new Date(ticketDetail.created_at).toLocaleString()}
-                                                            </p>
+                                                            <p className="text-xs text-gray-500">{new Date(ticketDetail.created_at).toLocaleString()}</p>
                                                         </div>
                                                     </div>
-                                                    <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap ml-10">
+                                                    <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap ml-10" style={{ wordBreak: 'break-word' }}>
                                                         {ticketDetail.description}
                                                     </p>
                                                 </div>
@@ -673,12 +896,10 @@ export default function MyTicketsPage() {
                                                                 <p className="font-semibold text-sm text-gray-900 dark:text-white">
                                                                     {response.responder_name || 'Support Team'}
                                                                 </p>
-                                                                <p className="text-xs text-gray-500">
-                                                                    {new Date(response.created_at).toLocaleString()}
-                                                                </p>
+                                                                <p className="text-xs text-gray-500">{new Date(response.created_at).toLocaleString()}</p>
                                                             </div>
                                                         </div>
-                                                        <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap ml-10">
+                                                        <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap ml-10" style={{ wordBreak: 'break-word' }}>
                                                             {response.message}
                                                         </p>
                                                     </div>
@@ -692,6 +913,31 @@ export default function MyTicketsPage() {
                                                     </div>
                                                 )}
                                             </div>
+
+                                            {/* ── FIXED: Reply form with send button ── */}
+                                            {ticketDetail.status !== 'closed' && ticketDetail.status !== 'resolved' && (
+                                                <div className="st-reply-form">
+                                                    <textarea
+                                                        className="st-reply-input"
+                                                        placeholder="Type your reply..."
+                                                        value={replyText}
+                                                        onChange={(e) => setReplyText(e.target.value)}
+                                                        onKeyDown={handleKeyDown}
+                                                        rows={1}
+                                                    />
+                                                    <button
+                                                        className="st-send-btn"
+                                                        onClick={handleSendReply}
+                                                        disabled={!replyText.trim() || replyMutation.isPending}
+                                                    >
+                                                        {replyMutation.isPending ? (
+                                                            <><FiRefreshCw size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> Sending</>
+                                                        ) : (
+                                                            <><FiSend size={14} /> Send</>
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            )}
                                         </>
                                     ) : null
                                 ) : (
@@ -729,6 +975,60 @@ export default function MyTicketsPage() {
                     )}
                 </div>
             </div>
+
+            {/* ── Quick View Modal for Mobile ── */}
+            {viewModalOpen && viewTicketData && (
+                <div className="st-modal-overlay">
+                    <div className="st-modal-backdrop" onClick={() => setViewModalOpen(false)} />
+                    <div className="st-modal">
+                        <div className="st-modal-header">
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <h3 className="font-bold text-gray-900 dark:text-white truncate">{viewTicketData.title}</h3>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {new Date(viewTicketData.created_at).toLocaleDateString()} · {viewTicketData.category}
+                                </p>
+                            </div>
+                            <button className="st-modal-close" onClick={() => setViewModalOpen(false)}>
+                                <FiX size={18} />
+                            </button>
+                        </div>
+                        <div className="st-modal-body">
+                            {(() => {
+                                const status = STATUS_CONFIG[viewTicketData.status] || STATUS_CONFIG.open;
+                                const StatusIcon = status.icon;
+                                return (
+                                    <div style={{ marginBottom: '1rem' }}>
+                                        <span className={`st-status-badge ${status.color}`}>
+                                            <StatusIcon size={14} /> {status.label}
+                                        </span>
+                                    </div>
+                                );
+                            })()}
+                            <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap" style={{ wordBreak: 'break-word', lineHeight: 1.6 }}>
+                                {viewTicketData.description || viewTicketData.last_message || 'No description available.'}
+                            </p>
+                            <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
+                                <button
+                                    className="st-create-btn"
+                                    onClick={() => {
+                                        setViewModalOpen(false);
+                                        handleSelectTicket(viewTicketData.id);
+                                    }}
+                                    style={{ display: 'inline-flex' }}
+                                >
+                                    <FiEye size={16} /> View Full Details
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <style>{`
+                @keyframes spin {
+                    to { transform: rotate(360deg); }
+                }
+            `}</style>
         </>
     );
 }

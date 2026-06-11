@@ -1,13 +1,17 @@
+# C:\Users\GATARA-BJTU\academe\backend\apps\chat\consumers.py
+
 import json
 import uuid
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 import jwt
 from django.conf import settings
-from .models import Conversation, Message
+from .models import Conversation, Message, BlockedUser
 
 User = get_user_model()
+
 
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
@@ -25,15 +29,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.close(code=4002)
             return
 
-        # Store only the user ID and basic identity – never an ORM object
         self.user_id = user.id
-        self.scope['user'] = user          # still needed for save_message? We'll avoid lazy loading
+        self.scope['user'] = user
 
-        # Validate conversation and participation using primitive IDs only
+        # Validate conversation and participation
         valid = await self.validate_participation()
         if not valid:
             await self.close(code=4003)
             return
+
+        # Update last_seen on connect
+        await self.update_last_seen()
+
+        # Mark messages as read when user opens the conversation
+        await self.mark_messages_as_read()
 
         await self.channel_layer.group_add(self.room_group_name, self.channel_name)
         await self.accept()
@@ -43,6 +52,24 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data):
         data = json.loads(text_data)
+
+        # Handle typing indicators
+        if data.get('type') == 'typing':
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'typing_indicator',
+                    'user_id': str(self.user_id),
+                    'is_typing': data.get('is_typing', True),
+                }
+            )
+            return
+
+        # Handle mark-read events
+        if data.get('type') == 'mark_read':
+            await self.mark_messages_as_read()
+            return
+
         if data.get('type') != 'chat_message':
             return
 
@@ -53,7 +80,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if data.get('sender_id') != str(self.user_id):
             return
 
-        # Save message without touching any ORM object outside sync_to_async
+        # Check if sender is blocked by the receiver
+        is_blocked = await self.check_if_blocked()
+        if is_blocked:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': 'You have been blocked by this user.',
+            }))
+            return
+
+        # Save message
         message = await self.save_message(data)
 
         await self.channel_layer.group_send(
@@ -68,12 +104,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     'file_url': data.get('file_url', ''),
                     'msg_type': data.get('msg_type', 'TEXT'),
                     'timestamp': message.created_at.isoformat(),
+                    'is_read': message.is_read,
                 }
             }
         )
 
     async def chat_message(self, event):
+        """Send message to WebSocket."""
         await self.send(text_data=json.dumps(event['message']))
+
+    async def typing_indicator(self, event):
+        """Broadcast typing indicator to the group."""
+        await self.send(text_data=json.dumps({
+            'type': 'typing',
+            'user_id': event['user_id'],
+            'is_typing': event['is_typing'],
+        }))
 
     @database_sync_to_async
     def get_user_from_token(self, token):
@@ -85,33 +131,56 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def validate_participation(self):
-        """
-        Synchronously check if the user is a participant of the conversation.
-        Returns True/False.  No ORM objects are returned or stored as instance attributes.
-        """
-        conv = Conversation.objects.filter(id=self.conversation_id, is_active=True).first()
+        """Check if the user is a participant of the conversation."""
+        conv = Conversation.objects.filter(
+            id=self.conversation_id, is_active=True
+        ).first()
         if not conv:
             return False
-        # Use the user_id we stored earlier, which is a primitive
         return conv.participants.filter(id=self.user_id).exists()
 
     @database_sync_to_async
     def save_message(self, data):
-        """
-        Creates a message. All database access is inside this sync wrapper.
-        The user is fetched fresh each time (or we could pass user_id) to avoid
-        any reference to a potentially stale ORM object.
-        """
+        """Create a message in the database."""
         conversation = Conversation.objects.get(id=self.conversation_id)
         sender = User.objects.get(id=self.user_id)
-        return Message.objects.create(
+        message = Message.objects.create(
             conversation=conversation,
             sender=sender,
             content=data.get('content', ''),
             file_url=data.get('file_url', ''),
             msg_type=data.get('msg_type', 'TEXT'),
         )
+        # Update conversation preview
+        conversation.last_message_preview = (data.get('content', '') or '')[:200]
+        conversation.last_message_at = message.created_at
+        conversation.save(update_fields=['last_message_preview', 'last_message_at'])
+        return message
+
+    @database_sync_to_async
+    def check_if_blocked(self):
+        """Check if the receiver has blocked the sender."""
+        conv = Conversation.objects.get(id=self.conversation_id)
+        receiver = conv.participants.exclude(id=self.user_id).first()
+        if receiver:
+            return BlockedUser.objects.filter(
+                blocker=receiver, blocked_id=self.user_id
+            ).exists()
+        return False
+
+    @database_sync_to_async
+    def update_last_seen(self):
+        """Update the user's last_seen timestamp."""
+        User.objects.filter(id=self.user_id).update(last_seen=timezone.now())
+
+    @database_sync_to_async
+    def mark_messages_as_read(self):
+        """Mark all messages from the other participant as read."""
+        Message.objects.filter(
+            conversation_id=self.conversation_id,
+            is_read=False,
+        ).exclude(sender_id=self.user_id).update(is_read=True)
 
     async def rate_limit_check(self):
-        # Placeholder for real rate limiting (not implemented)
+        # Placeholder for real rate limiting
         pass

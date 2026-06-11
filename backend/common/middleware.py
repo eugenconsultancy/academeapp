@@ -1,57 +1,68 @@
-import json
-import io
-from django.core.cache import cache
+# C:\Users\GATARA-BJTU\academe\backend\common\middleware.py
+
+import time
+from django.utils import timezone
 from django.http import JsonResponse
-from django.conf import settings
 
 
 class RateLimitMiddleware:
+    """Simple rate limiting middleware."""
+    
+    def __init__(self, get_response):
+        self.get_response = get_response
+        self.requests = {}
+
+    def __call__(self, request):
+        if request.path.startswith('/api/'):
+            client_ip = self.get_client_ip(request)
+            now = time.time()
+            
+            if client_ip in self.requests:
+                timestamps = self.requests[client_ip]
+                # Remove requests older than 60 seconds
+                self.requests[client_ip] = [t for t in timestamps if now - t < 60]
+                
+                if len(self.requests[client_ip]) > 100:  # 100 requests per minute
+                    return JsonResponse(
+                        {'error': 'Too many requests. Please slow down.'},
+                        status=429
+                    )
+                
+                self.requests[client_ip].append(now)
+            else:
+                self.requests[client_ip] = [now]
+
+        response = self.get_response(request)
+        return response
+
+    def get_client_ip(self, request):
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0].strip()
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
+
+
+class UpdateLastSeenMiddleware:
+    """
+    Updates the authenticated user's last_seen timestamp on every API request.
+    This ensures online presence is accurate even without WebSocket activity.
+    """
+    
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
-        # Only process OTP-related POST endpoints
-        if request.path in ['/api/accounts/request-otp/', '/api/accounts/forgot-password/'] \
-           and request.method == 'POST':
-
-            phone = None
-            raw_body = b''
-
+        response = self.get_response(request)
+        
+        # Only update for authenticated API requests
+        if request.path.startswith('/api/') and hasattr(request, 'auth') and request.auth:
             try:
-                # 1. Safely read and store the body
-                if request.body:
-                    raw_body = request.body
-                    body = json.loads(raw_body.decode('utf-8'))
-                    phone = body.get('phone_number')
-
-                # 2. Re-attach the body for Django Ninja
-                request._body = raw_body
-            except Exception as e:
-                # If JSON parsing fails, log it and let the request proceed
-                print(f"RateLimitMiddleware: unable to parse body – {e}")
-
-            # Fallback to POST data
-            if not phone:
-                phone = request.POST.get('phone_number') or request.GET.get('phone_number')
-
-            # 3. Rate limiting
-            if phone:
-                # ✅ Bypass rate limiting entirely when in DEBUG mode
-                if settings.DEBUG:
-                    return self.get_response(request)
-
-                rate_limit = getattr(settings, 'OTP_RATE_LIMIT', 5)
-                rate_window = getattr(settings, 'OTP_RATE_WINDOW', 300)
-
-                cache_key = f'otp_rate_{phone}'
-                attempts = cache.get(cache_key, 0)
-
-                if attempts >= rate_limit:
-                    return JsonResponse(
-                        {'error': f'Rate limit exceeded. Try again in {rate_window // 60} minutes.'},
-                        status=429,
-                    )
-
-                cache.set(cache_key, attempts + 1, timeout=rate_window)
-
-        return self.get_response(request)
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                User.objects.filter(id=request.auth.id).update(last_seen=timezone.now())
+            except Exception:
+                pass  # Silently fail - presence is non-critical
+        
+        return response

@@ -11,6 +11,7 @@ import {
 } from 'react-icons/fi';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useFont, FONT_REGISTRY } from '../../contexts/FontContext';
 import { chatApi } from '../../api/chatApi';
 import apiClient from '../../api/client';
 
@@ -26,16 +27,9 @@ const THEMES = [
   { id: 'system', label: 'System', icon: FiMonitor },
 ];
 
-const FONTS = [
-  { id: 'outfit', label: 'Modern', fontFamily: 'Outfit, sans-serif' },
-  { id: 'inter', label: 'Professional', fontFamily: 'Inter, sans-serif' },
-  { id: 'merriweather', label: 'Academic', fontFamily: 'Merriweather, serif' },
-  { id: 'jetbrains', label: 'Coding', fontFamily: 'JetBrains Mono, monospace' },
-  { id: 'poppins', label: 'Elegant', fontFamily: 'Poppins, sans-serif' },
-];
-
 export default function Navbar({ onToggleSidebar, onOpenChat }) {
   const { theme, setTheme, isDark } = useTheme();
+  const { currentFont, changeFont, fontKeys } = useFont();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -47,9 +41,8 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
   const [scrolled, setScrolled] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [chatBadge, setChatBadge] = useState(0);
-  const [currentFont, setCurrentFont] = useState(() => localStorage.getItem('font') || 'outfit');
 
-  // Notifications: store with a local "read" override so mark-all-read persists until next fetch
+  // Notifications state
   const [notifications, setNotifications] = useState([]);
   const [allReadLocally, setAllReadLocally] = useState(false);
   const [notifLoading, setNotifLoading] = useState(false);
@@ -59,23 +52,33 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
   const notifRef = useRef(null);
   const profileRef = useRef(null);
 
-  const initials = user?.full_name?.split(' ').map(n => n[0]).slice(0, 2).join('') ?? '?';
-  const firstName = user?.full_name?.split(' ')[0] ?? 'User';
+  // Derived values
+  const initials = useMemo(() =>
+    user?.full_name?.split(' ').map(n => n[0]).slice(0, 2).join('') ?? '?',
+    [user?.full_name]
+  );
+
+  const firstName = useMemo(() =>
+    user?.full_name?.split(' ')[0] ?? 'User',
+    [user?.full_name]
+  );
+
   const isAdmin = user?.role === 'admin';
   const isLeader = ['admin', 'student_leader', 'faculty_rep'].includes(user?.role);
 
-  // When allReadLocally is true, treat all as read for badge purposes
+  const currentFontData = FONT_REGISTRY[currentFont] || FONT_REGISTRY.sora;
+
   const unreadCount = useMemo(() => {
     if (allReadLocally) return 0;
     return notifications.filter(n => !n.read).length;
   }, [notifications, allReadLocally]);
 
-  const greeting = (() => {
+  const greeting = useMemo(() => {
     const h = new Date().getHours();
     if (h < 12) return 'Morning';
     if (h < 17) return 'Afternoon';
     return 'Evening';
-  })();
+  }, []);
 
   const closeAll = useCallback(() => {
     setProfileOpen(false);
@@ -83,6 +86,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
     setSearchOpen(false);
   }, []);
 
+  // ── Fetch notifications ──
   const fetchNotifications = useCallback(async () => {
     if (!user) return;
     setNotifLoading(true);
@@ -91,8 +95,6 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
       const res = await apiClient.get('/notifications/', { params: { page_size: 20 } });
       const fetched = res.data.results ?? res.data ?? [];
       setNotifications(fetched);
-      // Don't reset allReadLocally — only reset if server confirms unread items exist
-      // This prevents re-appearing badge after mark-all-read
       const hasServerUnread = fetched.some(n => !n.read);
       if (!hasServerUnread) setAllReadLocally(false);
     } catch {
@@ -102,6 +104,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
     }
   }, [user]);
 
+  // ── Fetch chat badge ──
   const fetchChatBadge = useCallback(async () => {
     if (!user) return;
     try {
@@ -111,6 +114,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
     } catch { /* silent */ }
   }, [user]);
 
+  // ── Periodic refresh ──
   useEffect(() => {
     fetchNotifications();
     fetchChatBadge();
@@ -118,18 +122,14 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
     return () => clearInterval(id);
   }, [fetchNotifications, fetchChatBadge]);
 
-  useEffect(() => {
-    const f = FONTS.find(f => f.id === currentFont);
-    if (f) document.documentElement.style.setProperty('--nav-font', f.fontFamily);
-    localStorage.setItem('font', currentFont);
-  }, [currentFont]);
-
+  // ── Scroll detection ──
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  // ── Click outside to close ──
   useEffect(() => {
     const handler = (e) => {
       if (searchRef.current && !searchRef.current.contains(e.target)) setSearchOpen(false);
@@ -137,13 +137,14 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
       if (profileRef.current && !profileRef.current.contains(e.target)) setProfileOpen(false);
     };
     document.addEventListener('mousedown', handler);
-    document.addEventListener('touchstart', handler);
+    document.addEventListener('touchstart', handler, { passive: true });
     return () => {
       document.removeEventListener('mousedown', handler);
       document.removeEventListener('touchstart', handler);
     };
   }, []);
 
+  // ── Keyboard shortcuts ──
   useEffect(() => {
     const handler = e => {
       if (e.key === 'Escape') { closeAll(); setMobileOpen(false); }
@@ -155,10 +156,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
     return () => document.removeEventListener('keydown', handler);
   }, [closeAll]);
 
-  // ═══════════════════════════════════════════════════════════════
-  // FIXED: Navigation Drawer Stability (prevents "jump" when opening)
-  // Uses position-locking instead of overflow: hidden to avoid scrollbar width changes
-  // ═══════════════════════════════════════════════════════════════
+  // ── Mobile drawer scroll lock ──
   useEffect(() => {
     if (mobileOpen) {
       const scrollY = window.scrollY;
@@ -175,42 +173,34 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
       const scrollY = document.body.style.top;
       document.body.style.position = '';
       document.body.style.top = '';
-      if (scrollY) {
-        window.scrollTo(0, parseInt(scrollY) * -1);
-      }
+      if (scrollY) window.scrollTo(0, parseInt(scrollY) * -1);
     };
   }, [mobileOpen]);
 
-  const handleChatClick = () => {
+  // ── Handlers ──
+  const handleChatClick = useCallback(() => {
     closeAll();
     setMobileOpen(false);
     navigate('/chats');
     setChatBadge(0);
-  };
+  }, [closeAll, navigate]);
 
-  const markAllRead = async () => {
-    // Immediately update local state — this persists until server returns truly unread items
+  const markAllRead = useCallback(async () => {
     setAllReadLocally(true);
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    try {
-      await apiClient.post('/notifications/mark-all-read/');
-    } catch { /* silent — local state already updated */ }
-  };
+    try { await apiClient.post('/notifications/mark-all-read/'); } catch { /* silent */ }
+  }, []);
 
-  const markOneRead = async (id) => {
+  const markOneRead = useCallback(async (id) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-    try {
-      await apiClient.post(`/notifications/${id}/read/`);
-    } catch { /* silent */ }
-  };
+    try { await apiClient.post(`/notifications/${id}/read/`); } catch { /* silent */ }
+  }, []);
 
-  const deleteNotif = async (e, id) => {
+  const deleteNotif = useCallback(async (e, id) => {
     e.stopPropagation();
     setNotifications(prev => prev.filter(n => n.id !== id));
-    try {
-      await apiClient.delete(`/notifications/${id}/`);
-    } catch { /* silent */ }
-  };
+    try { await apiClient.delete(`/notifications/${id}/`); } catch { /* silent */ }
+  }, []);
 
   const formatTime = (ts) => {
     if (!ts) return '';
@@ -224,15 +214,17 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
   const isActive = (path) =>
     path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
 
+  const handleFontChange = useCallback((key) => {
+    changeFont(key);
+    closeAll();
+  }, [changeFont, closeAll]);
+
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=Merriweather:wght@400;700&family=JetBrains+Mono:wght@400;500;600&family=Poppins:wght@400;500;600;700&display=swap');
-        :root { --nav-font: 'Outfit', sans-serif; }
-
         /* ══ ROOT ══ */
         .nav-root {
-          font-family: var(--nav-font);
+          font-family: var(--font-body, 'Sora', sans-serif);
           position: fixed; top: 0; left: 0; right: 0; z-index: 50;
           height: 60px;
           display: flex; align-items: center;
@@ -243,11 +235,13 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
         .nav-root.scrolled {
           background: rgba(255,255,255,.96);
           backdrop-filter: blur(24px) saturate(180%);
+          -webkit-backdrop-filter: blur(24px) saturate(180%);
           box-shadow: 0 1px 0 rgba(0,0,0,.07), 0 4px 20px rgba(0,0,0,.05);
         }
         .nav-root.flat {
           background: rgba(248,247,255,.9);
           backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
           border-bottom: 1px solid rgba(99,102,241,.08);
         }
         .dark .nav-root.scrolled {
@@ -280,9 +274,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
         @media(max-width:480px) { .nav-logo-text { display: none; } }
 
         /* ══ DESKTOP NAV LINKS ══ */
-        .nav-links {
-          display: none; align-items: center; gap: 2px;
-        }
+        .nav-links { display: none; align-items: center; gap: 2px; }
         @media(min-width:640px) { .nav-links { display: flex; } }
 
         .nav-link {
@@ -306,7 +298,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
         /* ══ SPACER ══ */
         .nav-spacer { flex: 1; min-width: 0; }
 
-        /* ══ GREETING (hidden on small) ══ */
+        /* ══ GREETING ══ */
         .nav-greeting {
           font-size: .78rem; font-weight: 700; white-space: nowrap;
           background: linear-gradient(135deg,#6366f1,#8b5cf6);
@@ -319,35 +311,34 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
         }
         @media(max-width:860px) { .nav-greeting { display: none; } }
 
-        /* ══ ACTIONS ROW — justified, never clipped ══ */
-        .nav-actions {
-          display: flex; align-items: center; gap: 5px; flex-shrink: 0;
-        }
-        /* On very small screens compress gap */
-        @media(max-width:360px) { .nav-actions { gap: 3px; } }
+        /* ══ ACTIONS ROW ══ */
+        .nav-actions { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+        @media(max-width:360px) { .nav-actions { gap: 2px; } }
 
-        /* ══ ICON BUTTONS — base ══ */
+        /* ══ ICON BUTTONS ══ */
         .nav-icon-btn {
           display: inline-flex; align-items: center; justify-content: center;
           gap: 5px;
           height: 34px; padding: 0 10px;
           border-radius: 10px; border: 1.5px solid transparent;
           cursor: pointer; background: none; flex-shrink: 0;
-          font-family: var(--nav-font);
+          font-family: inherit;
           font-size: .72rem; font-weight: 700;
           white-space: nowrap;
           transition: transform .15s, box-shadow .15s, filter .15s;
           position: relative;
         }
-        /* Icon-only mode on small screens */
         @media(max-width:520px) {
           .nav-icon-btn { padding: 0 8px; }
           .nav-btn-label { display: none; }
         }
+        @media(max-width:380px) {
+          .nav-icon-btn { height: 30px; padding: 0 6px; border-radius: 8px; }
+        }
         .nav-icon-btn:hover { transform: translateY(-1px); }
         .nav-icon-btn:focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; }
 
-        /* Chat — emerald */
+        /* Chat */
         .nav-btn-chat {
           background: linear-gradient(135deg,rgba(16,185,129,.14),rgba(16,185,129,.07));
           border-color: rgba(16,185,129,.3); color: #059669;
@@ -355,7 +346,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
         .nav-btn-chat:hover { background: rgba(16,185,129,.22); box-shadow: 0 4px 14px rgba(16,185,129,.25); }
         .dark .nav-btn-chat { background: rgba(16,185,129,.18); border-color: rgba(16,185,129,.35); color: #34d399; }
 
-        /* Notifications — amber */
+        /* Notifications */
         .nav-btn-notif {
           background: linear-gradient(135deg,rgba(245,158,11,.14),rgba(245,158,11,.07));
           border-color: rgba(245,158,11,.3); color: #d97706;
@@ -363,7 +354,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
         .nav-btn-notif:hover { background: rgba(245,158,11,.22); box-shadow: 0 4px 14px rgba(245,158,11,.25); }
         .dark .nav-btn-notif { background: rgba(245,158,11,.18); border-color: rgba(245,158,11,.35); color: #fbbf24; }
 
-        /* Search — indigo */
+        /* Search */
         .nav-btn-search {
           background: linear-gradient(135deg,rgba(99,102,241,.12),rgba(99,102,241,.06));
           border-color: rgba(99,102,241,.25); color: #6366f1;
@@ -379,6 +370,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
           font-size: .52rem; font-weight: 800;
           display: flex; align-items: center; justify-content: center;
           border: 2px solid white; pointer-events: none;
+          line-height: 1;
         }
         .nb-amber { background: linear-gradient(135deg,#f59e0b,#ef4444); }
         .nb-green  { background: linear-gradient(135deg,#10b981,#059669); }
@@ -394,6 +386,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
           position: absolute; right: 0; top: calc(100% + 10px);
           background: rgba(255,255,255,.99);
           backdrop-filter: blur(24px);
+          -webkit-backdrop-filter: blur(24px);
           border: 1px solid rgba(0,0,0,.08);
           border-radius: 18px;
           box-shadow: 0 12px 48px rgba(0,0,0,.13), 0 2px 8px rgba(0,0,0,.06);
@@ -410,6 +403,8 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
           .nav-drop {
             position: fixed; top: 68px;
             left: 8px; right: 8px; width: auto !important;
+            max-height: calc(100vh - 80px);
+            overflow-y: auto;
           }
         }
 
@@ -418,7 +413,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
         .nav-search-input {
           width: 100%; padding: 9px 13px;
           border: 1.5px solid rgba(99,102,241,.22); border-radius: 10px;
-          font-family: var(--nav-font); font-size: .83rem;
+          font-family: inherit; font-size: .83rem;
           background: rgba(99,102,241,.04); outline: none; color: #111827;
           transition: border-color .15s, box-shadow .15s; box-sizing: border-box;
         }
@@ -446,7 +441,8 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
         .dark .nav-notif-head-title { color: #f1f5f9; }
         .nav-notif-action {
           font-size: .67rem; font-weight: 700; color: #6366f1;
-          background: none; border: none; cursor: pointer; font-family: var(--nav-font);
+          background: none; border: none; cursor: pointer;
+          font-family: inherit;
           display: flex; align-items: center; gap: 3px; padding: 3px 7px;
           border-radius: 7px; transition: background .15s;
         }
@@ -499,7 +495,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
         .dark .nav-notif-footer { border-top-color: rgba(255,255,255,.05); }
         .nav-notif-footer button {
           font-size: .74rem; font-weight: 700; color: #6366f1;
-          background: none; border: none; cursor: pointer; font-family: var(--nav-font);
+          background: none; border: none; cursor: pointer; font-family: inherit;
         }
         .nav-notif-footer button:hover { color: #4f46e5; }
 
@@ -510,7 +506,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
           border: 1.5px solid rgba(99,102,241,.22);
           background: linear-gradient(135deg,rgba(99,102,241,.09),rgba(139,92,246,.05));
           cursor: pointer; flex-shrink: 0;
-          font-family: var(--nav-font);
+          font-family: inherit;
           transition: all .18s;
         }
         .nav-profile-btn:hover {
@@ -549,7 +545,8 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
         .nav-chevron.open { transform: rotate(180deg); }
 
         /* Profile drop */
-        .nav-profile-drop { width: 248px; }
+        .nav-profile-drop { width: 260px; }
+        @media(max-width:380px) { .nav-profile-drop { width: 240px; } }
         .nav-profile-head {
           padding: 13px 16px; border-bottom: 1px solid rgba(0,0,0,.05);
           background: linear-gradient(135deg,rgba(99,102,241,.06),rgba(139,92,246,.03));
@@ -573,7 +570,8 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
           display: flex; align-items: center; gap: 9px;
           width: 100%; padding: 7px 9px; border-radius: 10px;
           border: none; background: transparent; cursor: pointer;
-          font-size: .78rem; font-weight: 500; font-family: var(--nav-font);
+          font-size: .78rem; font-weight: 500;
+          font-family: inherit;
           color: #334155; text-align: left;
           transition: background .1s, color .1s; box-sizing: border-box;
         }
@@ -597,7 +595,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
           letter-spacing: .12em; color: #94a3b8; padding: 7px 9px 2px;
         }
 
-        /* ══ SIDEBAR TOGGLE (desktop) ══ */
+        /* ══ SIDEBAR TOGGLE ══ */
         .nav-sidebar-btn {
           display: none; align-items: center; justify-content: center;
           width: 34px; height: 34px; border-radius: 10px;
@@ -609,7 +607,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
         .nav-sidebar-btn:hover { background: rgba(99,102,241,.15); }
         .dark .nav-sidebar-btn { border-color: rgba(99,102,241,.28); color: #a5b4fc; background: rgba(99,102,241,.12); }
 
-        /* ══ HAMBURGER (mobile) ══ */
+        /* ══ HAMBURGER ══ */
         .nav-hamburger {
           display: flex; align-items: center; justify-content: center;
           width: 34px; height: 34px; border-radius: 10px;
@@ -618,6 +616,9 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
           transition: background .15s; flex-shrink: 0;
         }
         @media(min-width:640px) { .nav-hamburger { display: none; } }
+        @media(max-width:380px) {
+          .nav-hamburger { width: 30px; height: 30px; border-radius: 8px; }
+        }
         .nav-hamburger:hover { background: rgba(99,102,241,.15); }
         .dark .nav-hamburger { border-color: rgba(99,102,241,.28); color: #a5b4fc; background: rgba(99,102,241,.12); }
 
@@ -625,6 +626,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
         .nav-overlay {
           position: fixed; inset: 0; z-index: 99;
           background: rgba(0,0,0,.35); backdrop-filter: blur(3px);
+          -webkit-backdrop-filter: blur(3px);
         }
         @keyframes fadeIn { from{opacity:0} to{opacity:1} }
         .nav-overlay { animation: fadeIn .15s ease; }
@@ -698,7 +700,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
           font-size: .81rem; font-weight: 600; color: #334155;
           transition: background .1s, color .1s; margin-bottom: 1px;
           border: none; background: transparent; cursor: pointer;
-          width: 100%; font-family: var(--nav-font); text-align: left; box-sizing: border-box;
+          width: 100%; font-family: inherit; text-align: left; box-sizing: border-box;
         }
         .nav-drawer-link:hover { background: rgba(99,102,241,.08); color: #6366f1; }
         .nav-drawer-link.active { background: rgba(99,102,241,.1); color: #6366f1; font-weight: 700; }
@@ -725,10 +727,21 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
           display: flex; align-items: center; gap: 9px;
           width: 100%; padding: 9px 13px; border-radius: 11px;
           border: none; background: rgba(239,68,68,.07); cursor: pointer;
-          font-size: .81rem; font-weight: 700; font-family: var(--nav-font);
+          font-size: .81rem; font-weight: 700; font-family: inherit;
           color: #dc2626; text-align: left; transition: background .12s;
         }
         .nav-drawer-signout:hover { background: rgba(239,68,68,.14); }
+
+        /* ══ RESPONSIVE TWEAKS ══ */
+        @media (max-width: 380px) {
+          .nav-root { padding: 0 6px; height: 52px; }
+          .nav-logo-mark { width: 28px; height: 28px; border-radius: 8px; }
+          .nav-sidebar-btn { width: 30px; height: 30px; }
+        }
+        @media (max-width: 320px) {
+          .nav-root { padding: 0 4px; gap: 2px; height: 48px; }
+          .nav-icon-btn { height: 28px; padding: 0 4px; font-size: .65rem; }
+        }
       `}</style>
 
       <nav className={`nav-root ${scrolled ? 'scrolled' : 'flat'}`} role="navigation" aria-label="Main navigation">
@@ -759,7 +772,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
 
         <div className="nav-spacer" />
 
-        <span className="nav-greeting">Good {greeting}, {firstName} 👋</span>
+        <span className="nav-greeting">Good {greeting}, {firstName} {'\uD83D\uDC4B'}</span>
 
         <div className="nav-actions">
 
@@ -776,7 +789,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
             {searchOpen && (
               <div className="nav-drop nav-search-drop">
                 <input
-                  className="nav-search-input" type="text" placeholder="Search pages…"
+                  className="nav-search-input" type="text" placeholder="Search pages\u2026"
                   value={searchQuery} onChange={e => setSearchQuery(e.target.value)} autoFocus
                 />
                 {searchQuery
@@ -833,11 +846,11 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
                         <FiCheckCircle size={11} /> All read
                       </button>
                     )}
-                    <button className="nav-notif-action" onClick={fetchNotifications} title="Refresh">↻</button>
+                    <button className="nav-notif-action" onClick={fetchNotifications} title="Refresh">{'\u21BB'}</button>
                   </div>
                 </div>
                 <div className="nav-notif-list">
-                  {notifLoading && <div className="nav-notif-empty"><div className="nav-spin" />Loading…</div>}
+                  {notifLoading && <div className="nav-notif-empty"><div className="nav-spin" />Loading\u2026</div>}
                   {!notifLoading && notifError && <div className="nav-notif-empty">{notifError}</div>}
                   {!notifLoading && !notifError && notifications.length === 0 && (
                     <div className="nav-notif-empty">
@@ -864,14 +877,14 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
                 </div>
                 <div className="nav-notif-footer">
                   <button onClick={() => { setNotifOpen(false); navigate('/notifications'); }}>
-                    View all notifications →
+                    View all notifications {'\u2192'}
                   </button>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Profile */}
+          {/* Profile Dropdown */}
           <div className="nav-drop-wrap" ref={profileRef}>
             <button
               className="nav-profile-btn"
@@ -893,6 +906,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
                   <p className="nav-profile-head-role">{user?.class_name ?? 'Student'}</p>
                 </div>
                 <div className="nav-drop-body">
+                  {/* Account */}
                   <p className="nav-dd-section">Account</p>
                   <button className="nav-dd-item" onClick={() => { navigate('/profile'); closeAll(); }}>
                     <span className="nav-dd-icon"><FiUser size={13} /></span> Profile
@@ -912,6 +926,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
                     <span className="nav-dd-icon"><FiHelpCircle size={13} /></span> Help & Support
                   </button>
 
+                  {/* Theme */}
                   <div className="nav-dd-div" />
                   <p className="nav-dd-section">Theme</p>
                   {THEMES.map(t => (
@@ -922,17 +937,28 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
                     </button>
                   ))}
 
+                  {/* Font — NOW USING FontContext */}
                   <div className="nav-dd-div" />
                   <p className="nav-dd-section">Font</p>
-                  {FONTS.map(f => (
-                    <button key={f.id} className={`nav-dd-item${currentFont === f.id ? ' dd-active' : ''}`}
-                      onClick={() => { setCurrentFont(f.id); closeAll(); }}
-                      style={{ fontFamily: f.fontFamily }}>
-                      <span className="nav-dd-icon"><FiType size={13} /></span> {f.label}
-                      {currentFont === f.id && <FiCheck size={11} style={{ marginLeft: 'auto', opacity: .7 }} />}
-                    </button>
-                  ))}
+                  {fontKeys.map(key => {
+                    const data = FONT_REGISTRY[key];
+                    const isActive = currentFont === key;
+                    return (
+                      <button
+                        key={key}
+                        className={`nav-dd-item${isActive ? ' dd-active' : ''}`}
+                        onClick={() => handleFontChange(key)}
+                        style={{ fontFamily: data.family }}
+                      >
+                        <span className="nav-dd-icon"><FiType size={13} /></span>
+                        <span style={{ flex: 1 }}>{data.label}</span>
+                        <span style={{ fontSize: '.6rem', color: '#94a3b8' }}>{data.preview}</span>
+                        {isActive && <FiCheck size={11} style={{ marginLeft: 'auto', opacity: .7, flexShrink: 0 }} />}
+                      </button>
+                    );
+                  })}
 
+                  {/* Leadership */}
                   {isLeader && (
                     <>
                       <div className="nav-dd-div" />
@@ -948,6 +974,7 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
                     </button>
                   )}
 
+                  {/* Sign Out */}
                   <div className="nav-dd-div" />
                   <button className="nav-dd-item danger" onClick={() => { logout(); closeAll(); }}>
                     <span className="nav-dd-icon"><FiLogOut size={13} /></span> Sign Out
@@ -1022,6 +1049,23 @@ export default function Navbar({ onToggleSidebar, onOpenChat }) {
                     {theme === t.id && <FiCheck size={12} style={{ marginLeft: 'auto', opacity: .7 }} />}
                   </button>
                 ))}
+                <p className="nav-drawer-section" style={{ marginTop: 10 }}>Font</p>
+                {fontKeys.map(key => {
+                  const data = FONT_REGISTRY[key];
+                  const isActive = currentFont === key;
+                  return (
+                    <button
+                      key={key}
+                      className={`nav-drawer-link${isActive ? ' active' : ''}`}
+                      onClick={() => { changeFont(key); setMobileOpen(false); }}
+                      style={{ fontFamily: data.family }}
+                    >
+                      <span className="nav-drawer-icon"><FiType size={14} /></span>
+                      <span style={{ flex: 1 }}>{data.label}</span>
+                      {isActive && <FiCheck size={12} style={{ opacity: .7 }} />}
+                    </button>
+                  );
+                })}
                 <p className="nav-drawer-section" style={{ marginTop: 10 }}>Account</p>
                 <Link to="/profile" onClick={() => setMobileOpen(false)} className="nav-drawer-link">
                   <span className="nav-drawer-icon"><FiUser size={14} /></span> Profile

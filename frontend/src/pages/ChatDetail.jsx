@@ -1,3 +1,5 @@
+// C:\Users\GATARA-BJTU\academe\frontend\src\pages\ChatDetail.jsx
+
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useChatStore } from '../stores/useChatStore';
@@ -6,6 +8,7 @@ import ChatWindow from '../components/chat/ChatWindow';
 import MessageInput from '../components/chat/MessageInput';
 import { chatApi } from '../api/chatApi';
 import { FiArrowLeft, FiSearch, FiMoreVertical, FiX, FiArrowDown } from 'react-icons/fi';
+import toast from 'react-hot-toast';
 
 /* ─── Modern Design System ─── */
 const STYLE = `
@@ -673,17 +676,18 @@ export default function ChatDetail() {
   const conversations = useChatStore(s => s.conversations);
   const messages = useChatStore(s => s.messages[conversationId] || []);
 
-  // Find other participant
+  // Find other participant from conversations list
   useEffect(() => {
     const conv = conversations.find(c => c.id === conversationId);
     if (conv && user) {
+      const participant = conv.participant;
       setOtherParticipant({
-        id: conv.participant_id,
-        name: conv.participant_name || 'Unknown',
-        class: conv.participant_class || 'Student',
-        status: conv.participant_status || 'offline',
-        lastActive: conv.participant_last_active || '—',
-        avatar: conv.participant_avatar,
+        id: participant?.id,
+        name: participant?.full_name || 'Unknown',
+        class: participant?.class_name || 'Student',
+        status: participant?.is_online ? 'online' : 'offline',
+        lastActive: participant?.last_active || '—',
+        avatar: participant?.avatar_url,
       });
     }
   }, [conversationId, conversations, user]);
@@ -701,12 +705,21 @@ export default function ChatDetail() {
     chatApi.getMessages(conversationId, null, 30).then(res => {
       fetchMessages(conversationId, res.data.reverse());
       setLoading(false);
+    }).catch(() => {
+      setLoading(false);
     });
 
     return () => {
       disconnectWebSocket();
     };
   }, [conversationId, setActiveConversation, connectWebSocket, disconnectWebSocket, fetchMessages]);
+
+  // Auto-mark messages as read when conversation loads
+  useEffect(() => {
+    if (!loading && conversationId && messages.length > 0) {
+      chatApi.markAsRead(conversationId).catch(() => { });
+    }
+  }, [loading, conversationId, messages.length]);
 
   // Search functionality
   const handleSearch = (query) => {
@@ -721,7 +734,7 @@ export default function ChatDetail() {
         msg.content?.toLowerCase().includes(query.toLowerCase()) &&
         msg.msg_type === 'TEXT'
       )
-      .map((msg, idx) => ({
+      .map((msg) => ({
         ...msg,
         preview: msg.content.substring(0, 50) + (msg.content.length > 50 ? '...' : ''),
       }));
@@ -751,6 +764,50 @@ export default function ChatDetail() {
     }
   };
 
+  // ── Drawer Action Handlers ──
+  const handleViewProfile = () => {
+    setShowDrawer(false);
+    if (otherParticipant?.id) {
+      navigate(`/profile/${otherParticipant.id}`);
+    }
+  };
+
+  const handleBlockUser = async () => {
+    if (!otherParticipant?.id) return;
+    if (!confirm(`Block ${otherParticipant.name}? They won't be able to message you.`)) return;
+    try {
+      await chatApi.blockUser(otherParticipant.id);
+      toast.success(`${otherParticipant.name} blocked`);
+      setShowDrawer(false);
+      navigate('/chats');
+    } catch (err) {
+      toast.error('Failed to block user');
+    }
+  };
+
+  const handleDeleteChat = async () => {
+    if (!confirm('Permanently delete this conversation?')) return;
+    try {
+      await chatApi.deleteConversation(conversationId);
+      toast.success('Conversation deleted');
+      setShowDrawer(false);
+      navigate('/chats');
+    } catch (err) {
+      toast.error('Failed to delete conversation');
+    }
+  };
+
+  const handleArchiveChat = async () => {
+    try {
+      await chatApi.archiveConversation(conversationId);
+      toast.success('Conversation archived');
+      setShowDrawer(false);
+      navigate('/chats');
+    } catch (err) {
+      toast.error('Failed to archive conversation');
+    }
+  };
+
   return (
     <>
       <style>{STYLE}</style>
@@ -768,10 +825,10 @@ export default function ChatDetail() {
               {otherParticipant?.status === 'online' && <div className="cd-online-ring" />}
             </div>
             <div className="cd-header-text">
-              <p className="cd-header-name">{otherParticipant?.name || 'Loading…'}</p>
+              <p className="cd-header-name">{otherParticipant?.name || 'Loading\u2026'}</p>
               <p className={`cd-header-meta ${otherParticipant?.status === 'online' ? 'online' : ''}`}>
                 {otherParticipant?.status === 'online'
-                  ? '🟢 Online'
+                  ? '\uD83D\uDFE2 Online'
                   : `Last active ${otherParticipant?.lastActive}`}
               </p>
             </div>
@@ -808,7 +865,7 @@ export default function ChatDetail() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => handleSearch(e.target.value)}
-                  placeholder="Search messages…"
+                  placeholder="Search messages\u2026"
                   className="cd-search-input"
                   autoFocus
                 />
@@ -865,23 +922,32 @@ export default function ChatDetail() {
                     <p className="cd-drawer-user-name">{otherParticipant?.name}</p>
                     <p className="cd-drawer-user-meta">{otherParticipant?.class}</p>
                     <p className="cd-drawer-user-status">
-                      <span>●</span>
+                      <span>{'\u25CF'}</span>
                       {otherParticipant?.status === 'online'
                         ? 'Active now'
                         : `Last active ${otherParticipant?.lastActive}`}
                     </p>
-                    <button className="cd-drawer-button">View Profile</button>
+                    <button className="cd-drawer-button" onClick={handleViewProfile}>
+                      View Profile
+                    </button>
                   </div>
                 </div>
 
                 {/* Conversation Actions */}
                 <div className="cd-drawer-section">
                   <p className="cd-drawer-section-title">Actions</p>
-                  <button className="cd-drawer-button">📌 Pin Conversation</button>
-                  <button className="cd-drawer-button">🔕 Mute Notifications</button>
-                  <button className="cd-drawer-button">📑 Search in Chat</button>
-                  <button className="cd-drawer-button danger">🚫 Block User</button>
-                  <button className="cd-drawer-button danger">🗑️ Delete Chat</button>
+                  <button className="cd-drawer-button" onClick={handleArchiveChat}>
+                    {'\uD83D\uDCC1'} Archive Chat
+                  </button>
+                  <button className="cd-drawer-button" onClick={() => setShowSearch(true)}>
+                    {'\uD83D\uDCD1'} Search in Chat
+                  </button>
+                  <button className="cd-drawer-button danger" onClick={handleBlockUser}>
+                    {'\uD83D\uDEAB'} Block User
+                  </button>
+                  <button className="cd-drawer-button danger" onClick={handleDeleteChat}>
+                    {'\uD83D\uDDD1\uFE0F'} Delete Chat
+                  </button>
                 </div>
 
                 {/* Chat Info */}
@@ -889,7 +955,9 @@ export default function ChatDetail() {
                   <p className="cd-drawer-section-title">Chat Info</p>
                   <div style={{ fontSize: '12px', color: 'var(--chat-muted)', lineHeight: '1.8' }}>
                     <div>Messages: {messages.length}</div>
-                    <div style={{ marginTop: '8px' }}>Created: {new Date().toLocaleDateString()}</div>
+                    <div style={{ marginTop: '8px' }}>
+                      Created: {new Date().toLocaleDateString()}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -920,7 +988,7 @@ export default function ChatDetail() {
                   gap: '12px',
                   color: 'var(--chat-muted)'
                 }}>
-                  <div style={{ fontSize: '32px' }}>💬</div>
+                  <div style={{ fontSize: '32px' }}>{'\uD83D\uDCAC'}</div>
                   <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--chat-text)' }}>
                     Start your conversation
                   </div>
