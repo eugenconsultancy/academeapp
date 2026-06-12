@@ -39,6 +39,11 @@ class MessageIn(Schema):
     duration: Optional[float] = None
 
 
+class MessageEditIn(Schema):
+    """Schema for editing an existing message"""
+    content: str
+
+
 class MessageOut(Schema):
     id: uuid.UUID
     conversation_id: uuid.UUID
@@ -48,9 +53,11 @@ class MessageOut(Schema):
     msg_type: str
     created_at: datetime
     is_read: bool = False
+    is_delivered: bool = False
     reply_to_id: Optional[uuid.UUID] = None
     reply_preview: Optional[str] = None
     duration: Optional[float] = None
+    edited_at: Optional[datetime] = None
 
 
 class PresignedUrlIn(Schema):

@@ -19,6 +19,11 @@ class Conversation(BaseModel):
         related_name='deleted_conversations',
         blank=True
     )
+    archived_by = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name='archived_conversations',
+        blank=True
+    )
 
     class Meta:
         ordering = ['-last_message_at']
@@ -53,6 +58,8 @@ class Message(BaseModel):
     msg_type = models.CharField(max_length=5, choices=MESSAGE_TYPES, default='TEXT')
     is_read = models.BooleanField(default=False)
     read_at = models.DateTimeField(null=True, blank=True)
+    is_delivered = models.BooleanField(default=False)
+    delivered_at = models.DateTimeField(null=True, blank=True)
     reply_to = models.ForeignKey(
         'self',
         on_delete=models.SET_NULL,
@@ -61,13 +68,31 @@ class Message(BaseModel):
         related_name='replies'
     )
     duration = models.FloatField(null=True, blank=True)
+    
+    # Edit tracking
+    edited_at = models.DateTimeField(null=True, blank=True)
+    edit_history = models.JSONField(default=list, blank=True)
+    
+    # Soft delete
+    is_deleted = models.BooleanField(default=False)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    deleted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='deleted_messages'
+    )
 
     class Meta:
         ordering = ['created_at']
         indexes = [
             models.Index(fields=['conversation', 'created_at']),
+            models.Index(fields=['conversation', '-created_at']),  # Descending for pagination
             models.Index(fields=['sender', 'is_read']),
             models.Index(fields=['conversation', 'sender', 'is_read']),
+            models.Index(fields=['conversation', 'is_deleted', 'created_at']),
+            models.Index(fields=['edited_at']),
         ]
 
     def __str__(self):
@@ -90,6 +115,7 @@ class BlockedUser(BaseModel):
         unique_together = ('blocker', 'blocked')
         indexes = [
             models.Index(fields=['blocker', 'blocked']),
+            models.Index(fields=['blocked', 'blocker']),  # For reverse lookups
         ]
         verbose_name = 'Blocked User'
         verbose_name_plural = 'Blocked Users'
@@ -115,6 +141,7 @@ class MutedConversation(BaseModel):
         unique_together = ('user', 'conversation')
         indexes = [
             models.Index(fields=['user', 'conversation']),
+            models.Index(fields=['conversation', 'user']),
         ]
         verbose_name = 'Muted Conversation'
         verbose_name_plural = 'Muted Conversations'
@@ -140,6 +167,7 @@ class PinnedConversation(BaseModel):
         unique_together = ('user', 'conversation')
         indexes = [
             models.Index(fields=['user', 'conversation']),
+            models.Index(fields=['user', '-pinned_at']),  # For sorting pins
         ]
         verbose_name = 'Pinned Conversation'
         verbose_name_plural = 'Pinned Conversations'
@@ -189,6 +217,7 @@ class UserReport(BaseModel):
             models.Index(fields=['reporter', 'reported_user']),
             models.Index(fields=['status']),
             models.Index(fields=['reason']),
+            models.Index(fields=['created_at']),
         ]
         verbose_name = 'User Report'
         verbose_name_plural = 'User Reports'

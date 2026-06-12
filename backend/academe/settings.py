@@ -1,4 +1,4 @@
-# C:\Users\GATARA-BJTU\academe\backend\academe\settings.py
+# backend/academe/settings.py
 import os
 from datetime import timedelta
 from pathlib import Path
@@ -74,43 +74,106 @@ TEMPLATES = [
 WSGI_APPLICATION = 'academe.wsgi.application'
 ASGI_APPLICATION = 'academe.asgi.application'
 
-# for prodcution im shifting to postgre 
+# ============================================
+# DATABASE - PostgreSQL recommended for production
+# ============================================
+if os.getenv('DATABASE_URL'):
+    import dj_database_url
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=os.getenv('DATABASE_URL'),
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
+    }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+            'OPTIONS': {
+                'timeout': 20,
+            },
+        }
+    }
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-        'OPTIONS': {
-            'timeout': 20,
+# ============================================
+# CHANNEL LAYERS - Production Redis configuration
+# ============================================
+REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+
+if not DEBUG and REDIS_URL:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [REDIS_URL],
+                "capacity": 1500,
+                "expiry": 10,
+            },
         },
     }
-}
-
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",
-    },
-}
+else:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        },
+    }
 
 AUTH_USER_MODEL = 'accounts.User'
-AUTH_PASSWORD_VALIDATORS = []
+
+# ============================================
+# AUTHENTICATION & PASSWORD VALIDATION
+# ============================================
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {
+            'min_length': 8,
+        },
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+]
 
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'Africa/Nairobi'
 USE_I18N = True
 USE_TZ = True
 
+# ============================================
+# STATIC & MEDIA FILES
+# ============================================
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 
-MEDIA_URL = 'media/'
+MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+# ============================================
+# EMAIL CONFIGURATION
+# ============================================
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@academe.com')
 
+# ============================================
+# CORS CONFIGURATION
+# ============================================
 CORS_ALLOW_ALL_ORIGINS = DEBUG
 
 CORS_ALLOW_HEADERS = [
@@ -121,14 +184,19 @@ CORS_ALLOW_HEADERS = [
     "x-csrftoken",
     "x-requested-with",
     "ngrok-skip-browser-warning",
+    "idempotency-key",
 ]
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
+    "http://localhost:3000",
     "http://10.5.50.15:5173",
     "https://granitic-imbricately-dede.ngrok-free.dev",
 ]
 
+# ============================================
+# CELERY CONFIGURATION
+# ============================================
 if DEBUG:
     CELERY_BROKER_URL = 'memory://'
     CELERY_RESULT_BACKEND = 'cache+memory://'
@@ -140,6 +208,14 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'Africa/Nairobi'
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60
+CELERY_TASK_SOFT_TIME_LIMIT = 20 * 60
+
+# ============================================
+# JWT CONFIGURATION
+# ============================================
+JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', SECRET_KEY)
 
 NINJA_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=24),
@@ -147,98 +223,369 @@ NINJA_JWT = {
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+    'TOKEN_TYPE_CLAIM': 'type',
+    'JTI_CLAIM': 'jti',
 }
 
+# ============================================
+# AWS S3 CONFIGURATION
+# ============================================
 AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
 AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
 AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'us-east-1')
 AWS_DEFAULT_ACL = 'private'
 AWS_S3_ENCRYPTION = True
+AWS_S3_SIGNATURE_VERSION = 's3v4'
+AWS_S3_OBJECT_PARAMETERS = {
+    'CacheControl': 'max-age=86400',
+}
 
-if DEBUG and not AWS_ACCESS_KEY_ID:
+# Use S3 for file storage in production, local filesystem in development
+if not DEBUG and all([AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_STORAGE_BUCKET_NAME]):
+    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+    STATICFILES_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+else:
     DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
 
 AWS_PRIVATE_BUCKET_NAME = os.getenv('AWS_PRIVATE_BUCKET_NAME', AWS_STORAGE_BUCKET_NAME)
 AWS_PUBLIC_BUCKET_NAME = os.getenv('AWS_PUBLIC_BUCKET_NAME', AWS_STORAGE_BUCKET_NAME)
 
+# ============================================
+# FIREBASE / PUSH NOTIFICATIONS
+# ============================================
 FIREBASE_CREDENTIALS = os.getenv('FIREBASE_CREDENTIALS_PATH')
+FCM_ENABLED = bool(FIREBASE_CREDENTIALS and os.path.exists(FIREBASE_CREDENTIALS)) if FIREBASE_CREDENTIALS else False
 
+# ============================================
+# PAYMENT INTEGRATION
+# ============================================
 INTASEND_SECRET_KEY = os.getenv('INTASEND_SECRET_KEY')
 INTASEND_PUBLISHABLE_KEY = os.getenv('INTASEND_PUBLISHABLE_KEY')
 
+# ============================================
+# RATE LIMITING
+# ============================================
 OTP_RATE_LIMIT = 3
-OTP_RATE_WINDOW = 3600
+OTP_RATE_WINDOW = 3600  # seconds
 
+# Chat rate limits
+CHAT_RATE_LIMIT_MESSAGES_PER_MINUTE = 30
+CHAT_RATE_LIMIT_CONVERSATIONS_PER_HOUR = 10
+CHAT_RATE_LIMIT_REPORTS_PER_HOUR = 5
+CHAT_TYPING_RATE_LIMIT_PER_MINUTE = 5
+CHAT_MESSAGE_EDIT_WINDOW_SECONDS = 300  # 5 minutes
+
+# ============================================
+# ATTENDANCE CONFIGURATION
+# ============================================
 ATTENDANCE_WINDOW_BEFORE = 10
 ATTENDANCE_WINDOW_AFTER = 10
 SYNC_GRACE_PERIOD = 30
 
+# ============================================
+# ESCROW / FOUND ITEMS
+# ============================================
 ESCROW_AUTO_CONFIRM_DAYS = 7
 ESCROW_FEE_PERCENTAGE = 50
 PLATFORM_FEE_PERCENTAGE = 50
 
+# ============================================
+# SEARCH CONFIGURATION
+# ============================================
 SEARCH_BACKEND = 'django.db.models.Q'
 
-DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+# ============================================
+# FILE UPLOAD LIMITS
+# ============================================
+DATA_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB for chat file uploads
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 1000
 
 # ============================================
-# JAZZMIN – MINIMAL SETTINGS (engine handles the rest)
+# WEBSOCKET CONFIGURATION
+# ============================================
+WEBSOCKET_HEARTBEAT_INTERVAL = 30  # seconds
+WEBSOCKET_HEARTBEAT_TIMEOUT = 10  # seconds
+WEBSOCKET_MAX_CONNECTIONS_PER_USER = 5
+
+# ============================================
+# CACHING - Redis for production
+# ============================================
+if not DEBUG and REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': REDIS_URL,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+                'PARSER_CLASS': 'redis.connection.HiredisParser',
+                'CONNECTION_POOL_CLASS': 'redis.BlockingConnectionPool',
+                'CONNECTION_POOL_CLASS_KWARGS': {
+                    'max_connections': 50,
+                    'timeout': 20,
+                },
+                'MAX_CONNECTIONS': 1000,
+                'PICKLE_VERSION': -1,
+            },
+            'KEY_PREFIX': 'academe',
+            'TIMEOUT': 300,  # 5 minutes default
+        }
+    }
+    
+    # Session cache
+    SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+    SESSION_CACHE_ALIAS = 'default'
+    SESSION_COOKIE_AGE = 86400  # 24 hours
+    SESSION_COOKIE_SECURE = not DEBUG
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'unique-snowflake',
+        }
+    }
+
+# ============================================
+# SECURITY SETTINGS (Production)
+# ============================================
+if not DEBUG:
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
+    SECURE_SSL_REDIRECT = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_HTTPONLY = True
+    CSRF_COOKIE_SAMESITE = 'Strict'
+
+# ============================================
+# LOGGING CONFIGURATION
+# ============================================
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {asctime} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+            'level': 'INFO',
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': BASE_DIR / 'logs' / 'academe.log',
+            'formatter': 'verbose',
+            'level': 'WARNING',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'apps.chat': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+        'websocket': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
+
+# Create logs directory if it doesn't exist
+LOGS_DIR = BASE_DIR / 'logs'
+if not LOGS_DIR.exists():
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+# ============================================
+# JAZZMIN – ADMIN PANEL CONFIGURATION
 # ============================================
 JAZZMIN_SETTINGS = {
     "site_title": "Academe Admin",
     "site_header": "Academe",
     "site_brand": "Academe",
-    "welcome_sign": "Welcome to Academe",
+    "site_logo": None,
+    "login_logo": None,
+    "login_logo_dark": None,
+    "site_logo_classes": "img-circle",
+    "site_icon": None,
+    "welcome_sign": "Welcome to Academe Administration",
     "copyright": "Academe – Student Affairs Platform",
-
-    "show_sidebar": False,
+    "search_model": ["accounts.User", "chat.Conversation"],
+    
+    "user_avatar": "profile_pic",
+    
+    "topmenu_links": [
+        {"name": "Home", "url": "admin:index", "permissions": ["auth.view_user"]},
+        {"name": "Support", "url": "/admin/support/supportticket/", "permissions": ["support.view_supportticket"]},
+        {"model": "accounts.User"},
+        {"app": "chat"},
+    ],
+    
+    "usermenu_links": [
+        {"name": "View Site", "url": "/", "new_window": True},
+        {"name": "Support", "url": "/admin/support/supportticket/", "permissions": ["support.view_supportticket"]},
+        {"model": "accounts.User"},
+    ],
+    
+    "show_sidebar": True,
     "navigation_expanded": False,
     "hide_apps": [],
     "hide_models": [],
-
-    "topmenu_links": [],
-
-    "usermenu_links": [
-        {"name": "Profile", "model": "accounts.User"},
-        {"name": "Logout", "url": "admin:logout"},
+    
+    "order_with_respect_to": [
+        "accounts",
+        "chat",
+        "governance",
+        "announcements",
+        "opportunities",
+        "classes",
+        "found_items",
+        "support",
+        "blog",
     ],
-
+    
+    "custom_links": {
+        "chat": [{
+            "name": "View Conversations",
+            "url": "admin:chat_conversation_changelist",
+            "icon": "fas fa-comments",
+            "permissions": ["chat.view_conversation"]
+        }],
+        "governance": [{
+            "name": "Audit Logs",
+            "url": "admin:governance_auditlog_changelist",
+            "icon": "fas fa-history",
+        }],
+    },
+    
     "icons": {
         "accounts.User": "fas fa-user-graduate",
         "accounts.Badge": "fas fa-medal",
+        "accounts.StudentRole": "fas fa-user-tag",
+        "accounts.UserSession": "fas fa-history",
+        "chat.Conversation": "fas fa-comments",
+        "chat.Message": "fas fa-comment-dots",
+        "chat.BlockedUser": "fas fa-ban",
+        "chat.UserReport": "fas fa-flag",
+        "chat.MutedConversation": "fas fa-volume-mute",
+        "chat.PinnedConversation": "fas fa-thumbtack",
         "found_items.FoundItem": "fas fa-box-open",
+        "found_items.Claim": "fas fa-hand-holding-heart",
         "announcements.Announcement": "fas fa-bullhorn",
         "opportunities.Opportunity": "fas fa-briefcase",
         "classes.ClassGroup": "fas fa-layer-group",
+        "classes.AttendanceEntry": "fas fa-calendar-check",
+        "classes.TimetableEntry": "fas fa-clock",
         "support.SupportTicket": "fas fa-ticket-alt",
-        "auth.Group": "fas fa-users-cog",
+        "support.TicketReply": "fas fa-reply",
+        "blog.BlogPost": "fas fa-blog",
+        "blog.BlogComment": "fas fa-comment",
+        "governance.AuditLog": "fas fa-history",
+        "governance.Vote": "fas fa-vote-yea",
+        "governance.Survey": "fas fa-poll",
+        "notifications.Notification": "fas fa-bell",
+        "auth.Group": "fas fa-users",
+        "auth.User": "fas fa-user",
     },
+    
     "default_icon_parents": "fas fa-chevron-circle-right",
     "default_icon_children": "fas fa-circle",
-
+    
     "related_modal_active": True,
     "custom_css": "admin/css/custom_admin.css",
-    "custom_js": "admin/js/academe_engine.js",   # ✅ Updated to new engine file
+    "custom_js": None,
     "show_ui_builder": False,
+    
     "changeform_format": "horizontal_tabs",
+    "changeform_format_overrides": {
+        "accounts.user": "vertical_tabs",
+        "chat.conversation": "carousel",
+    },
+    
     "language_chooser": False,
 }
 
-# Stripped down – the engine handles all visual layout
 JAZZMIN_UI_TWEAKS = {
     "navbar_small_text": False,
     "footer_small_text": True,
-    "theme": "slate",
-    "sidebar_nav_flat_style": True,
-    "actions_sticky_top": True,
+    "body_small_text": False,
+    "brand_small_text": False,
+    "brand_colour": False,
+    "accent": "accent-primary",
     "navbar": "navbar-dark bg-dark",
+    "no_navbar_border": False,
+    "navbar_fixed": True,
+    "layout_boxed": False,
+    "footer_fixed": False,
+    "sidebar_fixed": True,
     "sidebar": "sidebar-dark-primary",
+    "sidebar_nav_small_text": False,
+    "sidebar_disable_expand": False,
+    "sidebar_nav_child_indent": True,
+    "sidebar_nav_compact_style": False,
+    "sidebar_nav_legacy_style": False,
+    "sidebar_nav_flat_style": True,
+    "theme": "slate",
+    "dark_mode_theme": "slate",
+    "button_classes": {
+        "primary": "btn-primary",
+        "secondary": "btn-secondary",
+        "info": "btn-info",
+        "warning": "btn-warning",
+        "danger": "btn-danger",
+        "success": "btn-success",
+    },
+    "actions_sticky_top": True,
 }
-
-#  REMOVED JAZZMIN_DASHBOARD – the engine injects its own layout
 
 ADMIN_SITE_HEADER = "Academe Administration"
 ADMIN_SITE_TITLE = "Academe Admin Portal"
 ADMIN_INDEX_TITLE = "Welcome to Academe Dashboard"
 ADMIN_LIST_PER_PAGE = 20
+
+# ============================================
+# CUSTOM APP CONFIGURATIONS
+# ============================================
+
+# Notification settings
+NOTIFICATION_EXPIRY_DAYS = 30
+NOTIFICATION_BATCH_SIZE = 100
+
+# Blog settings
+BLOG_POSTS_PER_PAGE = 10
+BLOG_MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
+
+# Governance settings
+GOVERNANCE_VOTE_EXPIRY_DAYS = 7
+GOVERNANCE_SURVEY_RESPONSE_LIMIT = 1000
+
+# Support ticket settings
+SUPPORT_TICKET_AUTO_CLOSE_DAYS = 7
+SUPPORT_TICKET_ESCALATION_HOURS = 48

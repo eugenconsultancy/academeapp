@@ -14,12 +14,26 @@ const chatApi = {
             params: { before, limit },
         }),
 
-    sendMessage: (convId, data) =>
-        apiClient.post(`chat/conversations/${convId}/messages`, data),
+    sendMessage: (convId, data, idempotencyKey = null) => {
+        const headers = {};
+        if (idempotencyKey) {
+            headers['Idempotency-Key'] = idempotencyKey;
+        }
+        return apiClient.post(`chat/conversations/${convId}/messages`, data, { headers });
+    },
 
     markAsRead: (convId, messageIds = null) =>
         apiClient.post(`chat/conversations/${convId}/mark-read`, {
             message_ids: messageIds || [],
+        }),
+
+    // ─── Message Edit/Delete ───
+    editMessage: (convId, messageId, newContent) =>
+        apiClient.put(`chat/conversations/${convId}/messages/${messageId}`, { content: newContent }),
+
+    deleteMessage: (convId, messageId, deleteForEveryone = true) =>
+        apiClient.delete(`chat/conversations/${convId}/messages/${messageId}`, {
+            params: { delete_for_everyone: deleteForEveryone }
         }),
 
     // ─── Archive / Unarchive / Delete ───

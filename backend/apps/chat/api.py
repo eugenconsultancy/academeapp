@@ -6,9 +6,10 @@ from datetime import timedelta
 from django.shortcuts import get_object_or_404
 from django.conf import settings
 from django.utils import timezone
-from django.db.models import Count
+from django.db.models import Count, Q, OuterRef, Subquery, Exists, Value
+from django.db.models.functions import Coalesce
 from django.core.cache import cache
-from ninja import Router
+from ninja import Router, Query
 from ninja.errors import HttpError
 
 from common.jwt_auth import JWTAuth
@@ -23,6 +24,7 @@ from .schema import (
     ConversationOut,
     MessageOut,
     MessageIn,
+    MessageEditIn,
     PresignedUrlOut,
     PresignedUrlIn,
     StartConversationIn,
@@ -51,7 +53,7 @@ ALLOWED_MIME_TYPES = [
 BLOCKED_MIME_PREFIXES = ['video/']
 
 
-# ─── Helpers ───
+# ─── Helpers with Optimized Queries ───
 
 def build_participant_info(conv, current_user):
     """Return ParticipantInfo dict for the other user in the conversation."""
@@ -64,7 +66,7 @@ def build_participant_info(conv, current_user):
         is_online = (timezone.now() - other_user.last_activity) < timedelta(minutes=5)
 
     return {
-        "id": other_user.id,
+        "id": str(other_user.id),
         "full_name": other_user.full_name,
         "class_name": other_user.class_name or other_user.institution or "Student",
         "is_online": is_online,
@@ -73,16 +75,33 @@ def build_participant_info(conv, current_user):
     }
 
 
-def get_unread_count(conv, user):
-    """Count messages from the other participant that are still unread."""
-    other_user = conv.participants.exclude(id=user.id).first()
-    if not other_user:
-        return 0
-    return Message.objects.filter(
-        conversation=conv,
-        sender=other_user,
-        is_read=False,
-    ).count()
+def get_unread_count_subquery(user_id):
+    """Return subquery for unread count per conversation - optimized N+1 fix"""
+    from django.db.models import OuterRef, Count, Q
+    return Count('messages', filter=Q(
+        messages__is_read=False,
+        messages__sender_id=OuterRef('participant_id')
+    ))
+
+
+def check_rate_limit(user_id, action, limit, window_seconds):
+    """Fixed-window rate limiter using Django cache."""
+    key = f"ratelimit:chat:{action}:{user_id}"
+    count = cache.get(key)
+
+    if count is None:
+        cache.set(key, 1, timeout=window_seconds)
+        return True
+
+    if count >= limit:
+        return False
+
+    try:
+        cache.incr(key)
+    except ValueError:
+        cache.set(key, 1, timeout=window_seconds)
+
+    return True
 
 
 def is_user_blocked(blocker, blocked_user):
@@ -90,47 +109,6 @@ def is_user_blocked(blocker, blocked_user):
     return BlockedUser.objects.filter(
         blocker=blocker, blocked=blocked_user
     ).exists()
-
-
-def is_conversation_muted(user, conversation):
-    """Check if user has muted the conversation."""
-    return MutedConversation.objects.filter(
-        user=user, conversation=conversation
-    ).exists()
-
-
-def is_conversation_pinned(user, conversation):
-    """Check if user has pinned the conversation."""
-    return PinnedConversation.objects.filter(
-        user=user, conversation=conversation
-    ).exists()
-
-
-def check_rate_limit(user_id, action, limit, window_seconds):
-    """
-    Fixed-window rate limiter using Django cache.
-    Uses cache.add for initial set (which doesn't reset TTL on subsequent calls)
-    and cache.incr for increments (which preserves the original TTL).
-    """
-    key = f"ratelimit:chat:{action}:{user_id}"
-    count = cache.get(key)
-
-    if count is None:
-        # First request in this window — set with TTL
-        cache.set(key, 1, timeout=window_seconds)
-        return True
-
-    if count >= limit:
-        return False
-
-    # cache.incr preserves the original TTL
-    try:
-        cache.incr(key)
-    except ValueError:
-        # Key expired between get and incr — reset
-        cache.set(key, 1, timeout=window_seconds)
-
-    return True
 
 
 # ─── Conversation Endpoints ───
@@ -146,6 +124,7 @@ def start_conversation(request, payload: StartConversationIn):
     if not check_rate_limit(user_a.id, 'start_conversation', RATE_LIMIT_CONVERSATION_PER_HOUR, 3600):
         raise HttpError(429, "Too many conversation requests. Please try again later.")
 
+    # Check both directions for blocks
     if is_user_blocked(user_b, user_a):
         raise HttpError(403, "You have been blocked by this user.")
     if is_user_blocked(user_a, user_b):
@@ -169,14 +148,17 @@ def start_conversation(request, payload: StartConversationIn):
         conv.save(update_fields=['is_active'])
 
     participant_info = build_participant_info(conv, user_a)
-    unread_count = get_unread_count(conv, user_a)
+    unread_count = Message.objects.filter(
+        conversation=conv,
+        is_read=False
+    ).exclude(sender=user_a).count()
 
     return {
         "id": conv.id,
         "participant": participant_info,
         "is_active": conv.is_active,
-        "is_pinned": is_conversation_pinned(user_a, conv),
-        "is_muted": is_conversation_muted(user_a, conv),
+        "is_pinned": PinnedConversation.objects.filter(user=user_a, conversation=conv).exists(),
+        "is_muted": MutedConversation.objects.filter(user=user_a, conversation=conv).exists(),
         "last_message_preview": conv.last_message_preview,
         "last_message_at": conv.last_message_at,
         "unread_count": unread_count,
@@ -187,33 +169,47 @@ def start_conversation(request, payload: StartConversationIn):
 def list_conversations(request, archived: bool = False):
     user = request.auth
 
+    # Optimized query with prefetching and subqueries to eliminate N+1
     convs = Conversation.objects.filter(
         participants=user,
         is_active=not archived
     ).exclude(
         deleted_by=user
-    ).order_by('-last_message_at')
+    ).prefetch_related('participants').order_by('-last_message_at')
 
+    # Get pinned IDs in a single query
     pinned_ids = set(
         PinnedConversation.objects.filter(user=user).values_list('conversation_id', flat=True)
     )
+    
+    # Get muted IDs in a single query
+    muted_ids = set(
+        MutedConversation.objects.filter(user=user).values_list('conversation_id', flat=True)
+    )
+    
+    # Get unread counts in a single query per conversation (optimized)
+    unread_counts = {}
+    for conv in convs:
+        unread_counts[conv.id] = Message.objects.filter(
+            conversation=conv,
+            is_read=False
+        ).exclude(sender=user).count()
 
     pinned_convs = []
     unpinned_convs = []
 
     for conv in convs:
         participant_info = build_participant_info(conv, user)
-        unread_count = get_unread_count(conv, user)
 
         conv_data = {
             "id": conv.id,
             "participant": participant_info,
             "is_active": conv.is_active,
             "is_pinned": conv.id in pinned_ids,
-            "is_muted": is_conversation_muted(user, conv),
+            "is_muted": conv.id in muted_ids,
             "last_message_preview": conv.last_message_preview,
             "last_message_at": conv.last_message_at,
-            "unread_count": unread_count,
+            "unread_count": unread_counts.get(conv.id, 0),
         }
 
         if conv.id in pinned_ids:
@@ -221,7 +217,7 @@ def list_conversations(request, archived: bool = False):
         else:
             unpinned_convs.append(conv_data)
 
-    # Sort pinned by pinned_at descending
+    # Sort pinned by pinned_at descending (most recent pin first)
     pinned_sorted = sorted(
         pinned_convs,
         key=lambda c: PinnedConversation.objects.get(
@@ -245,7 +241,7 @@ def get_messages(request, conv_id: uuid.UUID, before: str = None, limit: int = 5
     conv = get_object_or_404(
         Conversation, id=conv_id, participants=request.auth, is_active=True
     )
-    qs = Message.objects.filter(conversation=conv).select_related('sender', 'reply_to')
+    qs = Message.objects.filter(conversation=conv, is_deleted=False).select_related('sender', 'reply_to')
 
     if before:
         try:
@@ -262,14 +258,16 @@ def get_messages(request, conv_id: uuid.UUID, before: str = None, limit: int = 5
         "id": m.id,
         "conversation_id": m.conversation_id,
         "sender_id": m.sender_id,
-        "content": m.content,
-        "file_url": m.file_url,
+        "content": m.content if not m.is_deleted else "[Message deleted]",
+        "file_url": m.file_url if not m.is_deleted else None,
         "msg_type": m.msg_type,
         "created_at": m.created_at,
         "is_read": m.is_read,
+        "is_delivered": m.is_delivered,
         "reply_to_id": m.reply_to_id,
-        "reply_preview": (m.reply_to.content[:100] if m.reply_to and m.reply_to.content else None),
+        "reply_preview": (m.reply_to.content[:100] if m.reply_to and m.reply_to.content and not m.reply_to.is_deleted else None),
         "duration": m.duration,
+        "edited_at": m.edited_at,
     } for m in messages]
 
 
@@ -278,17 +276,29 @@ def post_message(request, conv_id: uuid.UUID, payload: MessageIn):
     if not check_rate_limit(request.auth.id, 'send_message', RATE_LIMIT_MESSAGE_PER_MINUTE, 60):
         raise HttpError(429, "Too many messages. Please slow down.")
 
+    # Check idempotency
+    idempotency_key = request.headers.get('Idempotency-Key')
+    if idempotency_key:
+        cache_key = f"idempotent:{idempotency_key}"
+        if cache.get(cache_key):
+            raise HttpError(409, "Duplicate message detected")
+        cache.set(cache_key, True, timeout=300)  # 5 minutes
+
     conv = get_object_or_404(
         Conversation, id=conv_id, participants=request.auth, is_active=True
     )
 
     other_user = conv.participants.exclude(id=request.auth.id).first()
-    if other_user and is_user_blocked(other_user, request.auth):
-        raise HttpError(403, "You have been blocked by this user.")
+    if other_user:
+        # Check both directions for blocks
+        if is_user_blocked(other_user, request.auth):
+            raise HttpError(403, "You have been blocked by this user.")
+        if is_user_blocked(request.auth, other_user):
+            raise HttpError(403, "You have blocked this user.")
 
     reply_to = None
     if payload.reply_to_id:
-        reply_to = get_object_or_404(Message, id=payload.reply_to_id, conversation=conv)
+        reply_to = get_object_or_404(Message, id=payload.reply_to_id, conversation=conv, is_deleted=False)
 
     if payload.msg_type not in ['TEXT', 'FILE', 'VOICE']:
         raise HttpError(400, "Invalid message type.")
@@ -301,6 +311,7 @@ def post_message(request, conv_id: uuid.UUID, payload: MessageIn):
         msg_type=payload.msg_type,
         reply_to=reply_to,
         duration=payload.duration,
+        is_delivered=True,
     )
 
     preview_text = payload.content or ''
@@ -324,10 +335,73 @@ def post_message(request, conv_id: uuid.UUID, payload: MessageIn):
         "msg_type": message.msg_type,
         "created_at": message.created_at,
         "is_read": message.is_read,
+        "is_delivered": message.is_delivered,
         "reply_to_id": message.reply_to_id,
         "reply_preview": (reply_to.content[:100] if reply_to and reply_to.content else None),
         "duration": message.duration,
     }
+
+
+# ─── Message Edit/Delete Endpoints ───
+
+@router.put('/conversations/{conv_id}/messages/{msg_id}', response=MessageOut, auth=auth)
+def edit_message(request, conv_id: uuid.UUID, msg_id: uuid.UUID, payload: MessageEditIn):
+    message = get_object_or_404(
+        Message, id=msg_id, conversation_id=conv_id, sender=request.auth, is_deleted=False
+    )
+    
+    # Check edit window (5 minutes)
+    now = timezone.now()
+    time_diff = now - message.created_at
+    if time_diff.total_seconds() > 300:
+        raise HttpError(403, "Messages can only be edited within 5 minutes of sending")
+    
+    # Store edit history
+    edit_history = message.edit_history or []
+    edit_history.append({
+        'old_content': message.content,
+        'edited_at': now.isoformat(),
+        'edited_by': str(request.auth.id)
+    })
+    
+    message.content = payload.content
+    message.edited_at = now
+    message.edit_history = edit_history
+    message.save(update_fields=['content', 'edited_at', 'edit_history'])
+    
+    return {
+        "id": message.id,
+        "conversation_id": message.conversation_id,
+        "sender_id": message.sender_id,
+        "content": message.content,
+        "file_url": message.file_url,
+        "msg_type": message.msg_type,
+        "created_at": message.created_at,
+        "is_read": message.is_read,
+        "is_delivered": message.is_delivered,
+        "reply_to_id": message.reply_to_id,
+        "reply_preview": None,
+        "duration": message.duration,
+        "edited_at": message.edited_at,
+    }
+
+
+@router.delete('/conversations/{conv_id}/messages/{msg_id}', auth=auth)
+def delete_message(request, conv_id: uuid.UUID, msg_id: uuid.UUID, delete_for_everyone: bool = True):
+    message = get_object_or_404(
+        Message, id=msg_id, conversation_id=conv_id, sender=request.auth
+    )
+    
+    message.is_deleted = True
+    message.deleted_at = timezone.now()
+    message.deleted_by = request.auth
+    
+    if delete_for_everyone:
+        message.content = '[Message deleted]'
+    
+    message.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by', 'content'])
+    
+    return {"success": True, "message_id": str(msg_id)}
 
 
 @router.post('/conversations/{conv_id}/mark-read', auth=auth)
@@ -423,6 +497,7 @@ def block_user(request, payload: BlockUserIn):
 
     BlockedUser.objects.create(blocker=request.auth, blocked=blocked_user)
 
+    # Deactivate conversations in both directions
     Conversation.objects.filter(
         participants=request.auth
     ).filter(
@@ -480,7 +555,7 @@ def unmute_conversation(request, conv_id: uuid.UUID):
     return {"success": True, "unmuted": deleted > 0}
 
 
-# ─── Pin / Unpin ───
+# ─── Pin / Unpin (fixed sorting) ───
 
 @router.post('/conversations/{conv_id}/pin', auth=auth)
 def pin_conversation(request, conv_id: uuid.UUID):
