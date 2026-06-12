@@ -142,7 +142,7 @@ class AccountService:
         return export
 
     # ============================================
-    # 2FA Helpers
+    # 2FA helpers
     # ============================================
     @staticmethod
     def create_2fa_temp_token(user):

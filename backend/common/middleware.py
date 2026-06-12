@@ -1,68 +1,46 @@
-# C:\Users\GATARA-BJTU\academe\backend\common\middleware.py
+# backend/common/middleware.py
 
-import time
 from django.utils import timezone
-from django.http import JsonResponse
+from django.core.cache import cache
+from django.contrib.auth import get_user_model
 
-
-class RateLimitMiddleware:
-    """Simple rate limiting middleware."""
-    
-    def __init__(self, get_response):
-        self.get_response = get_response
-        self.requests = {}
-
-    def __call__(self, request):
-        if request.path.startswith('/api/'):
-            client_ip = self.get_client_ip(request)
-            now = time.time()
-            
-            if client_ip in self.requests:
-                timestamps = self.requests[client_ip]
-                # Remove requests older than 60 seconds
-                self.requests[client_ip] = [t for t in timestamps if now - t < 60]
-                
-                if len(self.requests[client_ip]) > 100:  # 100 requests per minute
-                    return JsonResponse(
-                        {'error': 'Too many requests. Please slow down.'},
-                        status=429
-                    )
-                
-                self.requests[client_ip].append(now)
-            else:
-                self.requests[client_ip] = [now]
-
-        response = self.get_response(request)
-        return response
-
-    def get_client_ip(self, request):
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-        if x_forwarded_for:
-            ip = x_forwarded_for.split(',')[0].strip()
-        else:
-            ip = request.META.get('REMOTE_ADDR')
-        return ip
+User = get_user_model()
 
 
 class UpdateLastSeenMiddleware:
     """
-    Updates the authenticated user's last_seen timestamp on every API request.
-    This ensures online presence is accurate even without WebSocket activity.
+    Updates the user's last_activity timestamp on each authenticated request.
+    Throttled to once per 60 seconds to reduce database writes.
+    Uses the confirmed `last_activity` field on the User model.
     """
-    
+
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
         response = self.get_response(request)
-        
-        # Only update for authenticated API requests
-        if request.path.startswith('/api/') and hasattr(request, 'auth') and request.auth:
-            try:
-                from django.contrib.auth import get_user_model
-                User = get_user_model()
-                User.objects.filter(id=request.auth.id).update(last_seen=timezone.now())
-            except Exception:
-                pass  # Silently fail - presence is non-critical
-        
+
+        if request.user.is_authenticated:
+            cache_key = f'last_seen_throttle:{request.user.id}'
+            if not cache.get(cache_key):
+                User.objects.filter(id=request.user.id).update(
+                    last_activity=timezone.now()
+                )
+                cache.set(cache_key, True, timeout=60)
+
+        return response
+
+
+class RateLimitMiddleware:
+    """
+    Basic rate limiting middleware placeholder.
+    Specific rate limits are applied at the view/endpoint level
+    using the check_rate_limit helper in each API module.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
         return response

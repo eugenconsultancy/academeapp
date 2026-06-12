@@ -7,7 +7,7 @@ import {
   FiZap, FiPhone, FiArrowRight, FiArrowLeft,
   FiWifiOff, FiCamera, FiBookOpen, FiUsers,
   FiTrendingUp, FiMessageSquare, FiStar, FiShield,
-  FiSun, FiMoon, FiCheckCircle,
+  FiSun, FiMoon, FiCheckCircle, FiAlertCircle,
 } from 'react-icons/fi';
 
 // ------------------------------------------------------------
@@ -74,7 +74,6 @@ function OTPInput({ value, onChange, onComplete }) {
   const inputs = useRef([]);
   const hasCalledComplete = useRef(false);
 
-  // Reset the complete flag when value changes externally
   useEffect(() => {
     if (value.length < 6) {
       hasCalledComplete.current = false;
@@ -101,7 +100,6 @@ function OTPInput({ value, onChange, onComplete }) {
     const newVal = arr.join('').replace(/ /g, '').slice(0, 6);
     onChange(newVal);
     if (idx < 5) inputs.current[idx + 1]?.focus();
-    // Only call onComplete once when 6 digits are reached
     if (newVal.length === 6 && !hasCalledComplete.current) {
       hasCalledComplete.current = true;
       onComplete?.(newVal);
@@ -141,7 +139,7 @@ function OTPInput({ value, onChange, onComplete }) {
           style={{
             width: 44, height: 52,
             borderRadius: 12,
-            border: value[idx] ? '2px solid #3d3fc0' : '2px solid #e5e7eb',
+            border: value[idx] ? '2px solid #6366f1' : '2px solid #e5e7eb',
             background: value[idx] ? 'rgba(99,102,241,0.06)' : '#f9fafb',
             textAlign: 'center',
             fontSize: '1.3rem',
@@ -192,7 +190,7 @@ function StepProgress({ step }) {
                   : <span style={{ fontSize: '0.75rem', fontWeight: 700, color: active ? '#fff' : '#9ca3af' }}>{i + 1}</span>
                 }
               </div>
-              <span style={{ fontSize: '0.65rem', fontWeight: 600, color: (done || active) ? '#3234b9' : '#9ca3af', letterSpacing: '0.02em' }}>
+              <span style={{ fontSize: '0.65rem', fontWeight: 600, color: (done || active) ? '#6366f1' : '#9ca3af', letterSpacing: '0.02em' }}>
                 {s.label}
               </span>
             </div>
@@ -235,7 +233,7 @@ function AuthMethodTabs({ method, onChange }) {
           style={{
             flex: 1, padding: '8px 12px', border: 'none', borderRadius: 10,
             background: method === tab.id ? '#fff' : 'transparent',
-            color: method === tab.id ? '#3f41bb' : '#6b7280',
+            color: method === tab.id ? '#6366f1' : '#6b7280',
             fontWeight: method === tab.id ? 700 : 500,
             fontSize: '0.82rem',
             cursor: 'pointer',
@@ -265,9 +263,16 @@ export default function LoginPage() {
   const [authMethod, setAuthMethod] = useState('otp');
   const [carouselIdx, setCarouselIdx] = useState(0);
   const [greeting, setGreeting] = useState({ text: '', icon: null });
-  const verifyingRef = useRef(false); // Prevent double verification
 
-  const { login, biometricLogin } = useAuth();
+  // 2FA Modal State
+  const [show2FAModal, setShow2FAModal] = useState(false);
+  const [tempToken, setTempToken] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [verifying2FA, setVerifying2FA] = useState(false);
+
+  const verifyingRef = useRef(false);
+
+  const { login, biometricLogin, verify2FALogin } = useAuth();
   const navigate = useNavigate();
 
   // Greeting
@@ -320,7 +325,6 @@ export default function LoginPage() {
   const verifyOTP = async (e) => {
     if (e?.preventDefault) e.preventDefault();
 
-    // Prevent double verification
     if (verifyingRef.current) return;
 
     if (otp.length < 6) {
@@ -332,13 +336,22 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await login(phone, otp);
+      const result = await login(phone, otp);
+
+      // Check if 2FA is required
+      if (result?.require_2fa) {
+        setTempToken(result.temp_token);
+        setShow2FAModal(true);
+        setLoading(false);
+        verifyingRef.current = false;
+        return;
+      }
+
       setStep('done');
       toast.success('Welcome back! 🎉');
       setTimeout(() => navigate('/'), 800);
     } catch (err) {
       const errorMsg = err.response?.data?.error || err.message || 'Invalid OTP. Try again.';
-      // Only show error if it's a real failure, not a race condition
       if (errorMsg !== 'Invalid OTP. Try again.' || !verifyingRef.current) {
         toast.error(errorMsg);
       }
@@ -349,13 +362,31 @@ export default function LoginPage() {
     }
   };
 
+  // ✅ FIXED: Handle biometric login with 2FA support
   const handleBiometricLogin = async () => {
-    if (!phone.trim() || phone.length < 10) { toast.error('Enter your phone number first'); return; }
+    if (!phone.trim() || phone.length < 10) {
+      toast.error('Enter your phone number first');
+      return;
+    }
     setLoading(true);
     try {
       const img = await captureImageFromCamera();
-      if (!img) { toast('Biometric login cancelled', { icon: '📷' }); setLoading(false); return; }
-      await biometricLogin(phone, img);
+      if (!img) {
+        toast('Biometric login cancelled', { icon: '📷' });
+        setLoading(false);
+        return;
+      }
+
+      const result = await biometricLogin(phone, img);
+
+      // Check if 2FA is required
+      if (result?.require_2fa) {
+        setTempToken(result.temp_token);
+        setShow2FAModal(true);
+        setLoading(false);
+        return;
+      }
+
       toast.success('Face recognised! ✨');
       navigate('/');
     } catch (err) {
@@ -369,10 +400,28 @@ export default function LoginPage() {
     }
   };
 
+  // ✅ FIXED: Handle 2FA verification
+  const handleVerify2FA = async () => {
+    if (twoFactorCode.length < 6) {
+      toast.error('Enter 6-digit code');
+      return;
+    }
+    setVerifying2FA(true);
+    try {
+      await verify2FALogin(tempToken, twoFactorCode);
+      setShow2FAModal(false);
+      toast.success('2FA verified! Welcome back! 🎉');
+      setTimeout(() => navigate('/'), 800);
+    } catch (err) {
+      toast.error(err.message || 'Invalid 2FA code');
+      setTwoFactorCode('');
+    } finally {
+      setVerifying2FA(false);
+    }
+  };
+
   const handleOTPComplete = useCallback((val) => {
     setOtp(val);
-    // Don't auto-verify here - let the user click the button or the form handle it
-    // The onComplete is just for setting the value
   }, []);
 
   const feat = FEATURES[carouselIdx];
@@ -491,7 +540,7 @@ export default function LoginPage() {
 
         .lp-logo-mark {
           width: 60px; height: 60px;
-          background: linear-gradient(135deg, #4e50c0 0%, #8b5cf6 50%, #a78bfa 100%);
+          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a78bfa 100%);
           border-radius: 17px;
           display: flex; align-items: center; justify-content: center;
           margin: 0 auto 0.9rem;
@@ -502,7 +551,7 @@ export default function LoginPage() {
           font-family: 'Bricolage Grotesque', sans-serif;
           font-size: 1.75rem; font-weight: 800;
           letter-spacing: -0.04em;
-          background: linear-gradient(135deg, #5052c2, #5a2ebe, #a78bfa);
+          background: linear-gradient(135deg, #6366f1, #8b5cf6, #a78bfa);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -518,9 +567,8 @@ export default function LoginPage() {
           line-height: 1.5;
           margin-bottom: 0.6rem;
         }
-        .lp-tagline-hl { color: #5658d1; font-weight: 600; }
+        .lp-tagline-hl { color: #6366f1; font-weight: 600; }
 
-        /* Social proof */
         .lp-social-proof {
           display: flex;
           justify-content: center;
@@ -550,7 +598,6 @@ export default function LoginPage() {
           white-space: nowrap;
         }
 
-        /* Carousel */
         .lp-carousel {
           background: linear-gradient(135deg, rgba(99,102,241,0.06), rgba(139,92,246,0.06));
           border: 1px solid rgba(99,102,241,0.12);
@@ -594,7 +641,6 @@ export default function LoginPage() {
           transition: all 0.3s ease;
         }
 
-        /* Offline */
         .lp-offline {
           display: flex;
           align-items: center;
@@ -609,7 +655,6 @@ export default function LoginPage() {
           margin-bottom: 1rem;
         }
 
-        /* Form */
         .lp-label {
           display: block;
           font-size: 0.76rem;
@@ -692,7 +737,7 @@ export default function LoginPage() {
 
         .lp-back {
           width: 100%; padding: 0.55rem; border: none;
-          background: transparent; color: #4a4e53;
+          background: transparent; color: #6b7280;
           font-family: 'Outfit', sans-serif; font-size: 0.78rem;
           font-weight: 500; cursor: pointer;
           display: flex; align-items: center; justify-content: center; gap: 0.4rem;
@@ -703,7 +748,7 @@ export default function LoginPage() {
         .lp-divider {
           display: flex; align-items: center; gap: 0.6rem;
           margin: 0.75rem 0;
-          color: #2c2e33; font-size: 0.68rem; font-weight: 600;
+          color: #6b7280; font-size: 0.68rem; font-weight: 600;
           text-transform: uppercase; letter-spacing: 0.06em;
         }
         .lp-divider::before, .lp-divider::after {
@@ -715,10 +760,10 @@ export default function LoginPage() {
           font-size: 0.8rem; color: #6b7280;
         }
         .lp-footer a {
-          color: #393bcc; font-weight: 700;
+          color: #6366f1; font-weight: 700;
           text-decoration: none; transition: color 0.15s;
         }
-        .lp-footer a:hover { color: #403aa8; text-decoration: underline; }
+        .lp-footer a:hover { color: #4f46e5; text-decoration: underline; }
 
         .lp-spinner {
           width: 16px; height: 16px;
@@ -727,6 +772,44 @@ export default function LoginPage() {
           border-radius: 50%;
           animation: lp-spin 0.75s linear infinite;
           flex-shrink: 0;
+        }
+
+        /* 2FA Modal Styles */
+        .lp-modal-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 1000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+          background: rgba(0,0,0,0.5);
+          backdrop-filter: blur(8px);
+          animation: lp-slideUp 0.2s ease;
+        }
+        .lp-modal {
+          background: #fff;
+          border-radius: 24px;
+          max-width: 400px;
+          width: 100%;
+          padding: 24px;
+          box-shadow: 0 24px 48px rgba(0,0,0,0.2);
+        }
+        .dark .lp-modal {
+          background: #1e293b;
+        }
+        .lp-modal h2 {
+          font-size: 1.25rem;
+          font-weight: 700;
+          margin-bottom: 0.5rem;
+        }
+        .lp-modal p {
+          font-size: 0.85rem;
+          color: #64748b;
+          margin-bottom: 1rem;
+        }
+        .dark .lp-modal p {
+          color: #94a3b8;
         }
 
         @media (max-width: 480px) {
@@ -781,7 +864,7 @@ export default function LoginPage() {
                 className="lp-carousel-dot"
                 style={{
                   width: i === carouselIdx ? 18 : 6,
-                  background: i === carouselIdx ? '#3032a7' : '#e5e7eb',
+                  background: i === carouselIdx ? '#6366f1' : '#e5e7eb',
                 }}
               />
             ))}
@@ -828,7 +911,7 @@ export default function LoginPage() {
                 <label className="lp-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span>Verification Code</span>
                   {resendTimer > 0 && (
-                    <span style={{ color: '#303133', fontWeight: 400, fontSize: '0.7rem' }}>Resend in {resendTimer}s</span>
+                    <span style={{ color: '#6b7280', fontWeight: 400, fontSize: '0.7rem' }}>Resend in {resendTimer}s</span>
                   )}
                 </label>
                 <span className="lp-helper" style={{ marginBottom: '0.5rem', display: 'block' }}>
@@ -879,7 +962,7 @@ export default function LoginPage() {
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             gap: '0.4rem', marginTop: '0.85rem',
-            fontSize: '0.68rem', color: '#191a1b', fontWeight: 500,
+            fontSize: '0.68rem', color: '#6b7280', fontWeight: 500,
           }}>
             <FiShield size={11} /> End-to-end encrypted &nbsp;·&nbsp; No passwords stored
           </div>
@@ -890,6 +973,95 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
+
+      {/* 2FA Verification Modal */}
+      {show2FAModal && (
+        <div className="lp-modal-overlay">
+          <div className="lp-modal">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <div style={{
+                width: 48, height: 48,
+                borderRadius: 12,
+                background: 'rgba(99,102,241,0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                <FiShield size={24} style={{ color: '#6366f1' }} />
+              </div>
+              <div>
+                <h2>Two-Factor Authentication</h2>
+                <p style={{ fontSize: '0.75rem', marginTop: '2px' }}>Enter the code from your authenticator app</p>
+              </div>
+            </div>
+
+            <input
+              type="text"
+              value={twoFactorCode}
+              onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="000000"
+              maxLength={6}
+              autoFocus
+              style={{
+                width: '100%',
+                padding: '14px',
+                textAlign: 'center',
+                fontSize: '1.5rem',
+                letterSpacing: '4px',
+                fontWeight: 600,
+                borderRadius: 12,
+                border: '2px solid #e5e7eb',
+                outline: 'none',
+                marginBottom: '16px',
+                fontFamily: 'monospace',
+              }}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && twoFactorCode.length === 6) {
+                  handleVerify2FA();
+                }
+              }}
+            />
+
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                onClick={() => {
+                  setShow2FAModal(false);
+                  setTwoFactorCode('');
+                }}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  borderRadius: 12,
+                  border: '1.5px solid #e5e7eb',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  color: '#6b7280',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleVerify2FA}
+                disabled={verifying2FA || twoFactorCode.length < 6}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  borderRadius: 12,
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                  color: '#fff',
+                  cursor: verifying2FA || twoFactorCode.length < 6 ? 'not-allowed' : 'pointer',
+                  fontWeight: 600,
+                  opacity: verifying2FA || twoFactorCode.length < 6 ? 0.5 : 1,
+                }}
+              >
+                {verifying2FA ? 'Verifying...' : 'Verify'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -235,6 +235,7 @@ export const attendanceService = {
                         heading: position.coords.heading,
                         speed: position.coords.speed,
                         timestamp: position.timestamp,
+                        // timestamp: position.timestamp,
                     };
                     resolve(result);
                 },

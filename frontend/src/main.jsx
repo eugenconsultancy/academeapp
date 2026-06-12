@@ -19,7 +19,7 @@ import './styles/fonts.css';
 import './index.css';
 
 // ═══════════════════════════════════════════════════════════════
-// CRITICAL-PATH VIEWPORT HEIGHT INITIALISATION
+// CRITICAL-PATH VIEWPORT HEIGHT INITIALISATION to resolve the keyboard masking issues
 //
 // Run synchronously (before React mounts) so there is never a
 // frame where --visual-vh is missing and elements flash to

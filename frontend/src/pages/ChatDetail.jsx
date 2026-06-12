@@ -1,1025 +1,593 @@
-// C:\Users\GATARA-BJTU\academe\frontend\src\pages\ChatDetail.jsx
-
-import React, { useEffect, useState, useMemo } from 'react';
+// src/pages/ChatDetail.jsx
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useChatStore } from '../stores/useChatStore';
+import useChatStore from '../stores/useChatStore';
 import { useAuth } from '../contexts/AuthContext';
-import ChatWindow from '../components/chat/ChatWindow';
-import MessageInput from '../components/chat/MessageInput';
 import { chatApi } from '../api/chatApi';
-import { FiArrowLeft, FiSearch, FiMoreVertical, FiX, FiArrowDown } from 'react-icons/fi';
+import MessageBubble from '../components/chat/MessageBubble';
+import MessageInput from '../components/chat/MessageInput';
+import ConfirmDialog from '../components/chat/ConfirmDialog';
+import ReportModal from '../components/chat/ReportModal';
 import toast from 'react-hot-toast';
+import { format } from 'date-fns';
 
-/* ─── Modern Design System ─── */
-const STYLE = `
-  @import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
-
-  :root {
-    /* Light Mode */
-    --chat-bg-light: #ffffff;
-    --chat-surface-light: #f8f9fa;
-    --chat-surface2-light: #eef0f5;
-    --chat-border-light: rgba(0,0,0,0.08);
-    --chat-text-light: #1a1d23;
-    --chat-muted-light: #6b7280;
-    --chat-accent: #3b82f6;
-    --chat-accent-alt: #6366f1;
-    --chat-accent-glow: rgba(59, 130, 246, 0.15);
-    
-    /* Dark Mode */
-    --chat-bg-dark: #0f1419;
-    --chat-surface-dark: #1a2332;
-    --chat-surface2-dark: #243447;
-    --chat-border-dark: rgba(255,255,255,0.08);
-    --chat-text-dark: #e5e7eb;
-    --chat-muted-dark: #9ca3af;
-    
-    /* Status colors */
-    --chat-online: #10b981;
-    --chat-away: #f59e0b;
-    --chat-offline: #6b7280;
-    
-    /* Active theme defaults to dark */
-    --chat-bg: var(--chat-bg-dark);
-    --chat-surface: var(--chat-surface-dark);
-    --chat-surface2: var(--chat-surface2-dark);
-    --chat-border: var(--chat-border-dark);
-    --chat-text: var(--chat-text-dark);
-    --chat-muted: var(--chat-muted-dark);
-  }
-
-  html.light-mode {
-    --chat-bg: var(--chat-bg-light);
-    --chat-surface: var(--chat-surface-light);
-    --chat-surface2: var(--chat-surface2-light);
-    --chat-border: var(--chat-border-light);
-    --chat-text: var(--chat-text-light);
-    --chat-muted: var(--chat-muted-light);
-  }
-
-  * {
-    box-sizing: border-box;
-  }
-
-  .cd-container {
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    background: var(--chat-bg);
-    color: var(--chat-text);
-    font-family: 'Geist', system-ui, sans-serif;
-    position: relative;
-    overflow: hidden;
-    transition: background-color 0.3s ease, color 0.3s ease;
-  }
-
-  .cd-container::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    right: -40%;
-    width: 600px;
-    height: 600px;
-    background: radial-gradient(circle, var(--chat-accent-glow) 0%, transparent 70%);
-    pointer-events: none;
-    z-index: 0;
-    transition: opacity 0.3s ease;
-  }
-
-  /* ─── Header ─── */
-  .cd-header {
-    position: relative;
-    z-index: 10;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
-    background: rgba(var(--chat-surface-rgb), 0.7);
-    backdrop-filter: blur(24px);
-    border-bottom: 1px solid var(--chat-border);
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-    animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  @keyframes slideDown {
-    from { opacity: 0; transform: translateY(-12px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-
-  .cd-back-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    background: var(--chat-surface2);
-    border: 1px solid var(--chat-border);
-    color: var(--chat-muted);
-    cursor: pointer;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
-  }
-
-  .cd-back-btn:hover {
-    background: var(--chat-accent);
-    border-color: var(--chat-accent);
-    color: #ffffff;
-    transform: translateX(-1px);
-  }
-
-  .cd-header-identity {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .cd-avatar-wrap {
-    position: relative;
-    flex-shrink: 0;
-  }
-
-  .cd-avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, var(--chat-accent), var(--chat-accent-alt));
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 16px;
-    font-weight: 700;
-    color: #ffffff;
-    box-shadow: 0 4px 12px var(--chat-accent-glow);
-  }
-
-  .cd-online-ring {
-    position: absolute;
-    bottom: -2px;
-    right: -2px;
-    width: 12px;
-    height: 12px;
-    background: var(--chat-online);
-    border-radius: 50%;
-    border: 2px solid var(--chat-bg);
-    box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
-  }
-
-  .cd-header-text {
-    min-width: 0;
-    flex: 1;
-  }
-
-  .cd-header-name {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--chat-text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    line-height: 1.2;
-  }
-
-  .cd-header-meta {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    color: var(--chat-muted);
-    font-family: 'Geist Mono', monospace;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .cd-header-meta.online {
-    color: var(--chat-online);
-  }
-
-  .cd-header-actions {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
-  }
-
-  .cd-icon-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    background: var(--chat-surface2);
-    border: 1px solid var(--chat-border);
-    color: var(--chat-muted);
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .cd-icon-btn:hover {
-    background: var(--chat-accent);
-    border-color: var(--chat-accent);
-    color: #ffffff;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px var(--chat-accent-glow);
-  }
-
-  /* ─── Search Modal ─── */
-  .cd-search-modal {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(4px);
-    z-index: 40;
-    animation: fadeIn 0.2s ease;
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-
-  .cd-search-panel {
-    position: absolute;
-    top: 70px;
-    left: 16px;
-    right: 16px;
-    max-width: 500px;
-    background: var(--chat-surface);
-    border: 1px solid var(--chat-border);
-    border-radius: 16px;
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
-    animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    z-index: 50;
-    max-height: 380px;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .cd-search-input-wrap {
-    position: relative;
-    padding: 12px;
-    border-bottom: 1px solid var(--chat-border);
-  }
-
-  .cd-search-icon {
-    position: absolute;
-    left: 16px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--chat-muted);
-    pointer-events: none;
-  }
-
-  .cd-search-input {
-    width: 100%;
-    padding: 10px 14px 10px 36px;
-    background: var(--chat-surface2);
-    border: 1px solid var(--chat-border);
-    border-radius: 10px;
-    color: var(--chat-text);
-    font-family: 'Geist', sans-serif;
-    font-size: 14px;
-    outline: none;
-    transition: all 0.2s ease;
-  }
-
-  .cd-search-input::placeholder {
-    color: var(--chat-muted);
-  }
-
-  .cd-search-input:focus {
-    border-color: var(--chat-accent);
-    box-shadow: 0 0 0 3px var(--chat-accent-glow);
-  }
-
-  .cd-search-results {
-    flex: 1;
-    overflow-y: auto;
-    padding: 8px;
-  }
-
-  .cd-search-result-item {
-    padding: 12px;
-    margin-bottom: 4px;
-    background: var(--chat-surface2);
-    border-radius: 10px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .cd-search-result-item:hover {
-    background: var(--chat-accent-glow);
-  }
-
-  .cd-search-result-text {
-    font-size: 13px;
-    color: var(--chat-text);
-    margin-bottom: 4px;
-  }
-
-  .cd-search-result-meta {
-    font-size: 11px;
-    color: var(--chat-muted);
-    font-family: 'Geist Mono', monospace;
-  }
-
-  .cd-search-empty {
-    padding: 32px 16px;
-    text-align: center;
-    color: var(--chat-muted);
-    font-size: 13px;
-  }
-
-  .cd-search-results::-webkit-scrollbar {
-    width: 4px;
-  }
-
-  .cd-search-results::-webkit-scrollbar-thumb {
-    background: var(--chat-border);
-    border-radius: 2px;
-  }
-
-  /* ─── Messages Container ─── */
-  .cd-messages {
-    position: relative;
-    z-index: 1;
-    flex: 1;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .cd-loading {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    gap: 16px;
-    color: var(--chat-muted);
-  }
-
-  .cd-loading-dots {
-    display: flex;
-    gap: 8px;
-  }
-
-  .cd-loading-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--chat-accent);
-    animation: bounce 1.4s ease-in-out infinite;
-  }
-
-  .cd-loading-dot:nth-child(2) {
-    animation-delay: 0.2s;
-  }
-
-  .cd-loading-dot:nth-child(3) {
-    animation-delay: 0.4s;
-  }
-
-  @keyframes bounce {
-    0%, 80%, 100% {
-      transform: scale(0.8);
-      opacity: 0.4;
-    }
-    40% {
-      transform: scale(1);
-      opacity: 1;
-    }
-  }
-
-  .cd-loading-text {
-    font-size: 13px;
-    font-family: 'Geist Mono', monospace;
-    letter-spacing: 0.05em;
-  }
-
-  /* ─── Info Drawer ─── */
-  .cd-drawer-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(4px);
-    z-index: 30;
-    animation: fadeIn 0.2s ease;
-  }
-
-  .cd-drawer {
-    position: fixed;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    width: 320px;
-    background: var(--chat-surface);
-    border-left: 1px solid var(--chat-border);
-    z-index: 40;
-    display: flex;
-    flex-direction: column;
-    animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    box-shadow: -4px 0 12px rgba(0, 0, 0, 0.12);
-  }
-
-  @keyframes slideInRight {
-    from {
-      transform: translateX(100%);
-      opacity: 0;
-    }
-    to {
-      transform: translateX(0);
-      opacity: 1;
-    }
-  }
-
-  .cd-drawer-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px;
-    border-bottom: 1px solid var(--chat-border);
-    flex-shrink: 0;
-  }
-
-  .cd-drawer-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--chat-text);
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    font-family: 'Geist Mono', monospace;
-  }
-
-  .cd-drawer-close {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    background: var(--chat-surface2);
-    border: 1px solid var(--chat-border);
-    color: var(--chat-muted);
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .cd-drawer-close:hover {
-    background: var(--chat-accent);
-    border-color: var(--chat-accent);
-    color: #ffffff;
-  }
-
-  .cd-drawer-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px;
-  }
-
-  .cd-drawer-section {
-    margin-bottom: 24px;
-  }
-
-  .cd-drawer-section-title {
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--chat-muted);
-    font-family: 'Geist Mono', monospace;
-    margin-bottom: 12px;
-    font-weight: 600;
-  }
-
-  .cd-drawer-user-card {
-    background: var(--chat-surface2);
-    border-radius: 12px;
-    padding: 16px;
-    text-align: center;
-    margin-bottom: 12px;
-  }
-
-  .cd-drawer-user-avatar {
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, var(--chat-accent), var(--chat-accent-alt));
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
-    font-weight: 700;
-    color: #ffffff;
-    margin: 0 auto 12px;
-  }
-
-  .cd-drawer-user-name {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--chat-text);
-    margin-bottom: 4px;
-  }
-
-  .cd-drawer-user-meta {
-    font-size: 12px;
-    color: var(--chat-muted);
-    margin-bottom: 8px;
-  }
-
-  .cd-drawer-user-status {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    color: var(--chat-online);
-    font-weight: 500;
-  }
-
-  .cd-drawer-button {
-    width: 100%;
-    padding: 10px;
-    margin-top: 8px;
-    background: var(--chat-surface);
-    border: 1px solid var(--chat-border);
-    border-radius: 10px;
-    color: var(--chat-text);
-    font-family: 'Geist', sans-serif;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .cd-drawer-button:hover {
-    background: var(--chat-accent-glow);
-    border-color: var(--chat-accent);
-    color: var(--chat-accent);
-  }
-
-  .cd-drawer-button.danger {
-    color: #ef4444;
-    border-color: rgba(239, 68, 68, 0.2);
-  }
-
-  .cd-drawer-button.danger:hover {
-    background: rgba(239, 68, 68, 0.1);
-    border-color: #ef4444;
-  }
-
-  .cd-drawer-content::-webkit-scrollbar {
-    width: 4px;
-  }
-
-  .cd-drawer-content::-webkit-scrollbar-thumb {
-    background: var(--chat-border);
-    border-radius: 2px;
-  }
-
-  /* ─── Scroll to Bottom Button ─── */
-  .cd-scroll-btn {
-    position: absolute;
-    bottom: 80px;
-    right: 20px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    background: linear-gradient(135deg, var(--chat-accent), var(--chat-accent-alt));
-    color: #ffffff;
-    border: none;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    box-shadow: 0 4px 12px var(--chat-accent-glow);
-    animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    z-index: 5;
-  }
-
-  @keyframes slideUp {
-    from {
-      opacity: 0;
-      transform: translateY(12px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  .cd-scroll-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.35);
-  }
-
-  /* ─── Responsive ─── */
-  @media (max-width: 640px) {
-    .cd-header {
-      padding: 10px 12px;
-    }
-
-    .cd-back-btn {
-      width: 32px;
-      height: 32px;
-    }
-
-    .cd-avatar {
-      width: 36px;
-      height: 36px;
-      font-size: 14px;
-    }
-
-    .cd-header-name {
-      font-size: 14px;
-    }
-
-    .cd-header-meta {
-      display: none;
-    }
-
-    .cd-search-panel {
-      left: 12px;
-      right: 12px;
-      max-width: none;
-    }
-
-    .cd-icon-btn {
-      width: 32px;
-      height: 32px;
-    }
-
-    .cd-drawer {
-      width: 100%;
-    }
-  }
-`;
-
-export default function ChatDetail() {
+const ChatDetail = () => {
   const { conversationId } = useParams();
   const navigate = useNavigate();
+  const messagesEndRef = useRef(null);
+
+  // Get current user from AuthContext using the useAuth hook
   const { user } = useAuth();
-  const setActiveConversation = useChatStore(s => s.setActiveConversation);
-  const connectWebSocket = useChatStore(s => s.connectWebSocket);
-  const disconnectWebSocket = useChatStore(s => s.disconnectWebSocket);
-  const fetchMessages = useChatStore(s => s.setMessages);
-  const [loading, setLoading] = useState(true);
-  const [otherParticipant, setOtherParticipant] = useState(null);
-  const [showSearch, setShowSearch] = useState(false);
+  const currentUserId = user?.id;
+
+  // ─── Store ───
+  const {
+    conversations,
+    archivedConversations,
+    messages,
+    loadingMessages,
+    socket,
+    isSocketConnected,
+    blockedUserIds,
+    fetchMessages,
+    addMessage,
+    setActiveConversation,
+    setUserId,
+    fetchBlockedUsers,
+    blockUser,
+    unblockUser,
+    toggleMute,
+    togglePin,
+    archiveConversation,
+    deleteConversation,
+    markMessagesAsRead,
+  } = useChatStore();
+
+  // Set userId in store when auth user changes
+  useEffect(() => {
+    if (currentUserId) {
+      setUserId(currentUserId);
+    }
+  }, [currentUserId, setUserId]);
+
+  // ─── Local State ───
   const [showDrawer, setShowDrawer] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
-  const [showScrollBtn, setShowScrollBtn] = useState(false);
-  const conversations = useChatStore(s => s.conversations);
-  const messages = useChatStore(s => s.messages[conversationId] || []);
+  const [otherParticipant, setOtherParticipant] = useState(null);
+  const [typingUser, setTypingUser] = useState(null);
+  const [replyingTo, setReplyingTo] = useState(null);
 
-  // Find other participant from conversations list
+  // Confirmation dialogs
+  const [confirmBlock, setConfirmBlock] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useState(false);
+
+  // Report modal
+  const [showReport, setShowReport] = useState(false);
+
+  // Loading states for actions
+  const [isBlocking, setIsBlocking] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
+
+  // ─── Find conversation & participant ───
+  const conversation =
+    conversations.find((c) => c.id === conversationId) ||
+    archivedConversations.find((c) => c.id === conversationId);
+
   useEffect(() => {
-    const conv = conversations.find(c => c.id === conversationId);
-    if (conv && user) {
-      const participant = conv.participant;
-      setOtherParticipant({
-        id: participant?.id,
-        name: participant?.full_name || 'Unknown',
-        class: participant?.class_name || 'Student',
-        status: participant?.is_online ? 'online' : 'offline',
-        lastActive: participant?.last_active || '—',
-        avatar: participant?.avatar_url,
-      });
+    if (conversation) {
+      setOtherParticipant(conversation.participant);
+      setActiveConversation(conversationId);
     }
-  }, [conversationId, conversations, user]);
+  }, [conversation, conversationId, setActiveConversation]);
 
-  // Load conversation
+  // ─── Fetch Messages ───
   useEffect(() => {
-    if (!conversationId || conversationId === 'undefined') {
-      setLoading(false);
-      return;
+    if (conversationId) {
+      fetchMessages(conversationId);
     }
+  }, [conversationId, fetchMessages]);
 
-    setActiveConversation({ id: conversationId });
-    connectWebSocket(conversationId);
-
-    chatApi.getMessages(conversationId, null, 30).then(res => {
-      fetchMessages(conversationId, res.data.reverse());
-      setLoading(false);
-    }).catch(() => {
-      setLoading(false);
-    });
-
-    return () => {
-      disconnectWebSocket();
-    };
-  }, [conversationId, setActiveConversation, connectWebSocket, disconnectWebSocket, fetchMessages]);
-
-  // Auto-mark messages as read when conversation loads
+  // ─── Mark Messages as Read ───
   useEffect(() => {
-    if (!loading && conversationId && messages.length > 0) {
+    if (!loadingMessages && conversationId && messages.length > 0) {
       chatApi.markAsRead(conversationId).catch(() => { });
     }
-  }, [loading, conversationId, messages.length]);
+  }, [loadingMessages, conversationId, messages.length]);
 
-  // Search functionality
-  const handleSearch = (query) => {
-    setSearchQuery(query);
-    if (!query.trim()) {
-      setSearchResults([]);
-      return;
-    }
+  // ─── Fetch Blocked Users on Mount ───
+  useEffect(() => {
+    fetchBlockedUsers();
+  }, [fetchBlockedUsers]);
 
-    const results = messages
-      .filter(msg =>
-        msg.content?.toLowerCase().includes(query.toLowerCase()) &&
-        msg.msg_type === 'TEXT'
-      )
-      .map((msg) => ({
-        ...msg,
-        preview: msg.content.substring(0, 50) + (msg.content.length > 50 ? '...' : ''),
-      }));
+  // ─── Scroll to Bottom ───
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
-    setSearchResults(results.slice(0, 10));
-  };
+  // ─── WebSocket Message Handling ───
+  useEffect(() => {
+    if (!socket) return;
 
-  const scrollToMessage = (messageId) => {
-    setShowSearch(false);
-    setSearchQuery('');
-    setSearchResults([]);
-    const element = document.getElementById(`msg-${messageId}`);
-    element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    element?.classList.add('highlight');
-  };
+    const handleMessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
 
-  const handleScroll = (e) => {
-    const element = e.target;
-    const isNearBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 100;
-    setShowScrollBtn(!isNearBottom);
-  };
+        switch (data.type) {
+          case 'chat_message': {
+            const msg = data.message || data;
+            if (msg.conversation_id === conversationId) {
+              addMessage(msg);
+            }
+            break;
+          }
 
-  const scrollToBottom = () => {
-    const messagesContainer = document.querySelector('.cd-messages');
-    if (messagesContainer) {
-      messagesContainer.scrollTop = messagesContainer.scrollHeight;
-    }
-  };
+          case 'typing':
+            if (data.user_id !== currentUserId) {
+              setTypingUser(data.is_typing ? data.user_name : null);
+              if (!data.is_typing) {
+                setTimeout(() => setTypingUser(null), 500);
+              }
+            }
+            break;
 
-  // ── Drawer Action Handlers ──
-  const handleViewProfile = () => {
-    setShowDrawer(false);
-    if (otherParticipant?.id) {
-      navigate(`/profile/${otherParticipant.id}`);
-    }
-  };
+          case 'presence':
+            setOtherParticipant((prev) =>
+              prev
+                ? { ...prev, is_online: data.is_online }
+                : prev
+            );
+            break;
+
+          case 'messages_read':
+            if (data.conversation_id === conversationId) {
+              markMessagesAsRead(conversationId, data.read_by);
+            }
+            break;
+
+          case 'error':
+            toast.error(data.message);
+            break;
+
+          default:
+            break;
+        }
+      } catch (err) {
+        // Ignore non-JSON messages
+      }
+    };
+
+    socket.addEventListener('message', handleMessage);
+    return () => socket.removeEventListener('message', handleMessage);
+  }, [socket, conversationId, currentUserId, addMessage, markMessagesAsRead]);
+
+  // ─── Actions ───
 
   const handleBlockUser = async () => {
-    if (!otherParticipant?.id) return;
-    if (!confirm(`Block ${otherParticipant.name}? They won't be able to message you.`)) return;
-    try {
-      await chatApi.blockUser(otherParticipant.id);
-      toast.success(`${otherParticipant.name} blocked`);
+    setIsBlocking(true);
+    const success = await blockUser(otherParticipant.id);
+    setIsBlocking(false);
+    setConfirmBlock(false);
+    if (success) {
+      toast.success('User blocked');
       setShowDrawer(false);
       navigate('/chats');
-    } catch (err) {
+    } else {
       toast.error('Failed to block user');
     }
   };
 
-  const handleDeleteChat = async () => {
-    if (!confirm('Permanently delete this conversation?')) return;
-    try {
-      await chatApi.deleteConversation(conversationId);
-      toast.success('Conversation deleted');
-      setShowDrawer(false);
-      navigate('/chats');
-    } catch (err) {
-      toast.error('Failed to delete conversation');
+  const handleUnblockUser = async () => {
+    const success = await unblockUser(otherParticipant.id);
+    if (success) {
+      toast.success('User unblocked');
+    } else {
+      toast.error('Failed to unblock user');
     }
   };
 
-  const handleArchiveChat = async () => {
-    try {
-      await chatApi.archiveConversation(conversationId);
+  const handleToggleMute = async () => {
+    const success = await toggleMute(conversationId, conversation?.is_muted);
+    if (success) {
+      toast.success(
+        conversation?.is_muted
+          ? 'Notifications unmuted'
+          : 'Notifications muted'
+      );
+    } else {
+      toast.error('Failed to update mute settings');
+    }
+  };
+
+  const handleTogglePin = async () => {
+    const success = await togglePin(conversationId, conversation?.is_pinned);
+    if (success) {
+      toast.success(
+        conversation?.is_pinned ? 'Conversation unpinned' : 'Conversation pinned'
+      );
+    } else {
+      toast.error('Failed to update pin settings');
+    }
+  };
+
+  const handleArchive = async () => {
+    setIsArchiving(true);
+    const success = await archiveConversation(conversationId);
+    setIsArchiving(false);
+    setConfirmArchive(false);
+    if (success) {
       toast.success('Conversation archived');
       setShowDrawer(false);
       navigate('/chats');
-    } catch (err) {
+    } else {
       toast.error('Failed to archive conversation');
     }
   };
 
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    const success = await deleteConversation(conversationId);
+    setIsDeleting(false);
+    setConfirmDelete(false);
+    if (success) {
+      toast.success('Conversation deleted');
+      setShowDrawer(false);
+      navigate('/chats');
+    } else {
+      toast.error('Failed to delete conversation');
+    }
+  };
+
+  const handleViewProfile = () => {
+    setShowDrawer(false);
+    navigate(`/profile/${otherParticipant?.id}`);
+  };
+
+  // Correctly determine reply sender name
+  const handleReply = (message) => {
+    const isMyMessage = message.sender_id === currentUserId;
+    setReplyingTo({
+      id: message.id,
+      senderName: isMyMessage
+        ? user?.full_name || 'You'
+        : otherParticipant?.full_name || 'User',
+      preview: message.content?.substring(0, 100) || 'File attachment',
+    });
+  };
+
+  const cancelReply = () => setReplyingTo(null);
+
+  // ─── Search ───
+  const handleSearch = () => {
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    const query = searchQuery.toLowerCase();
+    const results = messages.filter(
+      (m) =>
+        m.msg_type === 'TEXT' && m.content?.toLowerCase().includes(query)
+    );
+    setSearchResults(results);
+  };
+
+  const scrollToMessage = (msgId) => {
+    const el = document.getElementById(`msg-${msgId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('highlight-message');
+      setTimeout(() => el.classList.remove('highlight-message'), 2000);
+    }
+  };
+
+  // ─── Is Blocked? ───
+  const isBlocked = otherParticipant
+    ? blockedUserIds.includes(otherParticipant.id)
+    : false;
+
+  // ─── Render ───
+  if (!conversation) {
+    return (
+      <div className="flex items-center justify-center h-screen text-gray-500 dark:text-gray-400">
+        <p>Conversation not found</p>
+      </div>
+    );
+  }
+
   return (
-    <>
-      <style>{STYLE}</style>
-      <div className="cd-container">
-        {/* Header */}
-        <header className="cd-header">
-          <button className="cd-back-btn" onClick={() => navigate('/chats')} title="Back">
-            <FiArrowLeft size={18} />
-          </button>
-          <div className="cd-header-identity">
-            <div className="cd-avatar-wrap">
-              <div className="cd-avatar">
-                {otherParticipant?.name?.[0]?.toUpperCase() || '?'}
-              </div>
-              {otherParticipant?.status === 'online' && <div className="cd-online-ring" />}
-            </div>
-            <div className="cd-header-text">
-              <p className="cd-header-name">{otherParticipant?.name || 'Loading\u2026'}</p>
-              <p className={`cd-header-meta ${otherParticipant?.status === 'online' ? 'online' : ''}`}>
-                {otherParticipant?.status === 'online'
-                  ? '\uD83D\uDFE2 Online'
-                  : `Last active ${otherParticipant?.lastActive}`}
-              </p>
-            </div>
-          </div>
-          <div className="cd-header-actions">
-            <button
-              className="cd-icon-btn"
-              onClick={() => setShowSearch(!showSearch)}
-              title="Search messages"
-            >
-              <FiSearch size={18} />
-            </button>
-            <button
-              className="cd-icon-btn"
-              onClick={() => setShowDrawer(!showDrawer)}
-              title="Conversation info"
-            >
-              <FiMoreVertical size={18} />
-            </button>
-          </div>
-        </header>
+    <div className="flex flex-col h-screen bg-white dark:bg-gray-900">
+      {/* ─── Header ─── */}
+      <header className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        {/* Back Button */}
+        <button
+          onClick={() => navigate('/chats')}
+          className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
 
-        {/* Search Modal */}
-        {showSearch && (
-          <>
-            <div
-              className="cd-search-modal"
-              onClick={() => setShowSearch(false)}
-            />
-            <div className="cd-search-panel">
-              <div className="cd-search-input-wrap">
-                <FiSearch className="cd-search-icon" size={16} />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => handleSearch(e.target.value)}
-                  placeholder="Search messages\u2026"
-                  className="cd-search-input"
-                  autoFocus
-                />
-              </div>
-              <div className="cd-search-results">
-                {searchResults.length > 0 ? (
-                  searchResults.map(result => (
-                    <div
-                      key={result.id}
-                      className="cd-search-result-item"
-                      onClick={() => scrollToMessage(result.id)}
-                    >
-                      <p className="cd-search-result-text">{result.preview}</p>
-                      <p className="cd-search-result-meta">
-                        {new Date(result.created_at).toLocaleString()}
-                      </p>
-                    </div>
-                  ))
-                ) : searchQuery ? (
-                  <div className="cd-search-empty">No messages found</div>
-                ) : (
-                  <div className="cd-search-empty">Type to search messages</div>
-                )}
-              </div>
-            </div>
-          </>
-        )}
+        {/* Avatar */}
+        <img
+          src={otherParticipant?.avatar_url || '/default-avatar.png'}
+          alt={otherParticipant?.full_name}
+          className="w-10 h-10 rounded-full object-cover"
+        />
 
-        {/* Info Drawer */}
-        {showDrawer && (
-          <>
-            <div
-              className="cd-drawer-overlay"
-              onClick={() => setShowDrawer(false)}
-            />
-            <div className="cd-drawer">
-              <div className="cd-drawer-header">
-                <h2 className="cd-drawer-title">Details</h2>
-                <button
-                  className="cd-drawer-close"
-                  onClick={() => setShowDrawer(false)}
-                >
-                  <FiX size={16} />
-                </button>
-              </div>
-
-              <div className="cd-drawer-content">
-                {/* User Card */}
-                <div className="cd-drawer-section">
-                  <div className="cd-drawer-user-card">
-                    <div className="cd-drawer-user-avatar">
-                      {otherParticipant?.name?.[0]?.toUpperCase() || '?'}
-                    </div>
-                    <p className="cd-drawer-user-name">{otherParticipant?.name}</p>
-                    <p className="cd-drawer-user-meta">{otherParticipant?.class}</p>
-                    <p className="cd-drawer-user-status">
-                      <span>{'\u25CF'}</span>
-                      {otherParticipant?.status === 'online'
-                        ? 'Active now'
-                        : `Last active ${otherParticipant?.lastActive}`}
-                    </p>
-                    <button className="cd-drawer-button" onClick={handleViewProfile}>
-                      View Profile
-                    </button>
-                  </div>
-                </div>
-
-                {/* Conversation Actions */}
-                <div className="cd-drawer-section">
-                  <p className="cd-drawer-section-title">Actions</p>
-                  <button className="cd-drawer-button" onClick={handleArchiveChat}>
-                    {'\uD83D\uDCC1'} Archive Chat
-                  </button>
-                  <button className="cd-drawer-button" onClick={() => setShowSearch(true)}>
-                    {'\uD83D\uDCD1'} Search in Chat
-                  </button>
-                  <button className="cd-drawer-button danger" onClick={handleBlockUser}>
-                    {'\uD83D\uDEAB'} Block User
-                  </button>
-                  <button className="cd-drawer-button danger" onClick={handleDeleteChat}>
-                    {'\uD83D\uDDD1\uFE0F'} Delete Chat
-                  </button>
-                </div>
-
-                {/* Chat Info */}
-                <div className="cd-drawer-section">
-                  <p className="cd-drawer-section-title">Chat Info</p>
-                  <div style={{ fontSize: '12px', color: 'var(--chat-muted)', lineHeight: '1.8' }}>
-                    <div>Messages: {messages.length}</div>
-                    <div style={{ marginTop: '8px' }}>
-                      Created: {new Date().toLocaleDateString()}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* Messages */}
-        <div className="cd-messages" onScroll={handleScroll}>
-          {loading ? (
-            <div className="cd-loading">
-              <div className="cd-loading-dots">
-                <div className="cd-loading-dot" />
-                <div className="cd-loading-dot" />
-                <div className="cd-loading-dot" />
-              </div>
-              <span className="cd-loading-text">loading conversation</span>
-            </div>
-          ) : (
-            <>
-              {messages.length === 0 ? (
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  height: '100%',
-                  gap: '12px',
-                  color: 'var(--chat-muted)'
-                }}>
-                  <div style={{ fontSize: '32px' }}>{'\uD83D\uDCAC'}</div>
-                  <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--chat-text)' }}>
-                    Start your conversation
-                  </div>
-                  <div style={{ fontSize: '12px', textAlign: 'center', maxWidth: '200px' }}>
-                    Introduce yourself and begin chatting with {otherParticipant?.name}.
-                  </div>
-                </div>
-              ) : (
-                <ChatWindow
-                  conversationId={conversationId}
-                  onScroll={handleScroll}
-                />
-              )}
-            </>
-          )}
-
-          {showScrollBtn && (
-            <button
-              className="cd-scroll-btn"
-              onClick={scrollToBottom}
-              title="Jump to latest messages"
-            >
-              <FiArrowDown size={14} />
-              <span>New messages</span>
-            </button>
-          )}
+        {/* User Info */}
+        <div className="flex-1 min-w-0">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+            {otherParticipant?.full_name || 'Unknown User'}
+          </h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            {typingUser ? (
+              <span className="text-indigo-500 animate-pulse">typing...</span>
+            ) : otherParticipant?.is_online ? (
+              'Online'
+            ) : otherParticipant?.last_active ? (
+              `Last active ${format(new Date(otherParticipant.last_active), 'MMM d, h:mm a')}`
+            ) : (
+              'Offline'
+            )}
+          </p>
         </div>
 
-        {/* Input */}
-        <MessageInput conversationId={conversationId} />
+        {/* Search Button */}
+        <button
+          onClick={() => setShowSearch(!showSearch)}
+          className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </button>
+
+        {/* Three-Dot Menu */}
+        <button
+          onClick={() => setShowDrawer(true)}
+          className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01" />
+          </svg>
+        </button>
+      </header>
+
+      {/* ─── Search Bar ─── */}
+      {showSearch && (
+        <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              placeholder="Search messages..."
+              className="flex-1 px-3 py-1.5 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-white"
+            />
+            <button
+              onClick={handleSearch}
+              className="px-3 py-1.5 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              Search
+            </button>
+          </div>
+          {searchResults.length > 0 && (
+            <div className="mt-2 max-h-40 overflow-y-auto">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                {searchResults.length} result{searchResults.length !== 1 ? 's' : ''} found
+              </p>
+              {searchResults.map((msg) => (
+                <button
+                  key={msg.id}
+                  onClick={() => scrollToMessage(msg.id)}
+                  className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                >
+                  <span className="text-xs text-gray-400 mr-2">
+                    {format(new Date(msg.created_at), 'h:mm a')}
+                  </span>
+                  <span className="truncate">{msg.content?.substring(0, 80)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {searchQuery && searchResults.length === 0 && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">No results found</p>
+          )}
+        </div>
+      )}
+
+      {/* ─── Messages ─── */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
+        {loadingMessages ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="animate-spin rounded-full h-8 w-8 border-2 border-indigo-500 border-t-transparent" />
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-gray-400 dark:text-gray-500">No messages yet. Say hello!</p>
+          </div>
+        ) : (
+          messages.map((msg) => (
+            <MessageBubble
+              key={msg.id}
+              message={msg}
+              isOwn={msg.sender_id === currentUserId}
+              senderName={otherParticipant?.full_name}
+              senderAvatar={otherParticipant?.avatar_url}
+              onReply={handleReply}
+            />
+          ))
+        )}
+        <div ref={messagesEndRef} />
       </div>
-    </>
+
+      {/* ─── Message Input ─── */}
+      <MessageInput
+        conversationId={conversationId}
+        replyingTo={replyingTo}
+        onCancelReply={cancelReply}
+      />
+
+      {/* ─── Info Drawer (Three-Dot Menu) ─── */}
+      {showDrawer && (
+        <div className="fixed inset-0 z-40">
+          <div
+            className="absolute inset-0 bg-black bg-opacity-50"
+            onClick={() => setShowDrawer(false)}
+          />
+          <div className="absolute right-0 top-0 h-full w-80 bg-white dark:bg-gray-800 shadow-2xl overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Details
+              </h3>
+              <button
+                onClick={() => setShowDrawer(false)}
+                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Participant Info */}
+            <div className="px-4 py-6 text-center border-b border-gray-200 dark:border-gray-700">
+              <img
+                src={otherParticipant?.avatar_url || '/default-avatar.png'}
+                alt={otherParticipant?.full_name}
+                className="w-20 h-20 rounded-full mx-auto mb-3 object-cover"
+              />
+              <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
+                {otherParticipant?.full_name}
+              </h4>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {otherParticipant?.class_name || 'Student'}
+              </p>
+              <div className="flex items-center justify-center gap-1.5 mt-2">
+                <span
+                  className={`w-2 h-2 rounded-full ${otherParticipant?.is_online ? 'bg-green-500' : 'bg-gray-400'
+                    }`}
+                />
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {otherParticipant?.is_online ? 'Active now' : 'Offline'}
+                </span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="px-4 py-3 space-y-1">
+              <button
+                onClick={handleViewProfile}
+                className="w-full text-left px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                👤 View Profile
+              </button>
+
+              <button
+                onClick={handleTogglePin}
+                className="w-full text-left px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                {conversation?.is_pinned ? '📍 Unpin Conversation' : '📌 Pin Conversation'}
+              </button>
+
+              <button
+                onClick={handleToggleMute}
+                className="w-full text-left px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                {conversation?.is_muted ? '🔔 Unmute Notifications' : '🔕 Mute Notifications'}
+              </button>
+
+              <button
+                onClick={() => setConfirmArchive(true)}
+                className="w-full text-left px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                📁 Archive Conversation
+              </button>
+
+              {isBlocked ? (
+                <button
+                  onClick={handleUnblockUser}
+                  className="w-full text-left px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                >
+                  ✅ Unblock User
+                </button>
+              ) : (
+                <button
+                  onClick={() => setConfirmBlock(true)}
+                  className="w-full text-left px-3 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                >
+                  🚫 Block User
+                </button>
+              )}
+
+              <button
+                onClick={() => {
+                  setShowDrawer(false);
+                  setShowReport(true);
+                }}
+                className="w-full text-left px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                ⚠️ Report User
+              </button>
+
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="w-full text-left px-3 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+              >
+                🗑️ Delete Chat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Confirmation Dialogs ─── */}
+      <ConfirmDialog
+        isOpen={confirmBlock}
+        title="Block User"
+        message={`Block ${otherParticipant?.full_name}? They won't be able to message you, and your conversation will be deactivated.`}
+        confirmText="Block"
+        onConfirm={handleBlockUser}
+        onCancel={() => setConfirmBlock(false)}
+        isLoading={isBlocking}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmDelete}
+        title="Delete Conversation"
+        message="Delete this conversation? It will be removed for you. If the other user also deletes it, it will be permanently deleted."
+        confirmText="Delete"
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)}
+        isLoading={isDeleting}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmArchive}
+        title="Archive Conversation"
+        message={`Archive this conversation with ${otherParticipant?.full_name}? You can find it later in the Archived tab.`}
+        confirmText="Archive"
+        confirmVariant="warning"
+        onConfirm={handleArchive}
+        onCancel={() => setConfirmArchive(false)}
+        isLoading={isArchiving}
+      />
+
+      {/* ─── Report Modal ─── */}
+      <ReportModal
+        isOpen={showReport}
+        onClose={() => setShowReport(false)}
+        reportedUserId={otherParticipant?.id}
+        reportedUserName={otherParticipant?.full_name}
+        conversationId={conversationId}
+      />
+    </div>
   );
-}
+};
+
+export default ChatDetail;

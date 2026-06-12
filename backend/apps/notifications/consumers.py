@@ -1,7 +1,14 @@
+# backend/apps/notifications/consumers.py
 import json
-from channels.generic.websocket import AsyncWebsocketConsumer
 from urllib.parse import parse_qs
-from common.jwt_auth import JWTAuth  # Assuming you have a way to validate JWT token asynchronously
+from channels.generic.websocket import AsyncWebsocketConsumer
+from channels.db import database_sync_to_async
+from django.contrib.auth import get_user_model
+from django.conf import settings
+import jwt
+
+User = get_user_model()
+
 
 class NotificationConsumer(AsyncWebsocketConsumer):
     async def connect(self):
@@ -13,12 +20,8 @@ class NotificationConsumer(AsyncWebsocketConsumer):
             await self.close()
             return
 
-        # Validate token and get user (synchronous call in async context, careful)
+        # Validate token and get user
         try:
-            from django.contrib.auth import get_user_model
-            from ninja_jwt.authentication import JWTAuthentication  # Or your custom JWT auth
-            # Because JWTAuth requires sync, we'll use a sync wrapper or use the existing auth backend
-            # For simplicity, we assume a helper function that validates token and returns user.
             user = await self.get_user_from_token(token)
             if not user:
                 await self.close()
@@ -38,17 +41,16 @@ class NotificationConsumer(AsyncWebsocketConsumer):
         """Receive a notification message and send it to WebSocket"""
         await self.send(text_data=json.dumps(event['message']))
 
-    async def get_user_from_token(self, token):
+    @database_sync_to_async
+    def get_user_from_token(self, token):
         """Validate JWT token and return user object"""
-        from django.contrib.auth import get_user_model
-        from django.conf import settings
-        from jose import jwt
-        User = get_user_model()
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
             user_id = payload.get('user_id')
             if user_id:
-                return await User.objects.aget(pk=user_id)
+                return User.objects.get(pk=user_id)
+        except (jwt.ExpiredSignatureError, jwt.DecodeError, User.DoesNotExist):
+            pass
         except Exception:
             pass
         return None

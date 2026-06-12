@@ -1,3 +1,4 @@
+# C:\Users\GATARA-BJTU\academe\backend\academe\routing.py
 from django.urls import path
 from apps.chat.consumers import ChatConsumer
 from apps.notifications.consumers import NotificationConsumer

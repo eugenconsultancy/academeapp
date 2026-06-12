@@ -1,15 +1,28 @@
-// C:\Users\GATARA-BJTU\academe\frontend\src\api\chatApi.js
-
+// src/api/chatApi.js
 import apiClient from './client';
 
-export const chatApi = {
-    // ── Conversations ─────────────────────────────────────
-    startConversation: (receiverId) =>
-        apiClient.post('chat/conversations/start', { receiver_id: receiverId }),
-
+const chatApi = {
+    // ─── Conversations ───
     getConversations: (archived = false) =>
         apiClient.get('chat/conversations', { params: { archived } }),
 
+    startConversation: (receiverId) =>
+        apiClient.post('chat/conversations/start', { receiver_id: receiverId }),
+
+    getMessages: (convId, before = null, limit = 50) =>
+        apiClient.get(`chat/conversations/${convId}/messages`, {
+            params: { before, limit },
+        }),
+
+    sendMessage: (convId, data) =>
+        apiClient.post(`chat/conversations/${convId}/messages`, data),
+
+    markAsRead: (convId, messageIds = null) =>
+        apiClient.post(`chat/conversations/${convId}/mark-read`, {
+            message_ids: messageIds || [],
+        }),
+
+    // ─── Archive / Unarchive / Delete ───
     archiveConversation: (convId) =>
         apiClient.patch(`chat/conversations/${convId}/archive`),
 
@@ -19,22 +32,7 @@ export const chatApi = {
     deleteConversation: (convId) =>
         apiClient.delete(`chat/conversations/${convId}`),
 
-    // ── Messages ──────────────────────────────────────────
-    getMessages: (convId, before = null, limit = 30) => {
-        const params = { limit };
-        if (before) {
-            params.before = before;
-        }
-        return apiClient.get(`chat/conversations/${convId}/messages`, { params });
-    },
-
-    sendMessage: (convId, data) =>
-        apiClient.post(`chat/conversations/${convId}/messages`, data),
-
-    markAsRead: (convId, messageIds = []) =>
-        apiClient.post(`chat/conversations/${convId}/mark-read`, { message_ids: messageIds }),
-
-    // ── Blocking ──────────────────────────────────────────
+    // ─── Block / Unblock ───
     blockUser: (userId) =>
         apiClient.post('chat/block', { blocked_user_id: userId }),
 
@@ -44,7 +42,37 @@ export const chatApi = {
     getBlockedUsers: () =>
         apiClient.get('chat/blocked'),
 
-    // ── File Upload ───────────────────────────────────────
-    getPresignedUrl: (fileName, contentType) =>
-        apiClient.post('chat/presigned-url', { file_name: fileName, content_type: contentType }),
+    // ─── Mute / Unmute ───
+    muteConversation: (convId) =>
+        apiClient.post(`chat/conversations/${convId}/mute`),
+
+    unmuteConversation: (convId) =>
+        apiClient.delete(`chat/conversations/${convId}/mute`),
+
+    // ─── Pin / Unpin ───
+    pinConversation: (convId) =>
+        apiClient.post(`chat/conversations/${convId}/pin`),
+
+    unpinConversation: (convId) =>
+        apiClient.delete(`chat/conversations/${convId}/pin`),
+
+    // ─── Report ───
+    reportUser: (reportedUserId, reason, description = '', conversationId = null) =>
+        apiClient.post('chat/report', {
+            reported_user_id: reportedUserId,
+            reason,
+            description,
+            conversation_id: conversationId,
+        }),
+
+    // ─── File Upload ───
+    getPresignedUrl: (fileName, contentType, maxFileSize = 10 * 1024 * 1024) =>
+        apiClient.post('chat/presigned-url', {
+            file_name: fileName,
+            content_type: contentType,
+            max_file_size: maxFileSize,
+        }),
 };
+
+export { chatApi };
+export default chatApi;

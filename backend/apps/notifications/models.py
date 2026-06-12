@@ -1,3 +1,4 @@
+# backend/apps/notifications/models.py
 import uuid
 from django.db import models
 from common.models import BaseModel
@@ -9,6 +10,9 @@ class Notification(BaseModel):
         ('announcement_urgent', 'Urgent Announcement'),
         ('attendance_reminder', 'Attendance Reminder'),
         ('class_reminder', 'Class Reminder'),
+        ('class_cancelled', 'Class Cancelled'),
+        ('class_rescheduled', 'Class Rescheduled'),
+        ('assignment_graded', 'Assignment Graded'),
         ('item_found', 'Item Found'),
         ('claim_update', 'Claim Update'),
         ('claim_approved', 'Claim Approved'),
@@ -22,6 +26,9 @@ class Notification(BaseModel):
         ('ticket_updated', 'Ticket Updated'),
         ('badge_earned', 'Badge Earned'),
         ('opportunity_expiring', 'Opportunity Expiring'),
+        ('new_message', 'New Message'),
+        ('mention', 'Mention'),
+        ('reaction', 'Reaction'),
         ('system', 'System'),
     ]
 
@@ -31,6 +38,7 @@ class Notification(BaseModel):
         ('opportunity', 'Opportunity'),
         ('support', 'Support Ticket'),
         ('governance', 'Governance'),
+        ('chat', 'Chat'),
         ('system', 'System'),
     ]
 
@@ -56,6 +64,7 @@ class Notification(BaseModel):
             models.Index(fields=['user', 'is_read']),
             models.Index(fields=['user', '-created_at']),
             models.Index(fields=['user', 'is_deleted']),
+            models.Index(fields=['user', 'is_read', 'is_deleted']),
         ]
 
     def __str__(self):
@@ -74,6 +83,8 @@ class NotificationPreference(BaseModel):
     push_support = models.BooleanField(default=True)
     push_governance = models.BooleanField(default=True)
     push_system = models.BooleanField(default=True)
+    push_chat = models.BooleanField(default=True)
+    push_mention = models.BooleanField(default=True)
 
     # Convenience method to check preference
     def is_enabled(self, notification_type):
@@ -82,6 +93,9 @@ class NotificationPreference(BaseModel):
             'announcement_urgent': 'push_announcement',
             'class': 'push_class',
             'class_reminder': 'push_class',
+            'class_cancelled': 'push_class',
+            'class_rescheduled': 'push_class',
+            'assignment_graded': 'push_class',
             'found_item': 'push_found_item',
             'item_found': 'push_found_item',
             'claim_update': 'push_found_item',
@@ -96,6 +110,15 @@ class NotificationPreference(BaseModel):
             'role_expired': 'push_governance',
             'role_expiring_soon': 'push_governance',
             'system': 'push_system',
+            'new_message': 'push_chat',
+            'mention': 'push_mention',
+            'reaction': 'push_chat',
+            'welcome': 'push_system',
+            'attendance_reminder': 'push_class',
+            'tip_received': 'push_system',
+            'payment_received': 'push_system',
+            'payment_failed': 'push_system',
+            'badge_earned': 'push_system',
         }
         field = field_map.get(notification_type)
         if field:

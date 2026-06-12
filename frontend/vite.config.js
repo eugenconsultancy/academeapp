@@ -50,6 +50,7 @@ export default defineConfig(({ command, mode }) => {
         lang: 'en-US',
       },
       workbox: {
+        globDirectory: 'dist',
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
@@ -114,6 +115,7 @@ export default defineConfig(({ command, mode }) => {
         ext: '.gz',
         threshold: 1024,
         deleteOriginFile: false,
+        filter: /\.(js|css|html|svg|json|xml)$/i,
       }),
 
       isProduction &&
@@ -122,6 +124,7 @@ export default defineConfig(({ command, mode }) => {
         ext: '.br',
         threshold: 1024,
         deleteOriginFile: false,
+        filter: /\.(js|css|html|svg|json|xml)$/i,
       }),
 
       process.env.ANALYZE === 'true' &&
@@ -163,7 +166,6 @@ export default defineConfig(({ command, mode }) => {
         'X-Frame-Options': 'DENY',
         'X-XSS-Protection': '1; mode=block',
       },
-      // ✅ Proxy block removed – the browser talks directly to ngrok
       watch: {
         usePolling: false,
         ignored: ['**/node_modules/**', '**/dist/**', '**/.git/**'],

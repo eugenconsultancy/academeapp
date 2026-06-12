@@ -3,11 +3,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { accountsApi } from '../api/accountsApi';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { FiShield, FiCheckCircle, FiArrowLeft, FiRefreshCw, FiCopy, FiDownload } from 'react-icons/fi';
+import { FiShield, FiCheckCircle, FiArrowLeft, FiRefreshCw, FiCopy, FiDownload, FiAlertCircle } from 'react-icons/fi';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
 
 export default function TwoFactorSetupPage() {
-    const { user, updateUser, verify2FASetup, disable2FA, get2FAStatus } = useAuth();
+    const { user, updateUser, verify2FASetup, disable2FA, get2FAStatus, regenerateBackupCodes } = useAuth();
     const [loading, setLoading] = useState(true);
     const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
     const [qrCode, setQrCode] = useState('');
@@ -18,6 +18,7 @@ export default function TwoFactorSetupPage() {
     const [verifying, setVerifying] = useState(false);
     const [disabling, setDisabling] = useState(false);
     const [disableCode, setDisableCode] = useState('');
+    const [regenerating, setRegenerating] = useState(false);
 
     useEffect(() => {
         fetchStatus();
@@ -85,6 +86,20 @@ export default function TwoFactorSetupPage() {
         }
     };
 
+    // ✅ NEW: Regenerate backup codes
+    const handleRegenerateBackupCodes = async () => {
+        setRegenerating(true);
+        try {
+            const result = await regenerateBackupCodes();
+            setBackupCodes(result.backup_codes || []);
+            toast.success('New backup codes generated! Save them securely.');
+        } catch (err) {
+            toast.error(err.message || 'Failed to regenerate backup codes');
+        } finally {
+            setRegenerating(false);
+        }
+    };
+
     const copyBackupCodes = () => {
         const codesText = backupCodes.join('\n');
         navigator.clipboard.writeText(codesText);
@@ -121,8 +136,34 @@ export default function TwoFactorSetupPage() {
                             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Your account is protected with an authenticator app.</p>
                         </div>
 
+                        {/* Backup Codes Section */}
+                        <div className="border-t pt-6 mb-6">
+                            <h3 className="font-semibold mb-3">Backup Codes</h3>
+                            <p className="text-sm text-gray-500 mb-3">
+                                Backup codes can be used to access your account if you lose your authenticator app.
+                                Each code can only be used once.
+                            </p>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setStep('backup')}
+                                    className="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700"
+                                >
+                                    View Backup Codes
+                                </button>
+                                <button
+                                    onClick={handleRegenerateBackupCodes}
+                                    disabled={regenerating}
+                                    className="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium disabled:opacity-50 flex items-center gap-2"
+                                >
+                                    <FiRefreshCw className={regenerating ? 'animate-spin' : ''} size={14} />
+                                    Regenerate
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Disable Section */}
                         <div className="border-t pt-6">
-                            <h3 className="font-semibold mb-3">Disable 2FA</h3>
+                            <h3 className="font-semibold mb-3 text-red-600">Disable 2FA</h3>
                             <p className="text-sm text-gray-500 mb-3">Enter a code from your authenticator app to disable two-factor authentication.</p>
                             <div className="flex gap-3">
                                 <input
@@ -138,7 +179,7 @@ export default function TwoFactorSetupPage() {
                                     disabled={disabling}
                                     className="px-6 py-2 bg-red-500 text-white rounded-lg font-semibold disabled:opacity-50"
                                 >
-                                    {disabling ? 'Disabling...' : 'Disable'}
+                                    {disabling ? 'Disabling...' : 'Disable 2FA'}
                                 </button>
                             </div>
                         </div>
@@ -189,6 +230,15 @@ export default function TwoFactorSetupPage() {
                         <FiCheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
                         <h2 className="text-2xl font-bold text-center mb-2">2FA Enabled Successfully!</h2>
                         <p className="text-center text-gray-600 mb-6">Save these backup codes in a safe place. Each code can be used once.</p>
+
+                        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 mb-4 flex items-start gap-2">
+                            <FiAlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                            <p className="text-xs text-amber-700 dark:text-amber-300">
+                                If you lose your authenticator app and these backup codes, you will be locked out of your account.
+                                Store them securely (password manager, printed copy, etc.).
+                            </p>
+                        </div>
+
                         <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-xl mb-6 font-mono text-sm grid grid-cols-2 gap-2">
                             {backupCodes.map((code, idx) => (
                                 <div key={idx} className="text-center">{code}</div>
@@ -197,6 +247,16 @@ export default function TwoFactorSetupPage() {
                         <div className="flex gap-3">
                             <button onClick={copyBackupCodes} className="flex-1 py-2 border rounded-xl flex items-center justify-center gap-2"><FiCopy /> Copy</button>
                             <button onClick={downloadBackupCodes} className="flex-1 py-2 border rounded-xl flex items-center justify-center gap-2"><FiDownload /> Download</button>
+                        </div>
+                        <div className="mt-4">
+                            <button
+                                onClick={handleRegenerateBackupCodes}
+                                disabled={regenerating}
+                                className="w-full py-2 text-sm text-amber-600 hover:text-amber-700 flex items-center justify-center gap-2"
+                            >
+                                <FiRefreshCw className={regenerating ? 'animate-spin' : ''} size={14} />
+                                Regenerate Backup Codes
+                            </button>
                         </div>
                         <Link to="/profile" className="block text-center mt-6 text-indigo-600">Back to Profile</Link>
                     </div>

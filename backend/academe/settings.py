@@ -1,3 +1,4 @@
+# C:\Users\GATARA-BJTU\academe\backend\academe\settings.py
 import os
 from datetime import timedelta
 from pathlib import Path

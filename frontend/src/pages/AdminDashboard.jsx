@@ -546,7 +546,7 @@ export default function AdminDashboard() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
                   {TABS.filter(t => t.id !== 'overview').map(tab => (
                     <button key={tab.id} onClick={() => setActiveTab(tab.id)} className="ad-overview-card">
-                      <tab.icon size={28} style={{ color: '#6366f1', marginBottom: 8 }} />
+                      <tab.icon size={28} style={{ color: '#4d50e2', marginBottom: 8 }} />
                       <div className="ad-overview-label">{tab.label}</div>
                     </button>
                   ))}

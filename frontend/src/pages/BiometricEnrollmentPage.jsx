@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import {
     FiCamera, FiCheckCircle, FiRefreshCw,
-    FiArrowLeft, FiCameraOff,
+    FiArrowLeft, FiShield, FiTrash2, FiAlertTriangle,
 } from 'react-icons/fi';
 
 // Helper: request camera and capture a single frame as base64
@@ -103,10 +103,12 @@ async function captureImageFromCamera() {
 export default function BiometricEnrollmentPage() {
     const [loading, setLoading] = useState(true);
     const [enrolling, setEnrolling] = useState(false);
+    const [disabling, setDisabling] = useState(false);
     const [success, setSuccess] = useState(false);
+    const [showDisableConfirm, setShowDisableConfirm] = useState(false);
     const [biometricEnabled, setBiometricEnabled] = useState(false);
     const navigate = useNavigate();
-    const { user, updateUser } = useAuth();
+    const { user, updateUser, enrollBiometric, disableBiometric } = useAuth();
 
     // Fetch current biometric status on mount
     useEffect(() => {
@@ -133,11 +135,9 @@ export default function BiometricEnrollmentPage() {
                 return;
             }
 
-            await accountsApi.enrollBiometric(base64Image);
+            await enrollBiometric(base64Image);
             setSuccess(true);
             setBiometricEnabled(true);
-            // Update auth context to reflect the new biometric state
-            updateUser({ biometric_enabled: true });
             toast.success('Face ID enrolled successfully! 🎉');
         } catch (error) {
             if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
@@ -150,8 +150,24 @@ export default function BiometricEnrollmentPage() {
         }
     };
 
-    const handleRetry = () => {
+    const handleDisable = async () => {
+        setDisabling(true);
+        try {
+            await disableBiometric();
+            setBiometricEnabled(false);
+            setSuccess(false);
+            setShowDisableConfirm(false);
+            toast.success('Face ID disabled successfully');
+        } catch (error) {
+            toast.error(error.response?.data?.error || 'Failed to disable Face ID');
+        } finally {
+            setDisabling(false);
+        }
+    };
+
+    const handleReEnroll = () => {
         setSuccess(false);
+        handleEnroll();
     };
 
     if (loading) {
@@ -182,26 +198,35 @@ export default function BiometricEnrollmentPage() {
                                 Face ID Already Enrolled
                             </h1>
                             <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
-                                You have already set up Face ID. Would you like to re‑enroll?
+                                You have already set up Face ID. You can re-enroll or disable it.
                             </p>
-                            <button
-                                onClick={handleEnroll}
-                                disabled={enrolling}
-                                className="w-full px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
-                            >
-                                {enrolling ? (
-                                    <>
-                                        <FiRefreshCw className="animate-spin" size={18} /> Opening camera…
-                                    </>
-                                ) : (
-                                    <>
-                                        <FiCamera size={18} /> Re‑enroll Face
-                                    </>
-                                )}
-                            </button>
+                            <div className="space-y-3">
+                                <button
+                                    onClick={handleReEnroll}
+                                    disabled={enrolling}
+                                    className="w-full px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+                                >
+                                    {enrolling ? (
+                                        <>
+                                            <FiRefreshCw className="animate-spin" size={18} /> Opening camera…
+                                        </>
+                                    ) : (
+                                        <>
+                                            <FiCamera size={18} /> Re-enroll Face
+                                        </>
+                                    )}
+                                </button>
+                                <button
+                                    onClick={() => setShowDisableConfirm(true)}
+                                    disabled={disabling}
+                                    className="w-full px-4 py-3 rounded-xl border-2 border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 font-semibold hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center justify-center gap-2"
+                                >
+                                    <FiTrash2 size={18} /> Disable Face ID
+                                </button>
+                            </div>
                             <button
                                 onClick={() => navigate('/profile')}
-                                className="w-full mt-2 px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 font-medium transition-colors"
+                                className="w-full mt-3 px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 font-medium transition-colors"
                             >
                                 Back to Profile
                             </button>
@@ -218,6 +243,12 @@ export default function BiometricEnrollmentPage() {
                                 Hold your face in the camera frame and capture a clear image.
                                 This image will be used only for verification.
                             </p>
+                            <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg mb-6 flex items-start gap-2 text-left">
+                                <FiShield className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                                <p className="text-xs text-blue-700 dark:text-blue-300">
+                                    Your face data is encrypted and stored securely. We never share your biometric data with third parties.
+                                </p>
+                            </div>
                             <button
                                 onClick={handleEnroll}
                                 disabled={enrolling}
@@ -252,10 +283,10 @@ export default function BiometricEnrollmentPage() {
                                 Back to Profile
                             </button>
                             <button
-                                onClick={handleRetry}
+                                onClick={handleReEnroll}
                                 className="w-full mt-2 px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 font-medium transition-colors"
                             >
-                                Enroll Again
+                                Re-enroll Face ID
                             </button>
                         </>
                     )}
@@ -265,6 +296,36 @@ export default function BiometricEnrollmentPage() {
                     Your biometric data is processed securely and never stored as raw images.
                 </p>
             </div>
+
+            {/* Disable Confirmation Modal */}
+            {showDisableConfirm && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6">
+                        <div className="flex items-center gap-3 mb-4 text-red-600 dark:text-red-400">
+                            <FiAlertTriangle size={24} />
+                            <h2 className="text-xl font-bold">Disable Face ID?</h2>
+                        </div>
+                        <p className="text-gray-600 dark:text-gray-400 mb-6">
+                            Are you sure you want to disable Face ID? You will need to re-enroll to use Face ID login again.
+                        </p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowDisableConfirm(false)}
+                                className="flex-1 py-2 border rounded-xl"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleDisable}
+                                disabled={disabling}
+                                className="flex-1 py-2 bg-red-600 text-white rounded-xl font-semibold disabled:opacity-50"
+                            >
+                                {disabling ? 'Disabling...' : 'Yes, Disable'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

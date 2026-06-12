@@ -53,6 +53,9 @@ export async function getDB() {
             if (!db.objectStoreNames.contains('preferences')) {
                 db.createObjectStore('preferences', { keyPath: 'key' });
             }
+            // if (!db.objectStoreNames.contains('preferences')) {
+            //     db.createObjectStore('preferences', {keyPath: 'key' });
+            // }
             if (!db.objectStoreNames.contains('biometrics')) {
                 db.createObjectStore('biometrics', { keyPath: 'id' });
             }

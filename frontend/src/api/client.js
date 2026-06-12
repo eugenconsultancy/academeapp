@@ -4,7 +4,7 @@ import { setTimeOffset } from '../utils/time';
 const BASE_URL = import.meta.env.VITE_API_URL || '';
 export const BACKEND_BASE_URL = BASE_URL;
 
-// ✅ All API requests now automatically get the /api prefix
+//   \All API requests now automatically get the /api prefix
 const API_BASE = `${BASE_URL}/api`;
 
 const refreshApi = axios.create({
@@ -58,7 +58,7 @@ apiClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // ✅ Match the short paths – baseURL already adds /api
+    // Match the short paths – baseURL already adds /api
     const authEndpoints = [
       '/accounts/login/', '/accounts/verify-otp/', '/accounts/refresh-token/',
       '/accounts/request-otp/', '/accounts/register/', '/accounts/signup/'

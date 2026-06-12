@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   FiZap, FiUser, FiPhone, FiHash, FiMail, FiBookOpen, FiHome,
   FiArrowRight, FiArrowLeft, FiShield, FiUsers, FiCheck, FiAlertCircle,
-  FiCheckCircle, FiLock, FiStar, FiTrendingUp,
+  FiCheckCircle, FiLock, FiStar, FiTrendingUp, FiSmartphone,
 } from 'react-icons/fi';
 
 const KENYAN_INSTITUTIONS = [
@@ -28,11 +28,97 @@ const BENEFITS = [
   { icon: '👥', text: 'Connect with classmates' },
 ];
 
-// ------------------------------------------------------------
+// OTP Input Component
+function OTPInput({ value, onChange, onComplete }) {
+  const inputs = useRef([]);
+  const hasCalledComplete = useRef(false);
+
+  useEffect(() => {
+    if (value.length < 6) {
+      hasCalledComplete.current = false;
+    }
+  }, [value]);
+
+  const handleKey = (e, idx) => {
+    if (e.key === 'Backspace') {
+      e.preventDefault();
+      const newVal = value.slice(0, idx) + value.slice(idx + 1);
+      onChange(newVal);
+      if (idx > 0) inputs.current[idx - 1]?.focus();
+      return;
+    }
+    if (e.key === 'ArrowLeft' && idx > 0) { inputs.current[idx - 1]?.focus(); return; }
+    if (e.key === 'ArrowRight' && idx < 5) { inputs.current[idx + 1]?.focus(); return; }
+  };
+
+  const handleInput = (e, idx) => {
+    const char = e.target.value.replace(/\D/g, '').slice(-1);
+    if (!char) return;
+    const arr = value.padEnd(6, ' ').split('');
+    arr[idx] = char;
+    const newVal = arr.join('').replace(/ /g, '').slice(0, 6);
+    onChange(newVal);
+    if (idx < 5) inputs.current[idx + 1]?.focus();
+    if (newVal.length === 6 && !hasCalledComplete.current) {
+      hasCalledComplete.current = true;
+      onComplete?.(newVal);
+    }
+  };
+
+  const handlePaste = (e) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    onChange(pasted);
+    if (pasted.length === 6) {
+      inputs.current[5]?.focus();
+      if (!hasCalledComplete.current) {
+        hasCalledComplete.current = true;
+        onComplete?.(pasted);
+      }
+    } else {
+      inputs.current[Math.min(pasted.length, 5)]?.focus();
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', margin: '0.75rem 0' }}>
+      {Array.from({ length: 6 }).map((_, idx) => (
+        <input
+          key={idx}
+          ref={el => inputs.current[idx] = el}
+          type="tel"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          maxLength={1}
+          value={value[idx] || ''}
+          onKeyDown={e => handleKey(e, idx)}
+          onInput={e => handleInput(e, idx)}
+          onPaste={handlePaste}
+          onClick={() => inputs.current[idx]?.select()}
+          style={{
+            width: 44, height: 52,
+            borderRadius: 12,
+            border: value[idx] ? '2px solid #6366f1' : '2px solid #e5e7eb',
+            background: value[idx] ? 'rgba(99,102,241,0.06)' : '#f9fafb',
+            textAlign: 'center',
+            fontSize: '1.3rem',
+            fontWeight: 700,
+            outline: 'none',
+            transition: 'all 0.15s ease',
+            caretColor: '#6366f1',
+            color: '#1f2937',
+            boxShadow: value[idx] ? '0 0 0 4px rgba(99,102,241,0.12)' : 'none',
+            fontFamily: 'Outfit, sans-serif',
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 // Step Progress Bar
-// ------------------------------------------------------------
 function StepBar({ step }) {
-  const steps = ['Personal', 'Academic', 'Confirm'];
+  const steps = ['Personal', 'Verify', 'Academic', 'Confirm'];
   return (
     <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.75rem' }}>
       {steps.map((label, i) => {
@@ -72,9 +158,6 @@ function StepBar({ step }) {
   );
 }
 
-// ------------------------------------------------------------
-// Field component
-// ------------------------------------------------------------
 function Field({ label, error, helper, icon: Icon, children }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -102,16 +185,16 @@ function Field({ label, error, helper, icon: Icon, children }) {
   );
 }
 
-// ------------------------------------------------------------
-// Main Signup Page
-// ------------------------------------------------------------
 export default function SignupPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [step, setStep] = useState(0); // 0 = Personal, 1 = Academic, 2 = Confirm
+  const [step, setStep] = useState(0); // 0=Personal, 1=OTP, 2=Academic, 3=Confirm
   const [showInstDropdown, setShowInstDropdown] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [otp, setOtp] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [resendTimer, setResendTimer] = useState(0);
   const [formData, setFormData] = useState({
     phone_number: '', admission_number: '', full_name: '',
     email: '', class_name: '', institution: '',
@@ -148,12 +231,12 @@ export default function SignupPage() {
       if (!ph) errs.phone_number = 'Phone number is required';
       else if (!/^\+?254\d{9}$/.test(ph) && !/^0\d{9}$/.test(ph)) errs.phone_number = 'Use format: +254 700 000 000';
     }
-    if (s === 1) {
+    if (s === 2) {
       if (!formData.institution.trim()) errs.institution = 'Institution is required';
       if (!formData.admission_number.trim() || formData.admission_number.trim().length < 5) errs.admission_number = 'Valid admission number required';
       if (!formData.class_name.trim()) errs.class_name = 'Class / year is required';
     }
-    if (s === 2) {
+    if (s === 3) {
       if (!agreedToTerms) errs.terms = 'You must agree to the terms';
     }
     setErrors(errs);
@@ -166,8 +249,69 @@ export default function SignupPage() {
 
   const back = () => setStep(s => s - 1);
 
+  // ✅ FIXED: Request OTP verification
+  const handleRequestOTP = async () => {
+    if (!validateStep(0)) return;
+
+    setLoading(true);
+    try {
+      await accountsApi.requestOTP(formData.phone_number);
+      setOtpSent(true);
+      setStep(1);
+      setResendTimer(60);
+      toast.success('OTP sent to your phone!');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to send OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ FIXED: Verify OTP before proceeding
+  const handleVerifyOTP = async () => {
+    if (otp.length < 6) {
+      toast.error('Please enter all 6 digits');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await accountsApi.verifyOTP(formData.phone_number, otp);
+      toast.success('Phone verified!');
+      setStep(2); // Move to academic details
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Invalid OTP. Please try again.');
+      setOtp('');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Resend OTP timer
+  useEffect(() => {
+    if (resendTimer > 0) {
+      const timer = setInterval(() => setResendTimer(prev => prev - 1), 1000);
+      return () => clearInterval(timer);
+    }
+  }, [resendTimer]);
+
+  const handleResendOTP = async () => {
+    if (resendTimer > 0) return;
+    setLoading(true);
+    try {
+      await accountsApi.requestOTP(formData.phone_number);
+      setResendTimer(60);
+      toast.success('OTP resent!');
+    } catch (err) {
+      toast.error('Failed to resend OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ FIXED: Final signup submission
   const handleSubmit = async () => {
-    if (!validateStep(2)) return;
+    if (!validateStep(3)) return;
     setLoading(true);
     try {
       await accountsApi.signup(formData);
@@ -184,9 +328,7 @@ export default function SignupPage() {
     i.toLowerCase().includes(formData.institution.toLowerCase())
   );
 
-  // ------------------------------------------------------------
   // Success State
-  // ------------------------------------------------------------
   if (success) {
     return (
       <div style={{
@@ -230,9 +372,7 @@ export default function SignupPage() {
     );
   }
 
-  // ------------------------------------------------------------
   // Main Render
-  // ------------------------------------------------------------
   return (
     <>
       <style>{`
@@ -663,7 +803,7 @@ export default function SignupPage() {
 
       <div className="sp-page">
 
-        {/* ── Left Panel (desktop) ── */}
+        {/* Left Panel (desktop) */}
         <div className="sp-left">
           <div className="sp-left-orb" style={{ width: 320, height: 320, background: 'radial-gradient(circle,rgba(99,102,241,0.35) 0%,transparent 70%)', top: -80, left: -80 }} />
           <div className="sp-left-orb" style={{ width: 280, height: 280, background: 'radial-gradient(circle,rgba(139,92,246,0.3) 0%,transparent 70%)', bottom: -60, right: -60 }} />
@@ -734,7 +874,7 @@ export default function SignupPage() {
           </div>
         </div>
 
-        {/* ── Right Panel ── */}
+        {/* Right Panel */}
         <div className="sp-right">
           <div className="sp-card">
 
@@ -745,23 +885,25 @@ export default function SignupPage() {
               </div>
               <div className="sp-card-title">
                 {step === 0 && 'Create Account'}
-                {step === 1 && (firstName ? `Great choice, ${firstName}!` : 'Academic Details')}
-                {step === 2 && 'Almost there!'}
+                {step === 1 && 'Verify Your Phone'}
+                {step === 2 && (firstName ? `Great choice, ${firstName}!` : 'Academic Details')}
+                {step === 3 && 'Almost there!'}
               </div>
               <div className="sp-card-subtitle">
                 {step === 0 && 'Your student profile starts here'}
-                {step === 1 && 'Tell us about your studies'}
-                {step === 2 && 'Review and confirm your details'}
+                {step === 1 && 'Enter the 6-digit code sent to your phone'}
+                {step === 2 && 'Tell us about your studies'}
+                {step === 3 && 'Review and confirm your details'}
               </div>
             </div>
 
             {/* Personalised banner */}
-            {step === 1 && formData.institution && (
+            {step === 2 && formData.institution && (
               <div className="sp-personal-banner">
                 🎓 You're joining from <strong>{formData.institution}</strong> — welcome to the community!
               </div>
             )}
-            {step === 2 && firstName && (
+            {step === 3 && firstName && (
               <div className="sp-personal-banner">
                 👋 Hey <strong>{firstName}</strong>! You're just one tap away from joining Academe.
               </div>
@@ -770,7 +912,7 @@ export default function SignupPage() {
             {/* Step Progress */}
             <StepBar step={step} />
 
-            {/* ── Step 0: Personal ── */}
+            {/* Step 0: Personal */}
             {step === 0 && (
               <div className="sp-step-body">
                 <div>
@@ -804,14 +946,53 @@ export default function SignupPage() {
                   <span className="sp-helper">You'll receive a one-time code for verification — no passwords needed.</span>
                 </div>
 
-                <button className="sp-btn" onClick={next}>
-                  Continue <FiArrowRight size={16} />
+                <button className="sp-btn" onClick={handleRequestOTP} disabled={loading}>
+                  {loading ? <><div className="sp-spinner" /> Sending Code…</> : <>Continue <FiArrowRight size={16} /></>}
                 </button>
               </div>
             )}
 
-            {/* ── Step 1: Academic ── */}
+            {/* Step 1: OTP Verification */}
             {step === 1 && (
+              <div className="sp-step-body">
+                <div>
+                  <label className="sp-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Verification Code</span>
+                    {resendTimer > 0 && (
+                      <span style={{ color: '#6b7280', fontWeight: 400, fontSize: '0.7rem' }}>Resend in {resendTimer}s</span>
+                    )}
+                  </label>
+                  <span className="sp-helper" style={{ marginBottom: '0.5rem', display: 'block' }}>
+                    Enter the 6-digit code sent to <strong style={{ color: '#374151' }}>{formData.phone_number}</strong>
+                  </span>
+
+                  <OTPInput value={otp} onChange={setOtp} onComplete={() => { }} />
+
+                  <div style={{ textAlign: 'right', marginTop: '0.4rem' }}>
+                    <button
+                      type="button"
+                      className="sp-resend"
+                      disabled={resendTimer > 0 || loading}
+                      onClick={handleResendOTP}
+                      style={{ background: 'none', border: 'none', color: '#6366f1', fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      {resendTimer > 0 ? `Resend in ${resendTimer}s` : 'Resend OTP'}
+                    </button>
+                  </div>
+                </div>
+
+                <button className="sp-btn" onClick={handleVerifyOTP} disabled={loading || otp.length < 6}>
+                  {loading ? <><div className="sp-spinner" /> Verifying…</> : <>Verify & Continue <FiArrowRight size={16} /></>}
+                </button>
+
+                <button type="button" className="sp-btn-ghost" onClick={back}>
+                  <FiArrowLeft size={14} /> Back
+                </button>
+              </div>
+            )}
+
+            {/* Step 2: Academic */}
+            {step === 2 && (
               <div className="sp-step-body">
                 <div style={{ position: 'relative' }}>
                   <label className="sp-label">Institution *</label>
@@ -878,8 +1059,8 @@ export default function SignupPage() {
               </div>
             )}
 
-            {/* ── Step 2: Confirm ── */}
-            {step === 2 && (
+            {/* Step 3: Confirm */}
+            {step === 3 && (
               <div className="sp-step-body">
                 <div>
                   <label className="sp-label">Email (optional)</label>

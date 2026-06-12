@@ -17,15 +17,15 @@ const STYLE = `
     --msg-border-light: rgba(0,0,0,0.08);
     
     /* Dark Mode */
-    --msg-bg-dark: #0f1419;
+    --msg-bg-dark: #0e1a27;
     --msg-bubble-dark: #1a2332;
     --msg-text-dark: #e5e7eb;
     --msg-muted-dark: #9ca3af;
     --msg-border-dark: rgba(255,255,255,0.08);
     
     /* Status colors */
-    --msg-online: #10b981;
-    --msg-accent: #3b82f6;
+    --msg-online: #07ad76;
+    --msg-accent: rgb(191, 123, 194);
     --msg-accent-glow: rgba(59, 130, 246, 0.15);
     
     /* Defaults to dark */
@@ -412,217 +412,217 @@ const STYLE = `
 
 /* ─── Helper Functions ─── */
 const groupMessages = (messages) => {
-    if (!messages.length) return [];
+  if (!messages.length) return [];
 
-    const groups = [];
-    let currentGroup = null;
+  const groups = [];
+  let currentGroup = null;
 
-    messages.forEach((msg, idx) => {
-        const prevMsg = messages[idx - 1];
-        const sameGroup = currentGroup &&
-            currentGroup.senderId === msg.sender_id &&
-            prevMsg &&
-            new Date(msg.created_at) - new Date(prevMsg.created_at) < 60000; // 1 minute threshold
+  messages.forEach((msg, idx) => {
+    const prevMsg = messages[idx - 1];
+    const sameGroup = currentGroup &&
+      currentGroup.senderId === msg.sender_id &&
+      prevMsg &&
+      new Date(msg.created_at) - new Date(prevMsg.created_at) < 60000; // 1 minute threshold
 
-        if (sameGroup) {
-            currentGroup.messages.push(msg);
-        } else {
-            if (currentGroup) groups.push(currentGroup);
-            currentGroup = {
-                senderId: msg.sender_id,
-                messages: [msg],
-            };
-        }
-    });
+    if (sameGroup) {
+      currentGroup.messages.push(msg);
+    } else {
+      if (currentGroup) groups.push(currentGroup);
+      currentGroup = {
+        senderId: msg.sender_id,
+        messages: [msg],
+      };
+    }
+  });
 
-    if (currentGroup) groups.push(currentGroup);
-    return groups;
+  if (currentGroup) groups.push(currentGroup);
+  return groups;
 };
 
 const getDayLabel = (date) => {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
 
-    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const yesterdayOnly = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
+  const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const yesterdayOnly = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
 
-    if (dateOnly.getTime() === todayOnly.getTime()) return 'Today';
-    if (dateOnly.getTime() === yesterdayOnly.getTime()) return 'Yesterday';
+  if (dateOnly.getTime() === todayOnly.getTime()) return 'Today';
+  if (dateOnly.getTime() === yesterdayOnly.getTime()) return 'Yesterday';
 
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
 };
 
 export default function ChatWindow({ conversationId }) {
-    const messages = useChatStore(s => s.messages[conversationId] || []);
-    const user = useChatStore(s => s.user);
-    const containerRef = useRef(null);
-    const [hoveredMsg, setHoveredMsg] = useState(null);
+  const messages = useChatStore(s => s.messages[conversationId] || []);
+  const user = useChatStore(s => s.user);
+  const containerRef = useRef(null);
+  const [hoveredMsg, setHoveredMsg] = useState(null);
 
-    // Auto-scroll to bottom on new messages
-    useEffect(() => {
-        const container = containerRef.current;
-        if (container) {
-            const timer = setTimeout(() => {
-                container.scrollTop = container.scrollHeight;
-            }, 50);
-            return () => clearTimeout(timer);
-        }
-    }, [messages.length]);
-
-    const handleCopyMessage = (content) => {
-        navigator.clipboard.writeText(content);
-        toast.success('Copied to clipboard');
-    };
-
-    const handleDeleteMessage = (msgId) => {
-        // Implement delete functionality with your API
-        toast.success('Message deleted');
-    };
-
-    const renderMessage = (msg) => {
-        const isMine = msg.sender_id === user?.id;
-        const timeStr = new Date(msg.timestamp || msg.created_at).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        const statusIcon = isMine ? (msg._pending ? '🕒' : msg._failed ? '✗' : '✓') : null;
-
-        return (
-            <div
-                key={msg.id || msg._tempId}
-                id={`msg-${msg.id || msg._tempId}`}
-                className="cw-message-container"
-            >
-                <div className="cw-bubble-wrapper">
-                    {msg.msg_type === 'TEXT' && (
-                        <div className={`cw-bubble cw-bubble-${isMine ? 'mine' : 'theirs'}`}>
-                            <p
-                                className="cw-bubble-text"
-                                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(msg.content) }}
-                            />
-                            <div className="cw-bubble-footer">
-                                <span className="cw-time">{timeStr}</span>
-                                {statusIcon && <span className="cw-status">{statusIcon}</span>}
-                            </div>
-                        </div>
-                    )}
-
-                    {msg.msg_type === 'FILE' && (
-                        <a
-                            href={msg.file_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={`cw-bubble cw-bubble-${isMine ? 'mine' : 'theirs'} cw-file-bubble`}
-                        >
-                            <div className="cw-file-icon">📎</div>
-                            <div className="cw-file-info">
-                                <span className="cw-file-name">Attachment</span>
-                                <span style={{ fontSize: '10px', opacity: 0.75 }}>{timeStr}</span>
-                            </div>
-                        </a>
-                    )}
-
-                    {msg.msg_type === 'VOICE' && (
-                        <audio controls src={msg.file_url} className="cw-audio" />
-                    )}
-                </div>
-
-                {/* Action Toolbar */}
-                <div className="cw-actions-toolbar">
-                    <button
-                        className="cw-action-btn"
-                        onClick={() => toast('Reply feature coming soon')}
-                        title="Reply"
-                    >
-                        <FiRepeat size={14} />
-                    </button>
-                    <button
-                        className="cw-action-btn"
-                        onClick={() => toast('Reactions coming soon')}
-                        title="React"
-                    >
-                        <FiSmile size={14} />
-                    </button>
-                    {msg.msg_type === 'TEXT' && (
-                        <button
-                            className="cw-action-btn"
-                            onClick={() => handleCopyMessage(msg.content)}
-                            title="Copy"
-                        >
-                            <FiCopy size={14} />
-                        </button>
-                    )}
-                    <button
-                        className="cw-action-btn"
-                        onClick={() => handleDeleteMessage(msg.id)}
-                        title="Delete"
-                    >
-                        <FiTrash2 size={14} />
-                    </button>
-                    <button
-                        className="cw-action-btn"
-                        onClick={() => toast('Forward coming soon')}
-                        title="Forward"
-                    >
-                        <FiShare2 size={14} />
-                    </button>
-                </div>
-            </div>
-        );
-    };
-
-    if (messages.length === 0) {
-        return (
-            <>
-                <style>{STYLE}</style>
-                <div className="cw-container">
-                    <div className="cw-empty">
-                        <div className="cw-empty-icon">💬</div>
-                        <p className="cw-empty-text">No messages yet — say hello!</p>
-                    </div>
-                </div>
-            </>
-        );
+  // Auto-scroll to bottom on new messages
+  useEffect(() => {
+    const container = containerRef.current;
+    if (container) {
+      const timer = setTimeout(() => {
+        container.scrollTop = container.scrollHeight;
+      }, 50);
+      return () => clearTimeout(timer);
     }
+  }, [messages.length]);
 
-    const groups = groupMessages(messages);
-    let lastDate = null;
+  const handleCopyMessage = (content) => {
+    navigator.clipboard.writeText(content);
+    toast.success('Copied to clipboard');
+  };
+
+  const handleDeleteMessage = (msgId) => {
+    // Implement delete functionality with your API
+    toast.success('Message deleted');
+  };
+
+  const renderMessage = (msg) => {
+    const isMine = msg.sender_id === user?.id;
+    const timeStr = new Date(msg.timestamp || msg.created_at).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    const statusIcon = isMine ? (msg._pending ? '🕒' : msg._failed ? '✗' : '✓') : null;
 
     return (
-        <>
-            <style>{STYLE}</style>
-            <div ref={containerRef} className="cw-container">
-                {groups.map((group, groupIdx) => {
-                    const isMine = group.senderId === user?.id;
-                    const firstMsg = group.messages[0];
-                    const msgDate = new Date(firstMsg.timestamp || firstMsg.created_at);
-                    const showDateSeparator = !lastDate || getDayLabel(lastDate) !== getDayLabel(msgDate);
-                    const senderInitial = group.senderId?.charAt(0).toUpperCase() || '?';
-
-                    lastDate = msgDate;
-
-                    return (
-                        <div key={`group-${groupIdx}`}>
-                            {showDateSeparator && (
-                                <div className="cw-date-separator">
-                                    <div className="cw-date-line" />
-                                    <div className="cw-date-text">{getDayLabel(msgDate)}</div>
-                                    <div className="cw-date-line" />
-                                </div>
-                            )}
-                            <div className={`cw-message-group cw-group-${isMine ? 'mine' : 'theirs'}`}>
-                                {!isMine && <div className="cw-avatar">{senderInitial}</div>}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1 }}>
-                                    {group.messages.map((msg, msgIdx) => renderMessage(msg))}
-                                </div>
-                                {isMine && <div className="cw-avatar-placeholder" />}
-                            </div>
-                        </div>
-                    );
-                })}
+      <div
+        key={msg.id || msg._tempId}
+        id={`msg-${msg.id || msg._tempId}`}
+        className="cw-message-container"
+      >
+        <div className="cw-bubble-wrapper">
+          {msg.msg_type === 'TEXT' && (
+            <div className={`cw-bubble cw-bubble-${isMine ? 'mine' : 'theirs'}`}>
+              <p
+                className="cw-bubble-text"
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(msg.content) }}
+              />
+              <div className="cw-bubble-footer">
+                <span className="cw-time">{timeStr}</span>
+                {statusIcon && <span className="cw-status">{statusIcon}</span>}
+              </div>
             </div>
-        </>
+          )}
+
+          {msg.msg_type === 'FILE' && (
+            <a
+              href={msg.file_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`cw-bubble cw-bubble-${isMine ? 'mine' : 'theirs'} cw-file-bubble`}
+            >
+              <div className="cw-file-icon">📎</div>
+              <div className="cw-file-info">
+                <span className="cw-file-name">Attachment</span>
+                <span style={{ fontSize: '10px', opacity: 0.75 }}>{timeStr}</span>
+              </div>
+            </a>
+          )}
+
+          {msg.msg_type === 'VOICE' && (
+            <audio controls src={msg.file_url} className="cw-audio" />
+          )}
+        </div>
+
+        {/* Action Toolbar */}
+        <div className="cw-actions-toolbar">
+          <button
+            className="cw-action-btn"
+            onClick={() => toast('Reply feature coming soon')}
+            title="Reply"
+          >
+            <FiRepeat size={14} />
+          </button>
+          <button
+            className="cw-action-btn"
+            onClick={() => toast('Reactions coming soon')}
+            title="React"
+          >
+            <FiSmile size={14} />
+          </button>
+          {msg.msg_type === 'TEXT' && (
+            <button
+              className="cw-action-btn"
+              onClick={() => handleCopyMessage(msg.content)}
+              title="Copy"
+            >
+              <FiCopy size={14} />
+            </button>
+          )}
+          <button
+            className="cw-action-btn"
+            onClick={() => handleDeleteMessage(msg.id)}
+            title="Delete"
+          >
+            <FiTrash2 size={14} />
+          </button>
+          <button
+            className="cw-action-btn"
+            onClick={() => toast('Forward coming soon')}
+            title="Forward"
+          >
+            <FiShare2 size={14} />
+          </button>
+        </div>
+      </div>
     );
+  };
+
+  if (messages.length === 0) {
+    return (
+      <>
+        <style>{STYLE}</style>
+        <div className="cw-container">
+          <div className="cw-empty">
+            <div className="cw-empty-icon">💬</div>
+            <p className="cw-empty-text">No messages yet — say hello!</p>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  const groups = groupMessages(messages);
+  let lastDate = null;
+
+  return (
+    <>
+      <style>{STYLE}</style>
+      <div ref={containerRef} className="cw-container">
+        {groups.map((group, groupIdx) => {
+          const isMine = group.senderId === user?.id;
+          const firstMsg = group.messages[0];
+          const msgDate = new Date(firstMsg.timestamp || firstMsg.created_at);
+          const showDateSeparator = !lastDate || getDayLabel(lastDate) !== getDayLabel(msgDate);
+          const senderInitial = group.senderId?.charAt(0).toUpperCase() || '?';
+
+          lastDate = msgDate;
+
+          return (
+            <div key={`group-${groupIdx}`}>
+              {showDateSeparator && (
+                <div className="cw-date-separator">
+                  <div className="cw-date-line" />
+                  <div className="cw-date-text">{getDayLabel(msgDate)}</div>
+                  <div className="cw-date-line" />
+                </div>
+              )}
+              <div className={`cw-message-group cw-group-${isMine ? 'mine' : 'theirs'}`}>
+                {!isMine && <div className="cw-avatar">{senderInitial}</div>}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1 }}>
+                  {group.messages.map((msg, msgIdx) => renderMessage(msg))}
+                </div>
+                {isMine && <div className="cw-avatar-placeholder" />}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
 }

@@ -130,6 +130,7 @@ export function AuthProvider({ children }) {
         }
     }, []);
 
+    // ✅ FIXED: Proper OTP login with 2FA handling
     const login = useCallback(async (phone, otp) => {
         setLoginLoading(true);
         setError(null);
@@ -152,6 +153,43 @@ export function AuthProvider({ children }) {
             return userData;
         } catch (err) {
             const message = err.response?.data?.error || err.response?.data?.message || 'Login failed.';
+            setError(message);
+            throw new Error(message);
+        } finally {
+            setLoginLoading(false);
+        }
+    }, []);
+
+    // ✅ FIXED: Biometric login with proper token handling
+    const biometricLogin = useCallback(async (phone, imageData) => {
+        setLoginLoading(true);
+        setError(null);
+        try {
+            const response = await apiClient.post('/accounts/biometric/login/', {
+                phone_number: phone,
+                image_data: imageData
+            });
+            const data = response.data;
+
+            // Handle 2FA challenge
+            if (data.require_2fa) {
+                localStorage.setItem('2fa_temp_token', data.temp_token);
+                localStorage.setItem('2fa_phone', phone);
+                return { require_2fa: true, temp_token: data.temp_token };
+            }
+
+            // Handle successful biometric login
+            const { access, refresh, user: userData } = data;
+            if (access) {
+                storeTokens(access, refresh);
+                storeUser(userData);
+                setUser(userData);
+                return userData;
+            } else {
+                throw new Error('Biometric login succeeded but no token received.');
+            }
+        } catch (err) {
+            const message = err.response?.data?.error || 'Biometric login failed.';
             setError(message);
             throw new Error(message);
         } finally {
@@ -260,10 +298,11 @@ export function AuthProvider({ children }) {
         }
     }, [logout]);
 
+    // ✅ FIXED: Biometric enrollment with proper response handling
     const enrollBiometric = useCallback(async (imageData) => {
         try {
             const response = await apiClient.post('/accounts/biometric/enroll/', { image_data: imageData });
-            updateUser({ biometric_enabled: true });
+            updateUser({ biometric_enabled: true, face_data: imageData });
             return response.data;
         } catch (err) {
             const message = err.response?.data?.error || 'Failed to enroll biometric.';
@@ -271,44 +310,17 @@ export function AuthProvider({ children }) {
         }
     }, [updateUser]);
 
+    // ✅ FIXED: Biometric disable with proper cleanup
     const disableBiometric = useCallback(async () => {
         try {
             const response = await apiClient.post('/accounts/biometric/disable/');
-            updateUser({ biometric_enabled: false });
+            updateUser({ biometric_enabled: false, face_data: '' });
             return response.data;
         } catch (err) {
             const message = err.response?.data?.error || 'Failed to disable biometric.';
             throw new Error(message);
         }
     }, [updateUser]);
-
-    const biometricLogin = useCallback(async (phone, imageData) => {
-        setLoginLoading(true);
-        setError(null);
-        try {
-            const response = await apiClient.post('/accounts/biometric/login/', {
-                phone_number: phone,
-                image_data: imageData
-            });
-            const data = response.data;
-            if (data.require_2fa) {
-                localStorage.setItem('2fa_temp_token', data.temp_token);
-                localStorage.setItem('2fa_phone', phone);
-                return { require_2fa: true, temp_token: data.temp_token };
-            }
-            const { access, refresh, user: userData } = data;
-            storeTokens(access, refresh);
-            storeUser(userData);
-            setUser(userData);
-            return userData;
-        } catch (err) {
-            const message = err.response?.data?.error || 'Biometric login failed.';
-            setError(message);
-            throw new Error(message);
-        } finally {
-            setLoginLoading(false);
-        }
-    }, []);
 
     const setup2FA = useCallback(async () => {
         const response = await accountsApi.setup2FA();
@@ -329,6 +341,12 @@ export function AuthProvider({ children }) {
 
     const get2FAStatus = useCallback(async () => {
         const response = await accountsApi.get2FAStatus();
+        return response.data;
+    }, []);
+
+    // ✅ FIXED: Regenerate backup codes
+    const regenerateBackupCodes = useCallback(async () => {
+        const response = await apiClient.post('/accounts/2fa/regenerate-backup-codes/');
         return response.data;
     }, []);
 
@@ -412,6 +430,7 @@ export function AuthProvider({ children }) {
         verify2FASetup,
         disable2FA,
         get2FAStatus,
+        regenerateBackupCodes,
         hasRole,
         hasPermission,
         clearError: () => setError(null),

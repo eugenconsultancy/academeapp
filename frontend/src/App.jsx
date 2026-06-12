@@ -9,7 +9,7 @@ import BottomNav from './components/layout/BottomNav';
 import FAB from './components/layout/FAB';
 import SkeletonLoader from './components/shared/SkeletonLoader';
 import ErrorBoundary from './components/shared/ErrorBoundary';
-import { useChatStore } from './stores/useChatStore';
+import useChatStore from './stores/useChatStore';
 
 // ═══════════════════════════════════════════════════════════════
 // LAZY-LOADED PAGES
@@ -60,6 +60,7 @@ const GovernanceDashboard = lazy(() => import('./pages/GovernanceDashboard'));
 const GovernanceStats = lazy(() => import('./pages/GovernanceStats'));
 const ManageTimetablePage = lazy(() => import('./pages/ManageTimetablePage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
+const NotificationPreferencesPage = lazy(() => import('./pages/NotificationPreferencesPage'));
 const SearchResultsPage = lazy(() => import('./pages/SearchResultsPage'));
 const ResourceUploadPage = lazy(() => import('./pages/ResourceUploadPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
@@ -103,6 +104,7 @@ const ROUTE_TITLES = {
   '/admin': 'Admin Dashboard',
   '/governance': 'Governance Dashboard',
   '/notifications': 'Notifications',
+  '/notifications/preferences': 'Notification Preferences',
   '/search': 'Search',
   '/resources/upload': 'Upload Resource',
   '/my-tickets': 'My Tickets',
@@ -192,7 +194,7 @@ function useKeyboardDetection() {
     if (window.visualViewport) {
       const onVVResize = () => {
         // Only update the stable height when the keyboard is NOT open
-        // (i.e. layout viewport and visual viewport match)
+        // (i.e. for example : layout viewport and visual viewport match)
         const vvHeight = window.visualViewport.height;
         const diff = stableHeightRef.current - vvHeight;
         if (diff <= KEYBOARD_THRESHOLD) {
@@ -241,15 +243,15 @@ export default function App() {
   const { user, loading } = useAuth();
   const { isDark } = useTheme();
   const location = useLocation();
-  const setChatUser = useChatStore((s) => s.setUser);
+  const setChatUserId = useChatStore((s) => s.setUserId);
 
   // ── Keyboard / visual viewport detection ──
   useKeyboardDetection();
 
-  // Keep chat store's user in sync with auth user
+  // Keep chat store's userId in sync with auth user
   useEffect(() => {
-    if (user) setChatUser(user);
-  }, [user, setChatUser]);
+    if (user?.id) setChatUserId(user.id);
+  }, [user, setChatUserId]);
 
   const isAuthPage = ['/login', '/signup', '/forgot-password', '/reset-password'].includes(location.pathname);
 
@@ -380,12 +382,12 @@ export default function App() {
       <main
         id="main-content"
         className={`overflow-x-hidden transition-[padding] duration-300 ${showChrome
-            ? [
-              'pt-16',
-              'pb-20 md:pb-8',
-              sidebarCollapsed ? 'md:pl-[66px]' : 'md:pl-[238px]',
-            ].join(' ')
-            : ''
+          ? [
+            'pt-16',
+            'pb-20 md:pb-8',
+            sidebarCollapsed ? 'md:pl-[66px]' : 'md:pl-[238px]',
+          ].join(' ')
+          : ''
           }`}
         style={{ minHeight: 'calc(var(--visual-vh, 1vh) * 100)' }}
       >
@@ -457,6 +459,7 @@ export default function App() {
 
                 {/* Notifications */}
                 <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+                <Route path="/notifications/preferences" element={<ProtectedRoute><NotificationPreferencesPage /></ProtectedRoute>} />
 
                 {/* Search */}
                 <Route path="/search" element={<ProtectedRoute><SearchResultsPage /></ProtectedRoute>} />

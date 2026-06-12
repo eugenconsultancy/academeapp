@@ -1,4 +1,4 @@
-# C:\Users\GATARA-BJTU\academe\backend\apps\chat\schema.py
+# backend/apps/chat/schema.py
 
 from ninja import Schema
 from datetime import datetime
@@ -22,8 +22,10 @@ class ParticipantInfo(Schema):
 
 class ConversationOut(Schema):
     id: uuid.UUID
-    participant: Optional[ParticipantInfo] = None  # The OTHER user
+    participant: Optional[ParticipantInfo] = None
     is_active: bool
+    is_pinned: bool = False
+    is_muted: bool = False
     last_message_preview: Optional[str] = None
     last_message_at: Optional[datetime] = None
     unread_count: int = 0
@@ -33,6 +35,8 @@ class MessageIn(Schema):
     content: Optional[str] = None
     file_url: Optional[str] = None
     msg_type: str = 'TEXT'
+    reply_to_id: Optional[uuid.UUID] = None
+    duration: Optional[float] = None
 
 
 class MessageOut(Schema):
@@ -44,11 +48,15 @@ class MessageOut(Schema):
     msg_type: str
     created_at: datetime
     is_read: bool = False
+    reply_to_id: Optional[uuid.UUID] = None
+    reply_preview: Optional[str] = None
+    duration: Optional[float] = None
 
 
 class PresignedUrlIn(Schema):
     file_name: str
     content_type: str
+    max_file_size: int = 10 * 1024 * 1024
 
 
 class PresignedUrlOut(Schema):
@@ -62,3 +70,10 @@ class BlockUserIn(Schema):
 
 class MarkReadIn(Schema):
     message_ids: List[uuid.UUID] = []
+
+
+class ReportUserIn(Schema):
+    reported_user_id: uuid.UUID
+    reason: str
+    description: Optional[str] = None
+    conversation_id: Optional[uuid.UUID] = None

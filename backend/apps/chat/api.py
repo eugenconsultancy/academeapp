@@ -1,11 +1,13 @@
-# C:\Users\GATARA-BJTU\academe\backend\apps\chat\api.py
+# backend/apps/chat/api.py
 
 import uuid
+import re
 from datetime import timedelta
 from django.shortcuts import get_object_or_404
 from django.conf import settings
 from django.utils import timezone
-from django.db.models import Q
+from django.db.models import Count
+from django.core.cache import cache
 from ninja import Router
 from ninja.errors import HttpError
 
@@ -13,7 +15,10 @@ from common.jwt_auth import JWTAuth
 
 auth = JWTAuth()
 
-from .models import Conversation, Message, BlockedUser
+from .models import (
+    Conversation, Message, BlockedUser,
+    MutedConversation, PinnedConversation, UserReport
+)
 from .schema import (
     ConversationOut,
     MessageOut,
@@ -23,21 +28,37 @@ from .schema import (
     StartConversationIn,
     BlockUserIn,
     MarkReadIn,
+    ReportUserIn,
 )
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
 router = Router()
 
+# ─── Constants ───
+MAX_PINNED_CONVERSATIONS = 5
+RATE_LIMIT_MESSAGE_PER_MINUTE = 30
+RATE_LIMIT_CONVERSATION_PER_HOUR = 10
+RATE_LIMIT_REPORT_PER_HOUR = 5
 
-# ─── Helper: build participant info for the other user ───
+ALLOWED_MIME_TYPES = [
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+    'audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/ogg',
+    'application/pdf', 'text/plain',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]
+BLOCKED_MIME_PREFIXES = ['video/']
+
+
+# ─── Helpers ───
+
 def build_participant_info(conv, current_user):
     """Return ParticipantInfo dict for the other user in the conversation."""
     other_user = conv.participants.exclude(id=current_user.id).first()
     if not other_user:
         return None
 
-    # Use existing fields from your User model
     is_online = False
     if other_user.last_activity:
         is_online = (timezone.now() - other_user.last_activity) < timedelta(minutes=5)
@@ -52,7 +73,6 @@ def build_participant_info(conv, current_user):
     }
 
 
-# ─── Helper: calculate unread count ───
 def get_unread_count(conv, user):
     """Count messages from the other participant that are still unread."""
     other_user = conv.participants.exclude(id=user.id).first()
@@ -65,7 +85,6 @@ def get_unread_count(conv, user):
     ).count()
 
 
-# ─── Helper: check if a user is blocked ───
 def is_user_blocked(blocker, blocked_user):
     """Check if blocker has blocked blocked_user."""
     return BlockedUser.objects.filter(
@@ -73,7 +92,49 @@ def is_user_blocked(blocker, blocked_user):
     ).exists()
 
 
-# ---------- Start a new conversation (or get existing) ----------
+def is_conversation_muted(user, conversation):
+    """Check if user has muted the conversation."""
+    return MutedConversation.objects.filter(
+        user=user, conversation=conversation
+    ).exists()
+
+
+def is_conversation_pinned(user, conversation):
+    """Check if user has pinned the conversation."""
+    return PinnedConversation.objects.filter(
+        user=user, conversation=conversation
+    ).exists()
+
+
+def check_rate_limit(user_id, action, limit, window_seconds):
+    """
+    Fixed-window rate limiter using Django cache.
+    Uses cache.add for initial set (which doesn't reset TTL on subsequent calls)
+    and cache.incr for increments (which preserves the original TTL).
+    """
+    key = f"ratelimit:chat:{action}:{user_id}"
+    count = cache.get(key)
+
+    if count is None:
+        # First request in this window — set with TTL
+        cache.set(key, 1, timeout=window_seconds)
+        return True
+
+    if count >= limit:
+        return False
+
+    # cache.incr preserves the original TTL
+    try:
+        cache.incr(key)
+    except ValueError:
+        # Key expired between get and incr — reset
+        cache.set(key, 1, timeout=window_seconds)
+
+    return True
+
+
+# ─── Conversation Endpoints ───
+
 @router.post('/conversations/start', response=ConversationOut, auth=auth)
 def start_conversation(request, payload: StartConversationIn):
     user_a = request.auth
@@ -82,18 +143,23 @@ def start_conversation(request, payload: StartConversationIn):
     if user_a == user_b:
         raise HttpError(400, "You cannot chat with yourself.")
 
-    # Check if either user has blocked the other
+    if not check_rate_limit(user_a.id, 'start_conversation', RATE_LIMIT_CONVERSATION_PER_HOUR, 3600):
+        raise HttpError(429, "Too many conversation requests. Please try again later.")
+
     if is_user_blocked(user_b, user_a):
         raise HttpError(403, "You have been blocked by this user.")
     if is_user_blocked(user_a, user_b):
         raise HttpError(403, "You have blocked this user. Unblock to chat.")
 
-    # Find existing conversation with exactly these two participants
     conv = Conversation.objects.filter(
         participants=user_a
     ).filter(
         participants=user_b
-    ).distinct().first()
+    ).annotate(
+        participant_count=Count('participants')
+    ).filter(
+        participant_count=2
+    ).first()
 
     if not conv:
         conv = Conversation.objects.create(is_active=True)
@@ -109,46 +175,87 @@ def start_conversation(request, payload: StartConversationIn):
         "id": conv.id,
         "participant": participant_info,
         "is_active": conv.is_active,
+        "is_pinned": is_conversation_pinned(user_a, conv),
+        "is_muted": is_conversation_muted(user_a, conv),
         "last_message_preview": conv.last_message_preview,
         "last_message_at": conv.last_message_at,
         "unread_count": unread_count,
     }
 
 
-# ---------- List user's conversations ----------
 @router.get('/conversations', response=list[ConversationOut], auth=auth)
 def list_conversations(request, archived: bool = False):
     user = request.auth
+
     convs = Conversation.objects.filter(
         participants=user,
         is_active=not archived
+    ).exclude(
+        deleted_by=user
     ).order_by('-last_message_at')
 
-    result = []
+    pinned_ids = set(
+        PinnedConversation.objects.filter(user=user).values_list('conversation_id', flat=True)
+    )
+
+    pinned_convs = []
+    unpinned_convs = []
+
     for conv in convs:
         participant_info = build_participant_info(conv, user)
         unread_count = get_unread_count(conv, user)
 
-        result.append({
+        conv_data = {
             "id": conv.id,
             "participant": participant_info,
             "is_active": conv.is_active,
+            "is_pinned": conv.id in pinned_ids,
+            "is_muted": is_conversation_muted(user, conv),
             "last_message_preview": conv.last_message_preview,
             "last_message_at": conv.last_message_at,
             "unread_count": unread_count,
-        })
-    return result
+        }
+
+        if conv.id in pinned_ids:
+            pinned_convs.append(conv_data)
+        else:
+            unpinned_convs.append(conv_data)
+
+    # Sort pinned by pinned_at descending
+    pinned_sorted = sorted(
+        pinned_convs,
+        key=lambda c: PinnedConversation.objects.get(
+            user=user, conversation_id=c['id']
+        ).pinned_at,
+        reverse=True
+    )
+
+    # Sort unpinned by last_message_at descending
+    unpinned_sorted = sorted(
+        unpinned_convs,
+        key=lambda c: c['last_message_at'] or timezone.datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True
+    )
+
+    return pinned_sorted + unpinned_sorted
 
 
-# ---------- Get messages (cursor-based pagination) ----------
 @router.get('/conversations/{conv_id}/messages', response=list[MessageOut], auth=auth)
-def get_messages(request, conv_id: uuid.UUID, before: uuid.UUID = None, limit: int = 50):
+def get_messages(request, conv_id: uuid.UUID, before: str = None, limit: int = 50):
     conv = get_object_or_404(
         Conversation, id=conv_id, participants=request.auth, is_active=True
     )
-    qs = Message.objects.filter(conversation=conv).select_related('sender')
+    qs = Message.objects.filter(conversation=conv).select_related('sender', 'reply_to')
+
     if before:
-        qs = qs.filter(id__lt=before)
+        try:
+            before_dt = timezone.datetime.fromisoformat(before)
+            if timezone.is_naive(before_dt):
+                before_dt = timezone.make_aware(before_dt, timezone.utc)
+            qs = qs.filter(created_at__lt=before_dt)
+        except (ValueError, TypeError):
+            raise HttpError(400, "Invalid 'before' parameter format. Use ISO 8601 datetime.")
+
     messages = qs.order_by('-created_at')[:limit]
 
     return [{
@@ -160,20 +267,31 @@ def get_messages(request, conv_id: uuid.UUID, before: uuid.UUID = None, limit: i
         "msg_type": m.msg_type,
         "created_at": m.created_at,
         "is_read": m.is_read,
+        "reply_to_id": m.reply_to_id,
+        "reply_preview": (m.reply_to.content[:100] if m.reply_to and m.reply_to.content else None),
+        "duration": m.duration,
     } for m in messages]
 
 
-# ---------- Send a message ----------
 @router.post('/conversations/{conv_id}/messages', response=MessageOut, auth=auth)
 def post_message(request, conv_id: uuid.UUID, payload: MessageIn):
+    if not check_rate_limit(request.auth.id, 'send_message', RATE_LIMIT_MESSAGE_PER_MINUTE, 60):
+        raise HttpError(429, "Too many messages. Please slow down.")
+
     conv = get_object_or_404(
         Conversation, id=conv_id, participants=request.auth, is_active=True
     )
 
-    # Check if blocked
     other_user = conv.participants.exclude(id=request.auth.id).first()
     if other_user and is_user_blocked(other_user, request.auth):
         raise HttpError(403, "You have been blocked by this user.")
+
+    reply_to = None
+    if payload.reply_to_id:
+        reply_to = get_object_or_404(Message, id=payload.reply_to_id, conversation=conv)
+
+    if payload.msg_type not in ['TEXT', 'FILE', 'VOICE']:
+        raise HttpError(400, "Invalid message type.")
 
     message = Message.objects.create(
         conversation=conv,
@@ -181,14 +299,20 @@ def post_message(request, conv_id: uuid.UUID, payload: MessageIn):
         content=payload.content,
         file_url=payload.file_url,
         msg_type=payload.msg_type,
+        reply_to=reply_to,
+        duration=payload.duration,
     )
 
-    # Update conversation preview
-    conv.last_message_preview = (payload.content or '')[:200]
+    preview_text = payload.content or ''
+    if payload.msg_type == 'VOICE':
+        preview_text = '🎤 Voice message'
+    elif payload.msg_type == 'FILE' and not preview_text:
+        preview_text = '📎 File attachment'
+
+    conv.last_message_preview = preview_text[:200]
     conv.last_message_at = message.created_at
     conv.save(update_fields=['last_message_preview', 'last_message_at'])
 
-    # Update last_activity
     User.objects.filter(id=request.auth.id).update(last_activity=timezone.now())
 
     return {
@@ -200,13 +324,14 @@ def post_message(request, conv_id: uuid.UUID, payload: MessageIn):
         "msg_type": message.msg_type,
         "created_at": message.created_at,
         "is_read": message.is_read,
+        "reply_to_id": message.reply_to_id,
+        "reply_preview": (reply_to.content[:100] if reply_to and reply_to.content else None),
+        "duration": message.duration,
     }
 
 
-# ---------- Mark messages as read ----------
 @router.post('/conversations/{conv_id}/mark-read', auth=auth)
 def mark_messages_read(request, conv_id: uuid.UUID, payload: MarkReadIn = None):
-    """Mark messages from the other participant as read."""
     conv = get_object_or_404(
         Conversation, id=conv_id, participants=request.auth, is_active=True
     )
@@ -219,20 +344,32 @@ def mark_messages_read(request, conv_id: uuid.UUID, payload: MarkReadIn = None):
     if payload and payload.message_ids:
         qs = qs.filter(id__in=payload.message_ids)
 
-    count = qs.update(is_read=True)
+    now = timezone.now()
+    count = qs.update(is_read=True, read_at=now)
     return {"success": True, "marked_read": count}
 
 
-# ---------- Presigned URL for file upload ----------
+# ─── Presigned URL ───
+
 @router.post('/presigned-url', response=PresignedUrlOut, auth=auth)
 def generate_presigned_url(request, payload: PresignedUrlIn):
     import boto3
     from botocore.exceptions import NoCredentialsError
 
-    # Block video files
-    BLOCKED_MIME_PREFIXES = ['video/']
     if any(payload.content_type.startswith(p) for p in BLOCKED_MIME_PREFIXES):
         raise HttpError(400, "Video files are not allowed.")
+
+    if payload.content_type not in ALLOWED_MIME_TYPES:
+        raise HttpError(
+            400,
+            f"File type '{payload.content_type}' is not allowed. "
+            f"Allowed types: {', '.join(ALLOWED_MIME_TYPES)}"
+        )
+
+    if payload.max_file_size > 50 * 1024 * 1024:
+        raise HttpError(400, "File size exceeds maximum allowed (50MB).")
+
+    safe_filename = re.sub(r'[^\w\.\-]', '_', payload.file_name)[:200]
 
     bucket_name = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', None)
     region = getattr(settings, 'AWS_S3_REGION_NAME', None)
@@ -248,7 +385,8 @@ def generate_presigned_url(request, payload: PresignedUrlIn):
         aws_secret_access_key=secret_key,
         region_name=region,
     )
-    key = f"chat_media/{uuid.uuid4()}/{payload.file_name}"
+    key = f"chat_media/{uuid.uuid4()}/{safe_filename}"
+
     try:
         presigned = s3_client.generate_presigned_url(
             'put_object',
@@ -256,6 +394,7 @@ def generate_presigned_url(request, payload: PresignedUrlIn):
                 'Bucket': bucket_name,
                 'Key': key,
                 'ContentType': payload.content_type,
+                'ContentLength': payload.max_file_size,
             },
             ExpiresIn=300
         )
@@ -265,33 +404,36 @@ def generate_presigned_url(request, payload: PresignedUrlIn):
         raise HttpError(500, "AWS credentials not configured.")
 
 
-# ---------- Block / Unblock users ----------
+# ─── Block / Unblock ───
+
 @router.post('/block', auth=auth)
 def block_user(request, payload: BlockUserIn):
-    """Block a user - prevents them from messaging you."""
     if request.auth.id == payload.blocked_user_id:
         raise HttpError(400, "You cannot block yourself.")
 
     blocked_user = get_object_or_404(User, id=payload.blocked_user_id)
 
-    _, created = BlockedUser.objects.get_or_create(
+    existing = BlockedUser.objects.filter(
         blocker=request.auth,
         blocked=blocked_user,
-    )
+    ).first()
 
-    # Deactivate conversations between these two users
+    if existing:
+        return {"success": True, "blocked": False, "message": "User was already blocked."}
+
+    BlockedUser.objects.create(blocker=request.auth, blocked=blocked_user)
+
     Conversation.objects.filter(
         participants=request.auth
     ).filter(
         participants=blocked_user
     ).distinct().update(is_active=False)
 
-    return {"success": True, "blocked": created}
+    return {"success": True, "blocked": True}
 
 
 @router.delete('/block/{user_id}', auth=auth)
 def unblock_user(request, user_id: uuid.UUID):
-    """Unblock a previously blocked user."""
     deleted, _ = BlockedUser.objects.filter(
         blocker=request.auth,
         blocked_id=user_id,
@@ -301,7 +443,6 @@ def unblock_user(request, user_id: uuid.UUID):
 
 @router.get('/blocked', auth=auth)
 def list_blocked_users(request):
-    """List all users blocked by the current user."""
     blocked = BlockedUser.objects.filter(
         blocker=request.auth
     ).select_related('blocked')
@@ -313,10 +454,105 @@ def list_blocked_users(request):
     } for b in blocked]
 
 
-# ---------- Archive / Unarchive / Delete conversations ----------
+# ─── Mute / Unmute ───
+
+@router.post('/conversations/{conv_id}/mute', auth=auth)
+def mute_conversation(request, conv_id: uuid.UUID):
+    conv = get_object_or_404(
+        Conversation, id=conv_id, participants=request.auth
+    )
+    _, created = MutedConversation.objects.get_or_create(
+        user=request.auth,
+        conversation=conv,
+    )
+    return {"success": True, "muted": created}
+
+
+@router.delete('/conversations/{conv_id}/mute', auth=auth)
+def unmute_conversation(request, conv_id: uuid.UUID):
+    conv = get_object_or_404(
+        Conversation, id=conv_id, participants=request.auth
+    )
+    deleted, _ = MutedConversation.objects.filter(
+        user=request.auth,
+        conversation=conv,
+    ).delete()
+    return {"success": True, "unmuted": deleted > 0}
+
+
+# ─── Pin / Unpin ───
+
+@router.post('/conversations/{conv_id}/pin', auth=auth)
+def pin_conversation(request, conv_id: uuid.UUID):
+    conv = get_object_or_404(
+        Conversation, id=conv_id, participants=request.auth
+    )
+
+    current_pins = PinnedConversation.objects.filter(user=request.auth).count()
+    if current_pins >= MAX_PINNED_CONVERSATIONS:
+        raise HttpError(400, f"You can only pin up to {MAX_PINNED_CONVERSATIONS} conversations.")
+
+    _, created = PinnedConversation.objects.get_or_create(
+        user=request.auth,
+        conversation=conv,
+    )
+    return {"success": True, "pinned": created}
+
+
+@router.delete('/conversations/{conv_id}/pin', auth=auth)
+def unpin_conversation(request, conv_id: uuid.UUID):
+    conv = get_object_or_404(
+        Conversation, id=conv_id, participants=request.auth
+    )
+    deleted, _ = PinnedConversation.objects.filter(
+        user=request.auth,
+        conversation=conv,
+    ).delete()
+    return {"success": True, "unpinned": deleted > 0}
+
+
+# ─── Report ───
+
+@router.post('/report', auth=auth)
+def report_user(request, payload: ReportUserIn):
+    if request.auth.id == payload.reported_user_id:
+        raise HttpError(400, "You cannot report yourself.")
+
+    if not check_rate_limit(request.auth.id, 'report_user', RATE_LIMIT_REPORT_PER_HOUR, 3600):
+        raise HttpError(429, "Too many reports. Please try again later.")
+
+    reported_user = get_object_or_404(User, id=payload.reported_user_id)
+
+    if payload.reason not in dict(UserReport.REPORT_REASONS):
+        raise HttpError(400, "Invalid report reason.")
+
+    conv = None
+    if payload.conversation_id:
+        conv = get_object_or_404(
+            Conversation, id=payload.conversation_id, participants=request.auth
+        )
+        if not conv.participants.filter(id=payload.reported_user_id).exists():
+            raise HttpError(400, "Reported user is not in the specified conversation.")
+
+    report = UserReport.objects.create(
+        reporter=request.auth,
+        reported_user=reported_user,
+        reason=payload.reason,
+        description=payload.description,
+        conversation=conv,
+    )
+
+    return {
+        "success": True,
+        "report_id": report.id,
+        "message": "Report submitted. Our team will review it."
+    }
+
+
+# ─── Archive / Unarchive / Delete ───
+
 @router.patch('/conversations/{conv_id}/archive', auth=auth)
 def archive_conversation(request, conv_id: uuid.UUID):
-    """Archive (soft-delete) a conversation."""
     conv = get_object_or_404(
         Conversation, id=conv_id, participants=request.auth
     )
@@ -327,7 +563,6 @@ def archive_conversation(request, conv_id: uuid.UUID):
 
 @router.patch('/conversations/{conv_id}/unarchive', auth=auth)
 def unarchive_conversation(request, conv_id: uuid.UUID):
-    """Restore an archived conversation."""
     conv = get_object_or_404(
         Conversation, id=conv_id, participants=request.auth
     )
@@ -338,9 +573,21 @@ def unarchive_conversation(request, conv_id: uuid.UUID):
 
 @router.delete('/conversations/{conv_id}', auth=auth)
 def delete_conversation(request, conv_id: uuid.UUID):
-    """Permanently delete a conversation and all its messages."""
     conv = get_object_or_404(
         Conversation, id=conv_id, participants=request.auth
     )
-    conv.delete()
+
+    conv.deleted_by.add(request.auth)
+
+    all_participants = conv.participants.all()
+    all_deleted = all(
+        conv.deleted_by.filter(id=p.id).exists() for p in all_participants
+    )
+
+    if all_deleted:
+        conv.delete()
+    else:
+        conv.is_active = False
+        conv.save(update_fields=['is_active'])
+
     return {"success": True}
