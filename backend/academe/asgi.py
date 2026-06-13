@@ -10,9 +10,12 @@ django_asgi_app = get_asgi_application()
 # Now import Django-dependent modules
 from channels.routing import ProtocolTypeRouter, URLRouter
 from channels.security.websocket import AllowedHostsOriginValidator
+from channels.auth import AuthMiddlewareStack
 from django.urls import path
 from apps.chat.consumers import ChatConsumer
 from apps.notifications.consumers import NotificationConsumer
+
+# Import the custom JWT middleware for WebSockets
 from apps.chat.middleware import JWTAuthMiddleware
 
 websocket_urlpatterns = [
@@ -20,10 +23,12 @@ websocket_urlpatterns = [
     path('ws/notifications/', NotificationConsumer.as_asgi()),
 ]
 
+# For WebSocket connections, we use JWTAuthMiddleware (NOT AuthMiddlewareStack)
+# For HTTP connections, we use the default Django ASGI application
 application = ProtocolTypeRouter({
     "http": django_asgi_app,
     "websocket": AllowedHostsOriginValidator(
-        JWTAuthMiddleware(  # Use custom JWT auth instead of AuthMiddlewareStack
+        JWTAuthMiddleware(  # Custom JWT auth for WebSockets
             URLRouter(websocket_urlpatterns)
         )
     ),

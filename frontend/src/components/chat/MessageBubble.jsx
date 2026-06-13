@@ -1,10 +1,13 @@
 // src/components/chat/MessageBubble.jsx
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo, memo, useEffect } from 'react';
 import { format } from 'date-fns';
 import useChatStore from '../../stores/useChatStore';
 import toast from 'react-hot-toast';
 
-const MessageBubble = ({
+// Global audio player manager - ensures only one audio plays at a time
+let currentlyPlayingAudio = null;
+
+const MessageBubble = memo(({
     message,
     isOwn,
     senderName,
@@ -12,35 +15,60 @@ const MessageBubble = ({
     onReply,
     onEdit,
     onDelete,
+    onDeleteClick, // New prop for custom delete dialog
 }) => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [isEditing, setIsEditing] = useState(false);
     const [editContent, setEditContent] = useState(message.content || '');
     const [isDeleting, setIsDeleting] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const audioRef = useRef(null);
     const editInputRef = useRef(null);
 
     const retryMessage = useChatStore(state => state.retryMessage);
     const userId = useChatStore(state => state.userId);
 
-    const formattedTime = message.created_at
-        ? format(new Date(message.created_at), 'h:mm a')
-        : message.timestamp
-            ? format(new Date(message.timestamp), 'h:mm a')
-            : '';
+    // Safe date formatting with fallback
+    const formattedTime = useMemo(() => {
+        const date = message.created_at || message.timestamp;
+        if (!date) return '';
+        try {
+            const parsedDate = new Date(date);
+            if (isNaN(parsedDate.getTime())) return '';
+            return format(parsedDate, 'h:mm a');
+        } catch {
+            return '';
+        }
+    }, [message.created_at, message.timestamp]);
+
+    // Safe edit timestamp formatting
+    const formattedEditTime = useMemo(() => {
+        if (!message.edited_at) return '';
+        try {
+            const parsedDate = new Date(message.edited_at);
+            if (isNaN(parsedDate.getTime())) return '';
+            return format(parsedDate, 'h:mm a');
+        } catch {
+            return '';
+        }
+    }, [message.edited_at]);
 
     // Check if message is within edit window (5 minutes)
     const canEdit = useCallback(() => {
         if (!isOwn) return false;
+        if (message._deleted) return false;
+
         const messageTime = new Date(message.created_at || message.timestamp);
+        if (isNaN(messageTime.getTime())) return false;
+
         const now = new Date();
         const diffMinutes = (now - messageTime) / (1000 * 60);
-        return diffMinutes <= 5 && !message._deleted;
+        return diffMinutes <= 5;
     }, [isOwn, message.created_at, message.timestamp, message._deleted]);
 
     // Scroll to replied message
-    const handleReplyClick = () => {
+    const handleReplyClick = useCallback(() => {
         if (message.reply_to_id) {
             const el = document.getElementById(`msg-${message.reply_to_id}`);
             if (el) {
@@ -49,10 +77,10 @@ const MessageBubble = ({
                 setTimeout(() => el.classList.remove('highlight-message'), 2000);
             }
         }
-    };
+    }, [message.reply_to_id]);
 
     // Edit message
-    const handleEditSubmit = async () => {
+    const handleEditSubmit = useCallback(async () => {
         if (!editContent.trim() || editContent === message.content) {
             setIsEditing(false);
             return;
@@ -67,9 +95,9 @@ const MessageBubble = ({
                 toast.error('Failed to edit message');
             }
         }
-    };
+    }, [editContent, message.content, message.id, onEdit]);
 
-    const handleEditKeyDown = (e) => {
+    const handleEditKeyDown = useCallback((e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleEditSubmit();
@@ -78,12 +106,21 @@ const MessageBubble = ({
             setIsEditing(false);
             setEditContent(message.content || '');
         }
-    };
+    }, [handleEditSubmit, message.content]);
 
-    // Delete message
-    const handleDelete = async (deleteForEveryone = true) => {
+    // Delete message with custom dialog
+    const handleDeleteClick = useCallback(() => {
+        if (onDeleteClick) {
+            onDeleteClick(message);
+        } else if (window.confirm('Delete this message for everyone?')) {
+            handleDelete(true);
+        }
+    }, [message, onDeleteClick]);
+
+    const handleDelete = useCallback(async (deleteForEveryone = true) => {
         if (isDeleting) return;
         setIsDeleting(true);
+        setShowDeleteConfirm(false);
 
         if (onDelete) {
             const success = await onDelete(message.id, deleteForEveryone);
@@ -94,50 +131,78 @@ const MessageBubble = ({
             }
         }
         setIsDeleting(false);
-    };
+    }, [isDeleting, message.id, onDelete]);
 
     // Retry failed message
-    const handleRetry = async () => {
+    const handleRetry = useCallback(async () => {
         if (message._tempId) {
             const success = await retryMessage(message.conversation_id, message._tempId);
             if (!success) {
                 toast.error('Failed to retry. Please try again.');
             }
         }
-    };
+    }, [message._tempId, message.conversation_id, retryMessage]);
 
-    // Voice message playback
-    const togglePlayback = () => {
+    // Voice message playback with global audio manager
+    const togglePlayback = useCallback(() => {
         if (audioRef.current) {
+            // Pause any other playing audio
+            if (currentlyPlayingAudio && currentlyPlayingAudio !== audioRef.current) {
+                currentlyPlayingAudio.pause();
+                // Find and reset the state of the previously playing message
+                const prevAudioId = currentlyPlayingAudio.getAttribute('data-message-id');
+                if (prevAudioId) {
+                    // Dispatch custom event to notify other components
+                    window.dispatchEvent(new CustomEvent('audio_paused', { detail: { messageId: prevAudioId } }));
+                }
+            }
+
             if (isPlaying) {
                 audioRef.current.pause();
+                currentlyPlayingAudio = null;
             } else {
                 audioRef.current.play();
+                currentlyPlayingAudio = audioRef.current;
             }
             setIsPlaying(!isPlaying);
         }
-    };
+    }, [isPlaying]);
 
-    const handleTimeUpdate = () => {
+    // Listen for audio paused events from other components
+    useEffect(() => {
+        const handleAudioPaused = (event) => {
+            if (event.detail?.messageId !== (message.id || message._tempId)) {
+                setIsPlaying(false);
+            }
+        };
+
+        window.addEventListener('audio_paused', handleAudioPaused);
+        return () => window.removeEventListener('audio_paused', handleAudioPaused);
+    }, [message.id, message._tempId]);
+
+    const handleTimeUpdate = useCallback(() => {
         if (audioRef.current) {
             setCurrentTime(audioRef.current.currentTime);
         }
-    };
+    }, []);
 
-    const handleAudioEnded = () => {
+    const handleAudioEnded = useCallback(() => {
         setIsPlaying(false);
         setCurrentTime(0);
-    };
+        if (currentlyPlayingAudio === audioRef.current) {
+            currentlyPlayingAudio = null;
+        }
+    }, []);
 
-    const formatDuration = (seconds) => {
-        if (!seconds) return '0:00';
+    const formatDuration = useCallback((seconds) => {
+        if (!seconds || isNaN(seconds)) return '0:00';
         const mins = Math.floor(seconds / 60);
         const secs = Math.floor(seconds % 60);
         return `${mins}:${secs.toString().padStart(2, '0')}`;
-    };
+    }, []);
 
-    // Status indicators (fixed logic)
-    const renderStatus = () => {
+    // Status indicators
+    const renderStatus = useCallback(() => {
         if (!isOwn) return null;
 
         if (message._deleted) {
@@ -167,32 +232,18 @@ const MessageBubble = ({
             );
         }
 
-        // Delivered vs Read status
         if (message.is_read) {
-            return (
-                <span className="text-blue-500 text-xs ml-1" title="Read">
-                    ✓✓
-                </span>
-            );
+            return <span className="text-blue-500 text-xs ml-1" title="Read">✓✓</span>;
         }
 
-        // Delivered (assuming server sets is_delivered flag)
         if (message.is_delivered) {
-            return (
-                <span className="text-gray-500 text-xs ml-1" title="Delivered">
-                    ✓✓
-                </span>
-            );
+            return <span className="text-gray-500 text-xs ml-1" title="Delivered">✓✓</span>;
         }
 
-        return (
-            <span className="text-gray-400 text-xs ml-1" title="Sent">
-                ✓
-            </span>
-        );
-    };
+        return <span className="text-gray-400 text-xs ml-1" title="Sent">✓</span>;
+    }, [isOwn, message._deleted, message._failed, message._pending, message.is_read, message.is_delivered, handleRetry]);
 
-    // Don't render deleted messages (just a placeholder)
+    // Don't render deleted messages for others
     if (message._deleted && !isOwn) {
         return (
             <div className="flex gap-3 mb-4 opacity-50">
@@ -233,12 +284,13 @@ const MessageBubble = ({
                         ? 'bg-indigo-600 text-white'
                         : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
                         } ${message._deleted ? 'opacity-50' : ''}`}
+                    style={{ maxWidth: 'min(400px, 100%)' }}
                 >
                     {/* Reply Preview */}
                     {message.reply_preview && (
                         <div
                             onClick={handleReplyClick}
-                            className={`mb-1 p-2 rounded-lg cursor-pointer text-xs ${isOwn
+                            className={`mb-2 p-2 rounded-lg cursor-pointer text-xs ${isOwn
                                 ? 'bg-indigo-700 text-indigo-100'
                                 : 'bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-400'
                                 }`}
@@ -349,6 +401,7 @@ const MessageBubble = ({
                                         onTimeUpdate={handleTimeUpdate}
                                         onEnded={handleAudioEnded}
                                         className="hidden"
+                                        data-message-id={message.id || message._tempId}
                                     />
                                 </div>
                             )}
@@ -388,11 +441,7 @@ const MessageBubble = ({
 
                             {isOwn && (
                                 <button
-                                    onClick={() => {
-                                        if (window.confirm('Delete this message for everyone?')) {
-                                            handleDelete(true);
-                                        }
-                                    }}
+                                    onClick={handleDeleteClick}
                                     className="p-1 rounded-full bg-white dark:bg-gray-600 shadow-md hover:bg-red-100 dark:hover:bg-red-900 transition-colors"
                                     title="Delete for everyone"
                                     disabled={isDeleting}
@@ -408,12 +457,12 @@ const MessageBubble = ({
 
                 {/* Timestamp & Status */}
                 <p
-                    className={`text-xs text-gray-400 dark:text-gray-500 mt-1 flex items-center gap-1 ${isOwn ? 'justify-end mr-1' : 'ml-1'}`}
+                    className={`text-xs text-gray-400 dark:text-gray-500 mt-1 flex items-center gap-1 flex-wrap ${isOwn ? 'justify-end mr-1' : 'ml-1'}`}
                 >
-                    {formattedTime}
+                    <span>{formattedTime}</span>
                     {renderStatus()}
                     {message.edited_at && (
-                        <span className="text-gray-400 text-xs" title={`Edited at ${format(new Date(message.edited_at), 'h:mm a')}`}>
+                        <span className="text-gray-400 text-xs" title={`Edited at ${formattedEditTime}`}>
                             (edited)
                         </span>
                     )}
@@ -421,6 +470,8 @@ const MessageBubble = ({
             </div>
         </div>
     );
-};
+});
+
+MessageBubble.displayName = 'MessageBubble';
 
 export default MessageBubble;

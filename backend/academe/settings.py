@@ -46,10 +46,15 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
+    
+    # IMPORTANT: AuthenticationMiddleware MUST come before UpdateLastSeenMiddleware
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'common.middleware.RateLimitMiddleware',
+    
+    # UpdateLastSeenMiddleware must be AFTER AuthenticationMiddleware
     'common.middleware.UpdateLastSeenMiddleware',
 ]
 
@@ -173,26 +178,97 @@ DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@academe.com')
 
 # ============================================
 # CORS CONFIGURATION
+# CORS CONFIGURATION - FIXED FOR NGROK
 # ============================================
+
+# Get current Ngrok URL from environment or use defaults
+NGROK_URL = os.getenv('NGROK_URL', 'https://granitic-imbricately-dede.ngrok-free.dev')
+
+# For production, don't allow all origins
 CORS_ALLOW_ALL_ORIGINS = DEBUG
 
+# Critical: These headers must be allowed for both REST and WebSocket
 CORS_ALLOW_HEADERS = [
     "accept",
+    "accept-encoding",
     "authorization",
     "content-type",
+    "dnt",
+    "origin",
     "user-agent",
     "x-csrftoken",
     "x-requested-with",
     "ngrok-skip-browser-warning",
     "idempotency-key",
+    "x-forwarded-for",
+    "x-forwarded-proto",
+    "x-real-ip",
 ]
 
+# Allowed methods for CORS
+CORS_ALLOW_METHODS = [
+    "DELETE",
+    "GET",
+    "OPTIONS",
+    "PATCH",
+    "POST",
+    "PUT",
+]
+
+# Allow credentials (cookies, authorization headers)
+CORS_ALLOW_CREDENTIALS = True
+
+# Preflight max age (cache OPTIONS response)
+CORS_PREFLIGHT_MAX_AGE = 86400  # 24 hours
+
+# Allowed origins - include current Ngrok URL dynamically
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
     "http://10.5.50.15:5173",
     "https://granitic-imbricately-dede.ngrok-free.dev",
 ]
+
+# Also allow the Ngrok URL from environment variable if different
+if NGROK_URL and NGROK_URL not in CORS_ALLOWED_ORIGINS:
+    CORS_ALLOWED_ORIGINS.append(NGROK_URL)
+
+# For development, add any localhost variations
+if DEBUG:
+    CORS_ALLOWED_ORIGINS.extend([
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://localhost:5174",
+        "http://localhost:5175",
+    ])
+
+# CSRF Trusted Origins (important for WebSocket)
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://granitic-imbricately-dede.ngrok-free.dev",
+]
+
+if NGROK_URL:
+    CSRF_TRUSTED_ORIGINS.append(NGROK_URL)
+
+# Security settings for proxy (Ngrok)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
+
+# Session security (adjust for development)
+SESSION_COOKIE_SECURE = not DEBUG  # True in production
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+
+# CSRF cookie settings
+CSRF_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript to read CSRF token if needed
+CSRF_COOKIE_SAMESITE = 'Lax'
+
 
 # ============================================
 # CELERY CONFIGURATION
@@ -424,7 +500,7 @@ if not LOGS_DIR.exists():
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 # ============================================
-# JAZZMIN – ADMIN PANEL CONFIGURATION
+# JAZZMIN – ADMIN PANEL CONFIGURATION (FIXED)
 # ============================================
 JAZZMIN_SETTINGS = {
     "site_title": "Academe Admin",
@@ -437,7 +513,9 @@ JAZZMIN_SETTINGS = {
     "site_icon": None,
     "welcome_sign": "Welcome to Academe Administration",
     "copyright": "Academe – Student Affairs Platform",
-    "search_model": ["accounts.User", "chat.Conversation"],
+    
+    # FIX: Must be a single string, not a list
+    "search_model": "accounts.User", 
     
     "user_avatar": "profile_pic",
     

@@ -13,6 +13,7 @@ router = Router()
 # ── Schemas ──────────────────────────────────────────────
 class NotificationOut(BaseModel):
     id: UUID
+    client_id: Optional[str] = None  # ADDED: For frontend reconciliation
     title: str
     message: str
     type: str = Field(alias='notification_type')
@@ -25,10 +26,12 @@ class NotificationOut(BaseModel):
 
     class Config:
         from_attributes = True
+        populate_by_name = True
 
 
 class NotificationDetailOut(BaseModel):
     id: UUID
+    client_id: Optional[str] = None
     title: str
     message: str
     type: str = Field(alias='notification_type')
@@ -42,6 +45,7 @@ class NotificationDetailOut(BaseModel):
 
     class Config:
         from_attributes = True
+        populate_by_name = True
 
 
 class NotificationPage(BaseModel):
@@ -98,9 +102,10 @@ class PreferenceIn(BaseModel):
 
 
 # ── Helpers ─────────────────────────────────────────────
-def serialize_notification(notification: Notification) -> dict:
+def serialize_notification(notification: Notification, client_id: Optional[str] = None) -> dict:
     return {
         "id": str(notification.id),
+        "client_id": client_id,
         "title": notification.title,
         "message": notification.message,
         "type": notification.notification_type,
@@ -208,19 +213,7 @@ def get_notification_detail(request, notification_id: UUID):
         notif = Notification.objects.select_related('user').get(
             id=notification_id, user=user, is_deleted=False
         )
-        return NotificationDetailOut(
-            id=notif.id,
-            title=notif.title,
-            message=notif.message,
-            notification_type=notif.notification_type,
-            is_read=notif.is_read,
-            is_deleted=notif.is_deleted,
-            created_at=notif.created_at,
-            link=notif.link,
-            source_type=notif.source_type,
-            source_id=notif.source_id,
-            user_name=notif.user.full_name if hasattr(notif.user, 'full_name') else None,
-        )
+        return NotificationDetailOut.from_orm(notif)
     except Notification.DoesNotExist:
         return {"error": "Notification not found"}, 404
 

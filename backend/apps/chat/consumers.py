@@ -21,8 +21,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
     """
     
     async def connect(self):
+        # Initialize attributes
+        self.user_id = None
+        self.user_name = None
+        self.conversation_id = None
+        self.room_group_name = None
+        
         # Get conversation ID from URL
-        self.conversation_id = self.scope['url_route']['kwargs']['conversation_id']
+        self.conversation_id = str(self.scope['url_route']['kwargs']['conversation_id'])
         self.room_group_name = f'chat_{self.conversation_id}'
         
         # Extract token from query string
@@ -32,11 +38,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
         
         # Authenticate user
         if not token:
+            print(f"No token provided for conversation {self.conversation_id}")
             await self.close(code=4001)
             return
         
         self.user = await self.get_user_from_token(token)
         if not self.user:
+            print(f"Invalid token for conversation {self.conversation_id}")
             await self.close(code=4002)
             return
         
@@ -45,11 +53,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
         
         # Validate conversation participation
         if not await self.is_participant():
+            print(f"User {self.user_id} not a participant in conversation {self.conversation_id}")
             await self.close(code=4003)
             return
         
         # Check if blocked
         if await self.is_blocked():
+            print(f"User {self.user_id} is blocked in conversation {self.conversation_id}")
             await self.close(code=4004)
             return
         
@@ -66,6 +76,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             {
                 'type': 'user_status',
                 'user_id': self.user_id,
+                'user_name': self.user_name,
                 'is_online': True
             }
         )
@@ -74,18 +85,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
     
     async def disconnect(self, close_code):
         """Handle disconnection"""
-        if hasattr(self, 'user_id') and self.user_id:
+        if hasattr(self, 'user_id') and self.user_id and hasattr(self, 'room_group_name') and self.room_group_name:
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
                     'type': 'user_status',
                     'user_id': self.user_id,
+                    'user_name': self.user_name,
                     'is_online': False
                 }
             )
         
-        await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
-        print(f"❌ WebSocket disconnected: user={getattr(self, 'user_id', 'unknown')}")
+        if hasattr(self, 'room_group_name') and self.room_group_name:
+            await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
+        
+        print(f"❌ WebSocket disconnected: user={getattr(self, 'user_id', 'unknown')}, code={close_code}")
     
     async def receive(self, text_data):
         """Receive message from WebSocket"""
@@ -118,15 +132,39 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def chat_message(self, event):
         """Send message to WebSocket client"""
         try:
-            await self.send(text_data=json.dumps(event))
+            # Ensure all UUIDs are converted to strings
+            serialized_event = {}
+            for key, value in event.items():
+                if hasattr(value, '__class__') and 'UUID' in str(value.__class__):
+                    serialized_event[key] = str(value)
+                elif isinstance(value, dict):
+                    serialized_event[key] = {
+                        k: str(v) if hasattr(v, '__class__') and 'UUID' in str(v.__class__) else v
+                        for k, v in value.items()
+                    }
+                else:
+                    serialized_event[key] = value
+            await self.send(text_data=json.dumps(serialized_event))
         except Exception as e:
             print(f"Error sending message: {e}")
+            # Fallback - send minimal message
+            fallback = {
+                'type': 'chat_message',
+                'id': str(event.get('id', '')),
+                'conversation_id': str(event.get('conversation_id', '')),
+                'sender_id': str(event.get('sender_id', '')),
+                'content': event.get('content', ''),
+                'msg_type': event.get('msg_type', 'TEXT'),
+                'created_at': event.get('created_at', ''),
+            }
+            await self.send(text_data=json.dumps(fallback))
     
     async def user_status(self, event):
         """Send user status to WebSocket client"""
         await self.send(text_data=json.dumps({
             'type': 'presence',
             'user_id': event['user_id'],
+            'user_name': event.get('user_name', ''),
             'is_online': event['is_online']
         }))
     
@@ -171,9 +209,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
     
     async def handle_chat_message(self, data):
         """Process and broadcast chat message"""
+        if not self.user_id:
+            await self.send_error("Not authenticated")
+            return
+        
         # Rate limiting
         if not await self.rate_limit_check():
-            await self.send_error("Rate limit exceeded")
+            await self.send_error("Rate limit exceeded. Please slow down.")
             return
         
         # Verify sender
@@ -183,13 +225,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
         
         # Check if still blocked
         if await self.is_blocked():
-            await self.send_error("You are blocked")
+            await self.send_error("You are blocked from sending messages in this conversation")
             return
         
         # Save message to database
         message = await self.save_message(data)
         
-        # Prepare broadcast message
+        # Prepare broadcast message with all UUIDs as strings
         broadcast_data = {
             'type': 'chat_message',
             'id': str(message.id),
@@ -213,10 +255,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             broadcast_data
         )
         
-        print(f"📨 Message sent: {message.id}")
+        print(f"📨 Message sent: {message.id} in conversation {self.conversation_id}")
     
     async def handle_typing(self, data):
         """Broadcast typing indicator"""
+        if not self.user_id:
+            return
+        
         await self.channel_layer.group_send(
             self.room_group_name,
             {
@@ -229,19 +274,27 @@ class ChatConsumer(AsyncWebsocketConsumer):
     
     async def handle_mark_read(self):
         """Mark messages as read"""
+        if not self.user_id:
+            return
+        
         updated = await self.mark_messages_read()
         await self.channel_layer.group_send(
             self.room_group_name,
             {
                 'type': 'messages_read',
                 'read_by': self.user_id,
-                'conversation_id': self.conversation_id
+                'conversation_id': str(self.conversation_id)
             }
         )
-        print(f"📖 Messages marked as read: {updated}")
+        if updated > 0:
+            print(f"📖 {updated} messages marked as read by {self.user_id}")
     
     async def handle_edit_message(self, data):
         """Edit an existing message"""
+        if not self.user_id:
+            await self.send_error("Not authenticated")
+            return
+        
         message_id = data.get('message_id')
         new_content = data.get('content', '')
         
@@ -258,14 +311,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     'message_id': message_id,
                     'new_content': new_content,
                     'edited_at': timezone.now().isoformat(),
-                    'conversation_id': self.conversation_id
+                    'conversation_id': str(self.conversation_id)
                 }
             )
+            print(f"✏️ Message {message_id} edited by {self.user_id}")
         else:
-            await self.send_error("Cannot edit message")
+            await self.send_error("Cannot edit message - either not found, not yours, or edit window expired")
     
     async def handle_delete_message(self, data):
         """Delete a message"""
+        if not self.user_id:
+            await self.send_error("Not authenticated")
+            return
+        
         message_id = data.get('message_id')
         if not message_id:
             await self.send_error("Message ID required")
@@ -279,9 +337,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     'type': 'message_deleted',
                     'message_id': message_id,
                     'deleted_by': self.user_id,
-                    'conversation_id': self.conversation_id
+                    'conversation_id': str(self.conversation_id)
                 }
             )
+            print(f"🗑️ Message {message_id} deleted by {self.user_id}")
+        else:
+            await self.send_error("Cannot delete message - not found or not yours")
     
     async def send_error(self, message):
         """Send error message to client"""
@@ -298,10 +359,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
             user_id = payload.get('user_id')
-            return User.objects.get(id=user_id, is_active=True)
+            if user_id:
+                return User.objects.get(id=user_id, is_active=True)
+        except jwt.ExpiredSignatureError:
+            print(f"JWT token expired")
+        except jwt.InvalidTokenError:
+            print(f"Invalid JWT token")
         except Exception as e:
             print(f"Token authentication error: {e}")
-            return None
+        return None
     
     @database_sync_to_async
     def is_participant(self):
@@ -384,9 +450,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 is_deleted=False
             )
             # Check edit window (5 minutes)
-            from django.utils import timezone
             time_diff = timezone.now() - message.created_at
             if time_diff.total_seconds() > 300:
+                print(f"Edit window expired for message {message_id}")
                 return False
             
             message.content = new_content
@@ -394,6 +460,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             message.save(update_fields=['content', 'edited_at'])
             return True
         except Message.DoesNotExist:
+            print(f"Message {message_id} not found for editing")
             return False
     
     @database_sync_to_async
@@ -412,10 +479,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
             message.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by', 'content'])
             return True
         except Message.DoesNotExist:
+            print(f"Message {message_id} not found for deletion")
             return False
     
     async def rate_limit_check(self):
-        """Rate limiting for messages"""
+        """Rate limiting for messages - 20 messages per minute"""
         key = f"chat_rate:{self.user_id}"
         count = await database_sync_to_async(cache.get)(key)
         
@@ -423,7 +491,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await database_sync_to_async(cache.set)(key, 1, timeout=60)
             return True
         
-        if count >= 20:  # 20 messages per minute
+        if count >= 20:
+            print(f"Rate limit exceeded for user {self.user_id}")
             return False
         
         await database_sync_to_async(cache.incr)(key)

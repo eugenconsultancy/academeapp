@@ -1,7 +1,8 @@
-import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
+// frontend/src/components/chat/ChatWindow.jsx
+import React, { useRef, useEffect, useCallback, useState, useMemo, useLayoutEffect } from 'react';
 import { useChatStore } from '../../stores/useChatStore';
 import DOMPurify from 'dompurify';
-import { FiRepeat, FiSmile, FiCopy, FiTrash2, FiShare2, FiCheck, FiClock, FiAlertCircle } from 'react-icons/fi';
+import { FiRepeat, FiSmile, FiCopy, FiTrash2, FiShare2, FiCheck, FiClock, FiAlertCircle, FiRefreshCw } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 /* ─── Comprehensive Styles ─── */
@@ -405,6 +406,28 @@ const STYLE = `
     transform: scale(0.95);
   }
 
+  /* ─── Retry Button for Failed Messages ─── */
+  .chat-retry-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    margin-top: 6px;
+    border-radius: 8px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid #ef4444;
+    color: #ef4444;
+    font-size: 11px;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .chat-retry-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    transform: scale(1.02);
+  }
+
   /* ─── Empty State ─── */
   .chat-empty {
     display: flex;
@@ -556,8 +579,8 @@ const getDayLabel = (date) => {
   });
 };
 
-// Message Item Component - Memoized
-const MessageItem = React.memo(({ msg, isMine, user, onCopy, onDelete }) => {
+// Message Item Component - Memoized with retry functionality
+const MessageItem = React.memo(({ msg, isMine, user, onCopy, onDelete, onRetry }) => {
   const timeStr = new Date(msg.timestamp || msg.created_at).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit'
@@ -572,9 +595,15 @@ const MessageItem = React.memo(({ msg, isMine, user, onCopy, onDelete }) => {
     return null;
   };
 
+  const handleRetry = (e) => {
+    e.stopPropagation();
+    if (onRetry && msg._tempId) {
+      onRetry(msg.conversation_id, msg._tempId);
+    }
+  };
+
   return (
     <div
-      key={msg.id || msg._tempId}
       id={`msg-${msg.id || msg._tempId}`}
       className={`chat-message-container ${isMine ? 'mine' : ''} ${msg._failed ? 'chat-failed' : ''} ${msg._pending ? 'chat-pending' : ''}`}
     >
@@ -589,6 +618,12 @@ const MessageItem = React.memo(({ msg, isMine, user, onCopy, onDelete }) => {
               <span className="chat-time">{timeStr}</span>
               {getStatusIcon() && <span className="chat-status">{getStatusIcon()}</span>}
             </div>
+            {/* Retry button for failed messages */}
+            {msg._failed && isMine && (
+              <button onClick={handleRetry} className="chat-retry-btn">
+                <FiRefreshCw size={12} /> Retry
+              </button>
+            )}
           </div>
         )}
 
@@ -612,7 +647,7 @@ const MessageItem = React.memo(({ msg, isMine, user, onCopy, onDelete }) => {
           <div className={`chat-bubble chat-file-bubble ${isMine ? 'chat-bubble-mine' : 'chat-bubble-theirs'}`}>
             <div className="chat-file-icon">🎤</div>
             <div className="chat-file-info flex-1">
-              <audio controls src={msg.file_url} className="chat-audio" />
+              <audio controls src={msg.file_url} className="chat-audio" preload="metadata" />
               <span style={{ fontSize: '10px', opacity: 0.75 }}>{timeStr}</span>
             </div>
           </div>
@@ -627,7 +662,7 @@ const MessageItem = React.memo(({ msg, isMine, user, onCopy, onDelete }) => {
         <button className="chat-action-btn" onClick={() => toast('Reactions coming soon')} title="React">
           <FiSmile size={16} />
         </button>
-        {msg.msg_type === 'TEXT' && (
+        {msg.msg_type === 'TEXT' && !msg._deleted && (
           <button className="chat-action-btn" onClick={() => onCopy(msg.content)} title="Copy">
             <FiCopy size={16} />
           </button>
@@ -642,10 +677,13 @@ const MessageItem = React.memo(({ msg, isMine, user, onCopy, onDelete }) => {
     </div>
   );
 }, (prevProps, nextProps) => {
+  // Only re-render if these specific props change
   return (
     prevProps.msg.id === nextProps.msg.id &&
     prevProps.msg._pending === nextProps.msg._pending &&
-    prevProps.msg._failed === nextProps.msg._failed
+    prevProps.msg._failed === nextProps.msg._failed &&
+    prevProps.msg.content === nextProps.msg.content &&
+    prevProps.msg.is_read === nextProps.msg.is_read
   );
 });
 
@@ -655,19 +693,26 @@ MessageItem.displayName = 'MessageItem';
 export default function ChatWindow({ conversationId }) {
   const messages = useChatStore(s => s.messages[conversationId] || []);
   const user = useChatStore(s => s.user);
+  const retryMessage = useChatStore(s => s.retryMessage);
   const containerRef = useRef(null);
+  const prevMessagesLengthRef = useRef(0);
   const [hoveredMsg, setHoveredMsg] = useState(null);
 
-  // Auto-scroll to bottom on new messages
-  useEffect(() => {
+  // FIX: Use useLayoutEffect for immediate scroll after DOM update
+  useLayoutEffect(() => {
     const container = containerRef.current;
     if (container) {
-      const timer = setTimeout(() => {
+      const newMessageAdded = messages.length > prevMessagesLengthRef.current;
+      const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 200;
+
+      // Auto-scroll only if new message was added OR user is near bottom
+      if (newMessageAdded || nearBottom) {
         container.scrollTop = container.scrollHeight;
-      }, 50);
-      return () => clearTimeout(timer);
+      }
+
+      prevMessagesLengthRef.current = messages.length;
     }
-  }, [messages.length]);
+  }, [messages]);
 
   const handleCopyMessage = useCallback((content) => {
     navigator.clipboard.writeText(content);
@@ -675,8 +720,18 @@ export default function ChatWindow({ conversationId }) {
   }, []);
 
   const handleDeleteMessage = useCallback((msgId) => {
+    // TODO: Implement actual delete API call
     toast.success('Message deleted');
   }, []);
+
+  const handleRetryMessage = useCallback(async (convId, tempId) => {
+    const success = await retryMessage(convId, tempId);
+    if (success) {
+      toast.success('Retrying message...');
+    } else {
+      toast.error('Failed to retry message');
+    }
+  }, [retryMessage]);
 
   // Memoize grouped messages
   const groups = useMemo(() => groupMessages(messages), [messages]);
@@ -731,6 +786,7 @@ export default function ChatWindow({ conversationId }) {
                       user={user}
                       onCopy={handleCopyMessage}
                       onDelete={handleDeleteMessage}
+                      onRetry={handleRetryMessage}
                     />
                   ))}
                 </div>

@@ -32,11 +32,14 @@ class ConversationOut(Schema):
 
 
 class MessageIn(Schema):
+    """Schema for incoming messages - matches WebSocket message format"""
+    sender_id: Optional[uuid.UUID] = None
     content: Optional[str] = None
     file_url: Optional[str] = None
     msg_type: str = 'TEXT'
     reply_to_id: Optional[uuid.UUID] = None
     duration: Optional[float] = None
+    _tempId: Optional[str] = None  # For optimistic updates
 
 
 class MessageEditIn(Schema):
@@ -45,7 +48,9 @@ class MessageEditIn(Schema):
 
 
 class MessageOut(Schema):
+    """Schema for outgoing messages - includes _tempId for reconciliation"""
     id: uuid.UUID
+    _tempId: Optional[str] = None  # IMPORTANT: For frontend reconciliation
     conversation_id: uuid.UUID
     sender_id: uuid.UUID
     content: Optional[str] = None

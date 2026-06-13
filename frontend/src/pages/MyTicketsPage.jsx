@@ -1,16 +1,15 @@
-// C:\Users\GATARA-BJTU\academe\frontend\src\pages\MyTicketsPage.jsx
-
-import { useState } from 'react';
+// frontend/src/pages/MyTicketsPage.jsx
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supportApi } from '../api/supportApi';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
 import toast from 'react-hot-toast';
 import {
-    FiMessageSquare, FiChevronRight, FiRefreshCw, FiArrowLeft,
-    FiCircle, FiClock, FiCheckCircle, FiXCircle, FiAlertCircle,
-    FiPlus, FiSearch, FiInbox, FiUser, FiCalendar, FiTag,
-    FiSend, FiPaperclip, FiX, FiEye
+    FiMessageSquare, FiRefreshCw, FiArrowLeft,
+    FiClock, FiCheckCircle, FiXCircle, FiAlertCircle,
+    FiPlus, FiSearch, FiUser, FiCalendar, FiTag,
+    FiSend, FiX, FiEye
 } from 'react-icons/fi';
 
 const STATUS_CONFIG = {
@@ -18,25 +17,25 @@ const STATUS_CONFIG = {
         color: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800',
         icon: FiAlertCircle,
         label: 'Open',
-        dot: '\uD83D\uDFE1'
+        dot: '🟡'
     },
     in_progress: {
         color: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800',
         icon: FiClock,
         label: 'In Progress',
-        dot: '\uD83D\uDD35'
+        dot: '🔵'
     },
     resolved: {
         color: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800',
         icon: FiCheckCircle,
         label: 'Resolved',
-        dot: '\uD83D\uDFE2'
+        dot: '🟢'
     },
     closed: {
         color: 'bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700',
         icon: FiXCircle,
         label: 'Closed',
-        dot: '\u26AB'
+        dot: '⚫'
     },
 };
 
@@ -49,6 +48,10 @@ const FILTER_OPTIONS = [
 ];
 
 export default function MyTicketsPage() {
+    const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const urlTicketId = searchParams.get('ticket');
+
     const [selectedTicket, setSelectedTicket] = useState(null);
     const [filter, setFilter] = useState('all');
     const [viewModalOpen, setViewModalOpen] = useState(false);
@@ -56,53 +59,94 @@ export default function MyTicketsPage() {
     const [replyText, setReplyText] = useState('');
     const queryClient = useQueryClient();
 
-    const { data: tickets, isLoading, refetch } = useQuery({
+    // Fetch all tickets
+    const { data: tickets, isLoading, refetch, error: ticketsError } = useQuery({
         queryKey: ['my-tickets'],
         queryFn: () => supportApi.listTickets().then(res => res.data),
     });
 
-    const { data: ticketDetail, isLoading: detailLoading } = useQuery({
+    // Fetch single ticket detail
+    const { data: ticketDetail, isLoading: detailLoading, error: detailError } = useQuery({
         queryKey: ['ticket', selectedTicket],
         queryFn: () => supportApi.getTicket(selectedTicket).then(res => res.data),
         enabled: !!selectedTicket,
     });
 
-    // ── Send Reply Mutation ──
+    // Handle URL parameter - select ticket from notification link
+    useEffect(() => {
+        if (urlTicketId && tickets?.length > 0) {
+            const ticketExists = tickets.find(t => t.id === urlTicketId);
+            if (ticketExists) {
+                setSelectedTicket(urlTicketId);
+                // Clear URL parameter after selecting
+                setSearchParams({});
+            }
+        }
+    }, [urlTicketId, tickets, setSearchParams]);
+
+    // Send Reply Mutation - with debug logging
     const replyMutation = useMutation({
-        mutationFn: ({ ticketId, message }) => supportApi.sendReply(ticketId, message),
+        mutationFn: async ({ ticketId, message }) => {
+            console.log(`📤 Sending reply to ticket: ${ticketId}`);
+            console.log(`📤 API URL: /support/${ticketId}/respond/`);
+            try {
+                const response = await supportApi.sendReply(ticketId, message);
+                console.log(`✅ Reply sent successfully:`, response);
+                return response;
+            } catch (error) {
+                console.error(`❌ Reply failed:`, error.response?.status, error.response?.data);
+                throw error;
+            }
+        },
         onSuccess: () => {
-            toast.success('Reply sent');
+            toast.success('Reply sent successfully');
             setReplyText('');
             queryClient.invalidateQueries({ queryKey: ['ticket', selectedTicket] });
             queryClient.invalidateQueries({ queryKey: ['my-tickets'] });
         },
-        onError: (err) => toast.error(err?.response?.data?.error || 'Failed to send reply'),
+        onError: (err) => {
+            const status = err?.response?.status;
+            const errorMsg = err?.response?.data?.error || err?.response?.data?.message || 'Failed to send reply';
+
+            if (status === 404) {
+                toast.error('Reply endpoint not found. Please contact support.');
+                console.error('404 Error: POST /support/{id}/respond/ - Check backend routes');
+            } else if (status === 403) {
+                toast.error('You do not have permission to reply to this ticket');
+            } else if (status === 400) {
+                toast.error(errorMsg);
+            } else {
+                toast.error(errorMsg);
+            }
+        },
     });
 
-    const handleSelectTicket = (id) => {
+    const handleSelectTicket = useCallback((id) => {
         setSelectedTicket(id);
-    };
+        setSearchParams({ ticket: id });
+    }, [setSearchParams]);
 
-    const handleBackToList = () => {
+    const handleBackToList = useCallback(() => {
         setSelectedTicket(null);
-    };
+        setSearchParams({});
+    }, [setSearchParams]);
 
-    const handleViewTicket = (ticket) => {
+    const handleViewTicket = useCallback((ticket) => {
         setViewTicketData(ticket);
         setViewModalOpen(true);
-    };
+    }, []);
 
-    const handleSendReply = () => {
+    const handleSendReply = useCallback(() => {
         if (!replyText.trim() || !selectedTicket) return;
         replyMutation.mutate({ ticketId: selectedTicket, message: replyText.trim() });
-    };
+    }, [replyText, selectedTicket, replyMutation]);
 
-    const handleKeyDown = (e) => {
+    const handleKeyDown = useCallback((e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleSendReply();
         }
-    };
+    }, [handleSendReply]);
 
     // Filter tickets
     const filteredTickets = tickets?.filter(t => filter === 'all' || t.status === filter) || [];
@@ -120,6 +164,21 @@ export default function MyTicketsPage() {
             <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-8 px-4">
                 <div className="max-w-7xl mx-auto">
                     <SkeletonLoader type="list" count={5} />
+                </div>
+            </div>
+        );
+    }
+
+    if (ticketsError) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+                <div className="text-center">
+                    <div className="text-6xl mb-4">❌</div>
+                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Error Loading Tickets</h2>
+                    <p className="text-gray-500 dark:text-gray-400 mb-6">There was a problem loading your tickets.</p>
+                    <button onClick={() => refetch()} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                        Try Again
+                    </button>
                 </div>
             </div>
         );
@@ -523,7 +582,6 @@ export default function MyTicketsPage() {
                     background: #0f172a;
                 }
 
-                /* ── FIXED: Reply form mobile responsive ── */
                 .st-reply-form {
                     padding: 1rem 2rem;
                     border-top: 1px solid #f1f5f9;
@@ -533,10 +591,12 @@ export default function MyTicketsPage() {
                     align-items: flex-end;
                     flex-shrink: 0;
                 }
+                
                 .dark .st-reply-form {
                     border-color: #334155;
                     background: #0f172a;
                 }
+                
                 .st-reply-input {
                     flex: 1;
                     min-width: 0;
@@ -553,15 +613,18 @@ export default function MyTicketsPage() {
                     min-height: 44px;
                     max-height: 120px;
                 }
+                
                 .dark .st-reply-input {
                     background: #1e293b;
                     border-color: #334155;
                     color: #f1f5f9;
                 }
+                
                 .st-reply-input:focus {
                     border-color: #6366f1;
                     box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
                 }
+                
                 .st-send-btn {
                     padding: 0.75rem 1.25rem;
                     border-radius: 12px;
@@ -580,16 +643,17 @@ export default function MyTicketsPage() {
                     transition: all 0.2s;
                     box-shadow: 0 4px 12px rgba(99,102,241,0.3);
                 }
+                
                 .st-send-btn:hover:not(:disabled) {
                     transform: translateY(-1px);
                     box-shadow: 0 6px 16px rgba(99,102,241,0.4);
                 }
+                
                 .st-send-btn:disabled {
                     opacity: 0.5;
                     cursor: not-allowed;
                 }
 
-                /* ── View button for mobile ── */
                 .st-view-btn {
                     display: inline-flex;
                     align-items: center;
@@ -607,16 +671,17 @@ export default function MyTicketsPage() {
                     white-space: nowrap;
                     flex-shrink: 0;
                 }
+                
                 .st-view-btn:hover {
                     background: rgba(99,102,241,0.08);
                     border-color: #6366f1;
                 }
+                
                 .dark .st-view-btn {
                     background: #1e293b;
                     border-color: #334155;
                 }
 
-                /* ── Modal for mobile view ── */
                 .st-modal-overlay {
                     position: fixed;
                     inset: 0;
@@ -626,6 +691,7 @@ export default function MyTicketsPage() {
                     justify-content: center;
                     padding: 20px;
                 }
+                
                 .st-modal-backdrop {
                     position: fixed;
                     inset: 0;
@@ -633,6 +699,7 @@ export default function MyTicketsPage() {
                     backdrop-filter: blur(6px);
                     animation: stFadeIn 0.2s ease;
                 }
+                
                 .st-modal {
                     position: relative;
                     z-index: 71;
@@ -644,9 +711,11 @@ export default function MyTicketsPage() {
                     box-shadow: 0 24px 64px rgba(0,0,0,0.18);
                     overflow-y: auto;
                 }
+                
                 .dark .st-modal {
                     background: #1e293b;
                 }
+                
                 .st-modal-header {
                     display: flex;
                     align-items: center;
@@ -658,10 +727,12 @@ export default function MyTicketsPage() {
                     background: white;
                     z-index: 1;
                 }
+                
                 .dark .st-modal-header {
                     background: #1e293b;
                     border-color: #334155;
                 }
+                
                 .st-modal-close {
                     width: 36px;
                     height: 36px;
@@ -675,15 +746,18 @@ export default function MyTicketsPage() {
                     color: #64748b;
                     transition: all 0.2s;
                 }
+                
                 .st-modal-close:hover {
                     background: rgba(239,68,68,0.08);
                     color: #ef4444;
                     border-color: #ef4444;
                 }
+                
                 .dark .st-modal-close {
                     background: #0f172a;
                     border-color: #334155;
                 }
+                
                 .st-modal-body {
                     padding: 1.5rem;
                 }
@@ -839,6 +913,14 @@ export default function MyTicketsPage() {
                                         <div className="st-detail-body">
                                             <SkeletonLoader type="detail" />
                                         </div>
+                                    ) : detailError ? (
+                                        <div className="st-detail-body flex items-center justify-center" style={{ minHeight: '400px' }}>
+                                            <div className="text-center text-gray-400">
+                                                <FiXCircle size={48} className="mx-auto mb-4 opacity-30" />
+                                                <p className="font-medium text-lg">Error loading ticket</p>
+                                                <p className="text-sm mt-1">Please try again</p>
+                                            </div>
+                                        </div>
                                     ) : ticketDetail ? (
                                         <>
                                             <div className="st-detail-header">
@@ -914,7 +996,7 @@ export default function MyTicketsPage() {
                                                 )}
                                             </div>
 
-                                            {/* ── FIXED: Reply form with send button ── */}
+                                            {/* Reply form */}
                                             {ticketDetail.status !== 'closed' && ticketDetail.status !== 'resolved' && (
                                                 <div className="st-reply-form">
                                                     <textarea
@@ -976,7 +1058,7 @@ export default function MyTicketsPage() {
                 </div>
             </div>
 
-            {/* ── Quick View Modal for Mobile ── */}
+            {/* Quick View Modal for Mobile */}
             {viewModalOpen && viewTicketData && (
                 <div className="st-modal-overlay">
                     <div className="st-modal-backdrop" onClick={() => setViewModalOpen(false)} />

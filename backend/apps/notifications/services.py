@@ -90,7 +90,7 @@ class NotificationService:
             logger.error(f"WebSocket send error: {e}")
 
     @staticmethod
-    def create_and_push(user, title, message, notification_type="system", link=None, data=None, source_type=None, source_id=None):
+    def create_and_push(user, title, message, notification_type="system", link=None, data=None, source_type=None, source_id=None, client_id=None):
         """Create DB notification and deliver via WebSocket + push"""
         notification = Notification.objects.create(
             user=user,
@@ -103,6 +103,7 @@ class NotificationService:
         )
         payload = {
             "id": str(notification.id),
+            "client_id": client_id,  # ADDED: For frontend reconciliation
             "title": notification.title,
             "message": notification.message,
             "type": notification.notification_type,
@@ -119,6 +120,8 @@ class NotificationService:
         data_payload = {"type": notification_type, "notification_id": str(notification.id)}
         if link:
             data_payload["link"] = link
+        if client_id:
+            data_payload["client_id"] = client_id
         NotificationService._send_push(user, title, message, data_payload)
         return notification
 
@@ -150,6 +153,7 @@ class NotificationService:
             for notification in chunk:
                 payload = {
                     "id": str(notification.id),
+                    "client_id": None,  # No client_id for bulk creates
                     "title": notification.title,
                     "message": notification.message,
                     "type": notification.notification_type,

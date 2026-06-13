@@ -12,18 +12,17 @@ import { classesApi } from '../api/classesApi';
 import {
   FiPackage, FiCheckCircle, FiFlag, FiUsers, FiBell,
   FiBriefcase, FiActivity, FiBarChart2, FiShield,
-  FiHome, FiChevronRight, FiExternalLink, FiSearch,
-  FiRefreshCw, FiEye, FiXCircle, FiTrendingUp,
+  FiExternalLink, FiSearch,
+  FiRefreshCw, FiEye, FiTrendingUp,
   FiTrash2, FiAlertTriangle, FiX, FiCheck,
   FiUserCheck, FiBook, FiClipboard, FiServer,
-  FiEdit2, FiSlash, FiEyeOff, FiEye as FiEyeShow,
-  FiUserPlus, FiLayers, FiMessageSquare,
+  FiEdit2, FiSlash, FiUserPlus, FiMessageSquare,
 } from 'react-icons/fi';
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: FiBarChart2 },
   { id: 'users', label: 'Users', icon: FiUsers },
-  { id: 'items', label: 'Items', icon: FiPackage },
+  { id: 'items', label: 'Found Items', icon: FiPackage },
   { id: 'claims', label: 'Claims', icon: FiCheckCircle },
   { id: 'reports', label: 'Reports', icon: FiFlag },
   { id: 'announcements', label: 'Announcements', icon: FiBell },
@@ -50,6 +49,7 @@ const safeStr = (val) => {
 const safeArray = (data) => {
   if (Array.isArray(data)) return data;
   if (data && Array.isArray(data.results)) return data.results;
+  if (data && data.data && Array.isArray(data.data)) return data.data;
   return [];
 };
 
@@ -70,7 +70,8 @@ export default function AdminDashboard() {
     return null;
   }
 
-  // ── Queries ──────────────────────────────────────────
+  // ── Queries with corrected API endpoints ──────────────────────────
+
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['admin-stats'],
     queryFn: () => apiClient.get('/governance/stats/').then(r => r.data),
@@ -86,13 +87,29 @@ export default function AdminDashboard() {
 
   const { data: items, isLoading: itemsLoading } = useQuery({
     queryKey: ['admin-items'],
-    queryFn: () => apiClient.get('/found-items/admin/items/').then(r => safeArray(r.data)),
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/found-items/');
+        return safeArray(res.data);
+      } catch (err) {
+        console.error('Failed to load items:', err);
+        return [];
+      }
+    },
     enabled: activeTab === 'items',
   });
 
   const { data: claims, isLoading: claimsLoading } = useQuery({
     queryKey: ['admin-claims'],
-    queryFn: () => apiClient.get('/found-items/admin/claims/').then(r => safeArray(r.data)),
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/found-items/claims/');
+        return safeArray(res.data);
+      } catch (err) {
+        console.error('Failed to load claims:', err);
+        return [];
+      }
+    },
     enabled: activeTab === 'claims',
   });
 
@@ -110,33 +127,65 @@ export default function AdminDashboard() {
 
   const { data: opportunities, isLoading: opportunitiesLoading } = useQuery({
     queryKey: ['admin-opportunities'],
-    queryFn: () => apiClient.get('/opportunities/').then(r => safeArray(r.data)),
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/opportunities/');
+        return safeArray(res.data);
+      } catch (err) {
+        console.error('Failed to load opportunities:', err);
+        return [];
+      }
+    },
     enabled: activeTab === 'opportunities',
   });
 
   const { data: classes, isLoading: classesLoading } = useQuery({
     queryKey: ['admin-all-classes'],
-    queryFn: () => apiClient.get('/classes/admin/timetable/').then(r => safeArray(r.data)),
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/classes/');
+        return safeArray(res.data);
+      } catch (err) {
+        console.error('Failed to load classes:', err);
+        return [];
+      }
+    },
     enabled: activeTab === 'classes',
   });
 
   const { data: attendanceRecords, isLoading: attendanceLoading } = useQuery({
     queryKey: ['admin-attendance'],
-    queryFn: () => apiClient.get('/classes/attendance/').then(r => safeArray(r.data)),
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/classes/attendance/');
+        return safeArray(res.data);
+      } catch (err) {
+        console.error('Failed to load attendance:', err);
+        return [];
+      }
+    },
     enabled: activeTab === 'attendance',
   });
 
   const { data: blogPosts, isLoading: blogLoading } = useQuery({
     queryKey: ['admin-blog'],
-    queryFn: () => apiClient.get('/blog/posts/').then(r => safeArray(r.data)),
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/blog/posts/');
+        return safeArray(res.data);
+      } catch (err) {
+        console.error('Failed to load blog posts:', err);
+        return [];
+      }
+    },
     enabled: activeTab === 'blog',
   });
 
   const { data: systemHealth, isLoading: systemLoading } = useQuery({
     queryKey: ['admin-system-health'],
-    queryFn: () => apiClient.get('/governance/system-health/').then(r => r.data),
+    queryFn: () => apiClient.get('/system/health/').then(r => r.data),
     enabled: activeTab === 'system',
-    refetchInterval: 15000,
+    refetchInterval: 30000,
   });
 
   const isLoading = {
@@ -155,7 +204,7 @@ export default function AdminDashboard() {
 
   // ── Mutations ──────────────────────────────────────────
   const approveMutation = useMutation({
-    mutationFn: (id) => apiClient.post(`/found-items/admin/claims/${id}/approve/`),
+    mutationFn: (id) => apiClient.post(`/found-items/claims/${id}/approve/`),
     onSuccess: () => {
       toast.success('Claim approved');
       queryClient.invalidateQueries({ queryKey: ['admin-claims', 'admin-stats'] });
@@ -164,7 +213,7 @@ export default function AdminDashboard() {
   });
 
   const rejectMutation = useMutation({
-    mutationFn: (id) => apiClient.post(`/found-items/admin/claims/${id}/reject/`),
+    mutationFn: (id) => apiClient.post(`/found-items/claims/${id}/reject/`),
     onSuccess: () => {
       toast.success('Claim rejected');
       queryClient.invalidateQueries({ queryKey: ['admin-claims', 'admin-stats'] });
@@ -211,17 +260,8 @@ export default function AdminDashboard() {
     },
   });
 
-  const hideBlogMutation = useMutation({
-    mutationFn: (slug) => apiClient.put(`/blog/posts/slug/${slug}/hide/`),
-    onSuccess: () => {
-      toast.success('Post visibility updated');
-      queryClient.invalidateQueries({ queryKey: ['admin-blog'] });
-    },
-    onError: (err) => toast.error(err?.response?.data?.detail || 'Failed to update post'),
-  });
-
   const deleteBlogMutation = useMutation({
-    mutationFn: (id) => apiClient.delete(`/blog/posts/${id}/delete/`),
+    mutationFn: (id) => apiClient.delete(`/blog/posts/${id}/`),
     onSuccess: () => {
       toast.success('Blog post deleted');
       setDeleteConfirm(null);
@@ -242,8 +282,9 @@ export default function AdminDashboard() {
   });
 
   const handleDeleteClick = (item, type) => {
-    setDeleteConfirm({ id: item.id, title: item.title || item.name, type });
+    setDeleteConfirm({ id: item.id, title: item.title || item.name || item.post_title || 'Item', type });
   };
+
   const handleConfirmDelete = () => {
     if (!deleteConfirm) return;
     if (deleteConfirm.type === 'announcement') {
@@ -271,332 +312,136 @@ export default function AdminDashboard() {
     loadClassGroups();
   };
 
+  const getAuthorName = (item) => {
+    if (item.author_name) return item.author_name;
+    if (item.author?.full_name) return item.author.full_name;
+    if (item.author?.name) return item.author.name;
+    if (item.submitted_by?.full_name) return item.submitted_by.full_name;
+    if (item.submitted_by_name) return item.submitted_by_name;
+    if (item.user?.full_name) return item.user.full_name;
+    if (item.created_by?.full_name) return item.created_by.full_name;
+    return 'Unknown';
+  };
+
   return (
-    <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&display=swap');
-        .ad-root { font-family: 'Outfit', sans-serif; max-width: 1100px; margin: 0 auto; padding: 28px 20px 80px; animation: adIn .4s cubic-bezier(0.16,1,0.3,1) both; }
-        @keyframes adIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes slideIn { from { opacity: 0; transform: translateY(-10px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-        .ad-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
-        .ad-header h1 { font-size: clamp(1.5rem, 3.5vw, 2rem); font-weight: 900; letter-spacing: -0.04em; background: linear-gradient(135deg, #0f172a 0%, #334155 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-        .dark .ad-header h1 { background: linear-gradient(135deg, #f8fafc 0%, #94a3b8 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-        .ad-header p { font-size: 0.83rem; color: #94a3b8; font-weight: 500; margin-top: 4px; }
-        .ad-header-links { display: flex; gap: 8px; flex-wrap: wrap; }
-        .ad-link { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 10px; border: 1.5px solid #e2e8f0; background: rgba(255,255,255,0.6); font-family: 'Outfit', sans-serif; font-size: 0.8rem; font-weight: 600; color: #64748b; cursor: pointer; text-decoration: none; transition: all 0.15s; backdrop-filter: blur(12px); }
-        .ad-link:hover { background: rgba(99,102,241,0.08); border-color: #6366f1; color: #6366f1; transform: translateY(-1px); }
-        .ad-link-green { border-color: #10b981; color: #10b981; }
-        .ad-link-green:hover { background: rgba(16,185,129,0.08); }
-        .dark .ad-link { border-color: #334155; color: #94a3b8; background: rgba(15,23,42,0.6); }
-
-        .ad-tabs { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; background: rgba(255,255,255,0.6); border: 1px solid rgba(0,0,0,0.05); border-radius: 14px; padding: 4px; backdrop-filter: blur(12px); }
-        .dark .ad-tabs { background: rgba(15,23,42,0.6); border-color: rgba(255,255,255,0.05); }
-        .ad-tab { display: flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 11px; border: none; background: transparent; cursor: pointer; font-family: 'Outfit', sans-serif; font-size: 0.82rem; font-weight: 600; color: #64748b; transition: all 0.2s cubic-bezier(0.34,1.56,0.64,1); }
-        .ad-tab:hover { color: #0f172a; background: rgba(99,102,241,0.04); }
-        .ad-tab.active { background: linear-gradient(135deg, #6366f1, #4f46e5); color: #fff; box-shadow: 0 4px 12px rgba(99,102,241,0.3); transform: scale(1.02); }
-        .dark .ad-tab { color: #94a3b8; }
-        .dark .ad-tab:hover { color: #f8fafc; }
-
-        .ad-search { display: flex; gap: 8px; margin-bottom: 16px; }
-        .ad-search input { width: 100%; padding: 9px 14px; border-radius: 12px; border: 1.5px solid #e2e8f0; background: rgba(255,255,255,0.8); font-family: 'Outfit', sans-serif; font-size: 0.84rem; outline: none; transition: all 0.2s; backdrop-filter: blur(12px); box-sizing: border-box; }
-        .ad-search input:focus { border-color: #6366f1; box-shadow: 0 0 0 4px rgba(99,102,241,0.08); }
-        .dark .ad-search input { background: rgba(15,23,42,0.8); border-color: #334155; color: #f8fafc; }
-
-        .ad-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 24px; }
-        .ad-stat { background: rgba(255,255,255,0.85); border: 1px solid rgba(0,0,0,0.05); border-radius: 14px; padding: 20px 16px; text-align: center; backdrop-filter: blur(12px); transition: all 0.2s; }
-        .ad-stat:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
-        .dark .ad-stat { background: rgba(15,23,42,0.85); border-color: rgba(255,255,255,0.05); }
-        .ad-stat-value { font-size: 1.8rem; font-weight: 900; background: linear-gradient(135deg, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-        .ad-stat-label { font-size: 0.7rem; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
-
-        /* ── FIXED: User Card Grid with uniform height ── */
-        .ad-user-grid {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-        
-        .ad-card {
-          background: rgba(255,255,255,0.85);
-          border: 1px solid rgba(0,0,0,0.05);
-          border-radius: 14px;
-          padding: 14px 16px;
-          backdrop-filter: blur(12px);
-          transition: all 0.2s;
-          animation: slideIn 0.3s ease both;
-          min-height: 72px;
-          display: flex;
-          align-items: stretch;
-          overflow: hidden;
-        }
-        .ad-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); transform: translateY(-1px); }
-        .dark .ad-card { background: rgba(15,23,42,0.85); border-color: rgba(255,255,255,0.05); }
-
-        /* ── FIXED: Row layout with flex-wrap control ── */
-        .ad-card-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          gap: 12px;
-          width: 100%;
-          min-width: 0;
-        }
-        
-        .ad-card-info {
-          flex: 1 1 0%;
-          min-width: 0;
-          overflow: hidden;
-        }
-        
-        .ad-card-title {
-          font-size: 0.9rem;
-          font-weight: 700;
-          color: #0f172a;
-          line-height: 1.3;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          max-width: 100%;
-        }
-        .dark .ad-card-title { color: #f8fafc; }
-
-        /* ── FIXED: Meta text with truncation ── */
-        .ad-card-meta {
-          font-size: 0.73rem;
-          color: #94a3b8;
-          margin-top: 4px;
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-          align-items: center;
-        }
-        .ad-card-meta span {
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          max-width: 180px;
-        }
-        .ad-card-meta .meta-separator {
-          color: #cbd5e1;
-          flex-shrink: 0;
-        }
-
-        /* ── FIXED: Actions area with horizontal badge layout ── */
-        .ad-card-actions {
-          display: flex;
-          gap: 6px;
-          flex-shrink: 0;
-          align-items: center;
-          flex-wrap: wrap;
-          justify-content: flex-end;
-          max-width: 50%;
-        }
-
-        /* ── FIXED: Badges as inline-flex pills ── */
-        .ad-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 3px;
-          padding: 3px 9px;
-          border-radius: 99px;
-          font-size: 0.66rem;
-          font-weight: 700;
-          letter-spacing: 0.01em;
-          white-space: nowrap;
-          flex-shrink: 0;
-          line-height: 1.4;
-        }
-        .ad-badge-green { background: rgba(16,185,129,0.12); color: #059669; }
-        .ad-badge-yellow { background: rgba(245,158,11,0.12); color: #d97706; }
-        .ad-badge-red { background: rgba(239,68,68,0.12); color: #dc2626; }
-        .ad-badge-blue { background: rgba(99,102,241,0.12); color: #6366f1; }
-        .ad-badge-gray { background: rgba(107,114,128,0.12); color: #6b7280; }
-
-        .ad-btn-sm {
-          padding: 6px 12px;
-          border-radius: 8px;
-          border: none;
-          font-family: 'Outfit', sans-serif;
-          font-size: 0.7rem;
-          font-weight: 700;
-          cursor: pointer;
-          transition: all 0.2s cubic-bezier(0.34,1.56,0.64,1);
-          color: #fff;
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          white-space: nowrap;
-          flex-shrink: 0;
-        }
-        .ad-btn-sm:hover { transform: translateY(-1px); }
-        .ad-btn-sm:active { transform: scale(0.97); }
-        .ad-btn-sm:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
-        .ad-btn-approve { background: linear-gradient(135deg, #10b981, #059669); box-shadow: 0 4px 12px rgba(16,185,129,0.25); }
-        .ad-btn-reject { background: linear-gradient(135deg, #ef4444, #dc2626); box-shadow: 0 4px 12px rgba(239,68,68,0.25); }
-        .ad-btn-resolve { background: linear-gradient(135deg, #6366f1, #4f46e5); box-shadow: 0 4px 12px rgba(99,102,241,0.25); }
-        .ad-btn-delete { background: linear-gradient(135deg, #ef4444, #dc2626); box-shadow: 0 4px 12px rgba(239,68,68,0.25); }
-        .ad-btn-view { background: rgba(255,255,255,0.6); border: 1.5px solid #e2e8f0; color: #64748b; backdrop-filter: blur(12px); }
-        .ad-btn-view:hover { background: rgba(99,102,241,0.08); border-color: #6366f1; color: #6366f1; }
-        .dark .ad-btn-view { background: rgba(15,23,42,0.6); border-color: #334155; color: #94a3b8; }
-        .ad-btn-assign { background: linear-gradient(135deg, #6366f1, #4f46e5); box-shadow: 0 4px 12px rgba(99,102,241,0.25); }
-
-        .role-select {
-          padding: 5px 8px;
-          border-radius: 8px;
-          border: 1px solid #e2e8f0;
-          background: rgba(255,255,255,0.8);
-          font-family: 'Outfit', sans-serif;
-          font-size: 0.72rem;
-          color: #0f172a;
-          max-width: 110px;
-          flex-shrink: 0;
-        }
-        .dark .role-select { background: #1e293b; border-color: #334155; color: #f8fafc; }
-
-        .ad-modal-overlay { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; padding: 20px; }
-        .ad-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(6px); animation: fadeIn 0.2s ease; }
-        .ad-modal { position: relative; z-index: 71; width: 100%; max-width: 420px; background: rgba(255,255,255,0.98); border: 1px solid rgba(255,255,255,0.6); border-radius: 24px; backdrop-filter: blur(28px); box-shadow: 0 24px 64px rgba(0,0,0,0.18); animation: slideIn 0.25s cubic-bezier(0.16,1,0.3,1); overflow: hidden; }
-        .dark .ad-modal { background: rgba(15,23,42,0.98); border-color: rgba(255,255,255,0.07); }
-        .ad-modal-header { display: flex; align-items: center; gap: 12px; padding: 20px 24px 16px; border-bottom: 1px solid rgba(0,0,0,0.06); }
-        .ad-modal-icon { width: 44px; height: 44px; border-radius: 14px; background: rgba(99,102,241,0.1); display: flex; align-items: center; justify-content: center; color: #6366f1; flex-shrink: 0; }
-        .ad-modal-title { font-size: 1rem; font-weight: 800; letter-spacing: -0.02em; color: #0f172a; }
-        .dark .ad-modal-title { color: #f8fafc; }
-        .ad-modal-body { padding: 20px 24px; }
-        .ad-modal-body p { font-size: 0.85rem; color: #64748b; line-height: 1.5; margin-bottom: 12px; }
-        .dark .ad-modal-body p { color: #94a3b8; }
-        .ad-modal-footer { padding: 16px 24px 20px; display: flex; gap: 10px; border-top: 1px solid rgba(0,0,0,0.06); }
-        .dark .ad-modal-footer { border-top-color: rgba(255,255,255,0.06); }
-        .ad-modal-btn { flex: 1; padding: 11px; border-radius: 12px; font-family: 'Outfit', sans-serif; font-size: 0.84rem; font-weight: 700; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px; }
-        .ad-modal-cancel { border: 1.5px solid rgba(0,0,0,0.08); background: rgba(255,255,255,0.5); color: #64748b; }
-        .ad-modal-cancel:hover { background: rgba(0,0,0,0.03); }
-        .dark .ad-modal-cancel { background: rgba(15,23,42,0.5); border-color: rgba(255,255,255,0.1); color: #94a3b8; }
-        .ad-modal-delete { background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff; border: none; box-shadow: 0 6px 16px rgba(239,68,68,0.3); }
-        .ad-modal-delete:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(239,68,68,0.4); }
-        .ad-modal-delete:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
-        .ad-empty { text-align: center; padding: 48px 24px; color: #94a3b8; }
-        .ad-empty-icon { font-size: 2.5rem; margin-bottom: 12px; display: block; margin-left: auto; margin-right: auto; }
-
-        .role-scope-list { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
-        .role-scope-item { background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.15); border-radius: 6px; padding: 2px 8px; font-size: 0.7rem; font-weight: 600; color: #6366f1; white-space: nowrap; }
-
-        .ad-overview-card { background: rgba(255,255,255,0.85); border: 1px solid rgba(0,0,0,0.05); border-radius: 14px; padding: 16px; cursor: pointer; text-align: center; backdrop-filter: blur(12px); transition: all 0.2s; }
-        .ad-overview-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); transform: translateY(-1px); }
-        .dark .ad-overview-card { background: rgba(15,23,42,0.85); border-color: rgba(255,255,255,0.05); }
-        .ad-overview-card .ad-overview-label { font-weight: 700; color: #0f172a; font-size: 0.9rem; }
-        .dark .ad-overview-card .ad-overview-label { color: #f8fafc; }
-
-        /* Mobile responsive fixes */
-        @media (max-width: 640px) {
-          .ad-card-row {
-            flex-direction: column;
-            gap: 8px;
-          }
-          .ad-card-actions {
-            max-width: 100%;
-            justify-content: flex-start;
-            width: 100%;
-          }
-          .ad-card-meta span {
-            max-width: 140px;
-          }
-        }
-      `}</style>
-
-      <div className="ad-root">
-        <div className="ad-header">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white dark:from-gray-900 dark:to-gray-800 py-8 px-4">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
           <div>
-            <h1>Admin Dashboard</h1>
-            <p>Manage users, items, claims, reports & more</p>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Admin Dashboard</h1>
+            <p className="text-gray-500 dark:text-gray-400 mt-1">Manage users, items, claims, reports & more</p>
           </div>
-          <div className="ad-header-links">
-            <Link to="/admin/audit-logs" className="ad-link"><FiActivity size={14} /> Audit Logs</Link>
-            <Link to="/admin/roles" className="ad-link"><FiUsers size={14} /> Roles</Link>
-            <Link to="/admin/tickets" className="ad-link"><FiMessageSquare size={14} /> Tickets</Link>
-            <Link to="/governance" className="ad-link"><FiTrendingUp size={14} /> Governance</Link>
-            <a href="http://localhost:8000/admin/" target="_blank" rel="noopener noreferrer" className="ad-link ad-link-green"><FiExternalLink size={14} /> Django Admin</a>
+          <div className="flex gap-2 flex-wrap">
+            <Link to="/admin/audit-logs" className="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Audit Logs</Link>
+            <Link to="/admin/roles" className="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Roles</Link>
+            <Link to="/admin/tickets" className="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Tickets</Link>
+            <Link to="/governance" className="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Governance</Link>
           </div>
         </div>
 
-        <div className="ad-tabs">
+        {/* Tabs */}
+        <div className="flex flex-wrap gap-1 mb-6 bg-white dark:bg-gray-800 rounded-xl p-1 shadow-sm">
           {TABS.map(tab => (
-            <button key={tab.id} className={`ad-tab ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}>
-              <tab.icon size={15} /> {tab.label}
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === tab.id
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+            >
+              <tab.icon size={16} /> {tab.label}
             </button>
           ))}
         </div>
 
+        {/* Content */}
         {isLoading ? (
           <SkeletonLoader type="list" count={5} />
         ) : (
           <>
+            {/* Overview Tab */}
             {activeTab === 'overview' && (
               <>
-                <div className="ad-stats">
-                  <div className="ad-stat"><div className="ad-stat-value">{safeStr(stats?.students_count) || '0'}</div><div className="ad-stat-label">Users</div></div>
-                  <div className="ad-stat"><div className="ad-stat-value">{safeStr(stats?.found_items_count) || '0'}</div><div className="ad-stat-label">Items</div></div>
-                  <div className="ad-stat"><div className="ad-stat-value">{safeStr(stats?.total_claims) || '0'}</div><div className="ad-stat-label">Claims</div></div>
-                  <div className="ad-stat"><div className="ad-stat-value">{safeStr(stats?.total_reports) || '0'}</div><div className="ad-stat-label">Reports</div></div>
-                  <div className="ad-stat"><div className="ad-stat-value">{safeStr(stats?.active_roles) || '0'}</div><div className="ad-stat-label">Roles</div></div>
-                  <div className="ad-stat"><div className="ad-stat-value">{safeStr(stats?.announcements_count) || '0'}</div><div className="ad-stat-label">Announcements</div></div>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+                  <div className="bg-white dark:bg-gray-800 rounded-xl p-4 text-center shadow-sm">
+                    <div className="text-2xl font-bold text-indigo-600">{safeStr(stats?.students_count) || '0'}</div>
+                    <div className="text-xs text-gray-500 mt-1">Users</div>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 rounded-xl p-4 text-center shadow-sm">
+                    <div className="text-2xl font-bold text-green-600">{safeStr(stats?.found_items_count) || '0'}</div>
+                    <div className="text-xs text-gray-500 mt-1">Found Items</div>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 rounded-xl p-4 text-center shadow-sm">
+                    <div className="text-2xl font-bold text-amber-600">{safeStr(stats?.total_claims) || '0'}</div>
+                    <div className="text-xs text-gray-500 mt-1">Claims</div>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 rounded-xl p-4 text-center shadow-sm">
+                    <div className="text-2xl font-bold text-red-600">{safeStr(stats?.total_reports) || '0'}</div>
+                    <div className="text-xs text-gray-500 mt-1">Reports</div>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 rounded-xl p-4 text-center shadow-sm">
+                    <div className="text-2xl font-bold text-purple-600">{safeStr(stats?.active_roles) || '0'}</div>
+                    <div className="text-xs text-gray-500 mt-1">Active Roles</div>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 rounded-xl p-4 text-center shadow-sm">
+                    <div className="text-2xl font-bold text-blue-600">{safeStr(stats?.announcements_count) || '0'}</div>
+                    <div className="text-xs text-gray-500 mt-1">Announcements</div>
+                  </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
                   {TABS.filter(t => t.id !== 'overview').map(tab => (
-                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className="ad-overview-card">
-                      <tab.icon size={28} style={{ color: '#4d50e2', marginBottom: 8 }} />
-                      <div className="ad-overview-label">{tab.label}</div>
+                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className="bg-white dark:bg-gray-800 rounded-xl p-4 text-center shadow-sm hover:shadow-md transition-shadow">
+                      <tab.icon size={28} className="mx-auto text-indigo-500 mb-2" />
+                      <div className="text-sm font-medium">{tab.label}</div>
                     </button>
                   ))}
                 </div>
               </>
             )}
 
+            {/* Users Tab */}
             {activeTab === 'users' && (
               <div>
-                <div className="ad-search">
-                  <input placeholder="Search users by name, email or phone..." value={search} onChange={e => setSearch(e.target.value)} />
+                <div className="mb-4">
+                  <input
+                    type="text"
+                    placeholder="Search users by name, email or phone..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full px-4 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700"
+                  />
                 </div>
-                {users && users.length > 0 ? (
-                  <div className="ad-user-grid">
-                    {users.filter(u => !search ||
-                      u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-                      u.email?.toLowerCase().includes(search.toLowerCase()) ||
-                      u.phone_number?.includes(search)
-                    ).map(u => (
-                      <div key={u.id} className="ad-card">
-                        <div className="ad-card-row">
-                          <div className="ad-card-info">
-                            <div className="ad-card-title" title={u.full_name}>{u.full_name || 'N/A'}</div>
-                            <div className="ad-card-meta">
-                              <span title={u.email || ''}>{u.email || 'No email'}</span>
-                              <span className="meta-separator">{'\u00B7'}</span>
-                              <span title={u.phone_number || ''}>{u.phone_number || 'No phone'}</span>
-                              <span className="meta-separator">{'\u00B7'}</span>
-                              <span title={u.institution || ''}>{u.institution || 'No institution'}</span>
+                <div className="space-y-2">
+                  {users && users.length > 0 ? (
+                    users.filter(u => !search || (u.full_name?.toLowerCase().includes(search.toLowerCase()) || u.email?.toLowerCase().includes(search.toLowerCase()) || u.phone_number?.includes(search))).map(u => (
+                      <div key={u.id} className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+                        <div className="flex flex-wrap justify-between items-start gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold">{u.full_name || 'N/A'}</div>
+                            <div className="text-sm text-gray-500 flex flex-wrap gap-2 mt-1">
+                              <span>{u.email || 'No email'}</span>
+                              <span>•</span>
+                              <span>{u.phone_number || 'No phone'}</span>
+                              <span>•</span>
+                              <span>{u.institution || 'No institution'}</span>
                             </div>
                             {u.active_roles && u.active_roles.length > 0 && (
-                              <div className="role-scope-list">
+                              <div className="flex flex-wrap gap-1 mt-2">
                                 {u.active_roles.map(r => (
-                                  <span key={r.id} className="role-scope-item" title={r.scope_name}>
-                                    {r.role.replace('_', ' ')} – {r.scope_name || 'All'}
-                                  </span>
+                                  <span key={r.id} className="text-xs px-2 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 rounded-full">{r.role.replace('_', ' ')} – {r.scope_name || 'All'}</span>
                                 ))}
                               </div>
                             )}
                           </div>
-                          <div className="ad-card-actions">
-                            <span className="ad-badge ad-badge-blue">{u.role}</span>
-                            <span className={`ad-badge ${u.is_active ? 'ad-badge-green' : 'ad-badge-red'}`}>
-                              {u.is_active ? 'Active' : 'Inactive'}
-                            </span>
+                          <div className="flex flex-wrap gap-2">
+                            <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-700">{u.role}</span>
+                            <span className={`px-2 py-1 text-xs rounded-full ${u.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{u.is_active ? 'Active' : 'Inactive'}</span>
                             <select
-                              className="role-select"
+                              className="px-2 py-1 text-xs border rounded-lg"
                               defaultValue={u.role}
                               onChange={(e) => updateUserRoleMutation.mutate({ userId: u.id, role: e.target.value })}
-                              disabled={updateUserRoleMutation.isPending}
                             >
                               <option value="student">Student</option>
                               <option value="class_rep">Class Rep</option>
@@ -604,176 +449,382 @@ export default function AdminDashboard() {
                               <option value="faculty_rep">Faculty Rep</option>
                               <option value="admin">Admin</option>
                             </select>
-                            <button className="ad-btn-sm ad-btn-assign" onClick={() => openAssignModal(u)} disabled={assignRoleMutation.isPending} title="Assign scoped role">
-                              <FiUserPlus size={12} /> Assign
-                            </button>
-                            <button className="ad-btn-sm ad-btn-delete" onClick={() => deactivateUserMutation.mutate(u.id)} disabled={deactivateUserMutation.isPending} title="Deactivate user">
-                              <FiSlash size={12} />
-                            </button>
+                            <button className="px-3 py-1 text-xs bg-indigo-600 text-white rounded-lg" onClick={() => openAssignModal(u)}>Assign</button>
+                            <button className="px-3 py-1 text-xs bg-red-600 text-white rounded-lg" onClick={() => deactivateUserMutation.mutate(u.id)}>Deactivate</button>
                           </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="ad-empty"><FiUsers size={32} style={{ opacity: 0.4 }} /><p>No users found</p></div>
-                )}
-              </div>
-            )}
-
-            {/* Assign Role Modal */}
-            {assignModalOpen && selectedUserForRole && (
-              <div className="ad-modal-overlay">
-                <div className="ad-modal-backdrop" onClick={() => setAssignModalOpen(false)} />
-                <div className="ad-modal" style={{ maxWidth: 480 }}>
-                  <div className="ad-modal-header">
-                    <div className="ad-modal-icon"><FiUserCheck size={20} /></div>
-                    <div className="ad-modal-title">Assign Role to {selectedUserForRole.full_name}</div>
-                  </div>
-                  <div className="ad-modal-body">
-                    <p>Choose the role and the class group (scope) for this user.</p>
-                    <select className="role-select" style={{ width: '100%', marginBottom: 12, maxWidth: '100%' }} id="assign-role-type" defaultValue="class_rep">
-                      <option value="class_rep">Class Representative</option>
-                      <option value="student_leader">Student Leader</option>
-                      <option value="faculty_rep">Faculty Representative</option>
-                    </select>
-                    {classGroupsLoading ? (
-                      <p>Loading class groups...</p>
-                    ) : (
-                      <select className="role-select" style={{ width: '100%', maxWidth: '100%' }} id="assign-class-group" required>
-                        <option value="">Select a class group...</option>
-                        {classGroups.map(g => (
-                          <option key={g.id} value={g.id}>{g.name} ({g.institution})</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                  <div className="ad-modal-footer">
-                    <button className="ad-modal-btn ad-modal-cancel" onClick={() => setAssignModalOpen(false)}>Cancel</button>
-                    <button className="ad-modal-btn ad-modal-delete" style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
-                      onClick={() => {
-                        const roleType = document.getElementById('assign-role-type').value;
-                        const classGroupId = document.getElementById('assign-class-group').value;
-                        if (!classGroupId) { toast.error('Please select a class group'); return; }
-                        assignRoleMutation.mutate({
-                          user_id: selectedUserForRole.id, role: roleType, scope_type: 'class', scope_id: classGroupId,
-                          scope_name: classGroups.find(g => g.id === classGroupId)?.name || '',
-                          start_date: new Date().toISOString(),
-                          end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-                        });
-                      }}
-                      disabled={assignRoleMutation.isPending}>
-                      {assignRoleMutation.isPending ? 'Assigning...' : 'Assign Role'}
-                    </button>
-                  </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-12 text-gray-500">No users found</div>
+                  )}
                 </div>
               </div>
             )}
 
+            {/* Found Items Tab */}
             {activeTab === 'items' && (
-              <>
-                <div className="ad-search"><input placeholder="Search items..." value={search} onChange={e => setSearch(e.target.value)} /></div>
-                {items && items.length > 0 ? items.filter(item => !search || item.title?.toLowerCase().includes(search.toLowerCase())).map(item => (
-                  <div key={item.id} className="ad-card">
-                    <div className="ad-card-row">
-                      <div className="ad-card-info">
-                        <div className="ad-card-title" title={safeStr(item.title)}>{safeStr(item.title)}</div>
-                        <div className="ad-card-meta">
-                          <span>{safeStr(item.category)}</span><span className="meta-separator">{'\u00B7'}</span>
-                          <span>{safeStr(item.location_found)}</span><span className="meta-separator">{'\u00B7'}</span>
-                          <span>{safeStr(item.found_date)}</span>
+              <div>
+                <div className="mb-4">
+                  <input type="text" placeholder="Search found items..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full px-4 py-2 border rounded-lg dark:bg-gray-800" />
+                </div>
+                <div className="space-y-2">
+                  {items && items.length > 0 ? (
+                    items.filter(item => !search || item.title?.toLowerCase().includes(search.toLowerCase())).map(item => (
+                      <div key={item.id} className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+                        <div className="flex flex-wrap justify-between items-start gap-4">
+                          <div className="flex-1">
+                            <div className="font-semibold">{item.title || 'Unnamed Item'}</div>
+                            <div className="text-sm text-gray-500 flex flex-wrap gap-2 mt-1">
+                              <span>{item.category || 'Uncategorized'}</span>
+                              <span>•</span>
+                              <span>{item.location_found || 'Unknown'}</span>
+                              <span>•</span>
+                              <span>{item.found_date ? new Date(item.found_date).toLocaleDateString() : 'Date unknown'}</span>
+                            </div>
+                            <div className="text-sm text-gray-500 mt-1">Reported by: {getAuthorName(item)}</div>
+                          </div>
+                          <div className="flex gap-2">
+                            <span className={`px-2 py-1 text-xs rounded-full ${item.is_claimed ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{item.is_claimed ? 'Claimed' : 'Available'}</span>
+                            <button className="px-3 py-1 text-xs bg-indigo-600 text-white rounded-lg" onClick={() => navigate(`/found-items/${item.id}`)}>View</button>
+                          </div>
                         </div>
                       </div>
-                      <div className="ad-card-actions">
-                        <span className={`ad-badge ${item.is_claimed ? 'ad-badge-green' : 'ad-badge-yellow'}`}>{item.is_claimed ? 'Claimed' : 'Available'}</span>
-                        <span className="ad-badge ad-badge-blue">{item.status}</span>
-                      </div>
-                    </div>
-                  </div>
-                )) : <div className="ad-empty"><div className="ad-empty-icon">{'\uD83D\uDCE6'}</div><p>No items found</p></div>}
-              </>
+                    ))
+                  ) : (
+                    <div className="text-center py-12 text-gray-500">No found items available</div>
+                  )}
+                </div>
+              </div>
             )}
 
+            {/* Claims Tab */}
             {activeTab === 'claims' && (
-              <>
-                {claims && claims.length > 0 ? claims.map(claim => (
-                  <div key={claim.id} className="ad-card">
-                    <div className="ad-card-row">
-                      <div className="ad-card-info">
-                        <div className="ad-card-title" title={safeStr(claim.item_title)}>{safeStr(claim.item_title)}</div>
-                        <div className="ad-card-meta">
-                          <span>Claimant: {safeStr(claim.claimant_name)}</span><span className="meta-separator">{'\u00B7'}</span>
-                          <span>{safeStr(claim.claimant_phone)}</span><span className="meta-separator">{'\u00B7'}</span>
-                          <span>{new Date(claim.created_at).toLocaleDateString()}</span>
+              <div className="space-y-2">
+                {claims && claims.length > 0 ? (
+                  claims.map(claim => (
+                    <div key={claim.id} className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+                      <div className="flex flex-wrap justify-between items-start gap-4">
+                        <div className="flex-1">
+                          <div className="font-semibold">Claim for: {claim.item_title || claim.item?.title || 'Unknown Item'}</div>
+                          <div className="text-sm text-gray-500 flex flex-wrap gap-2 mt-1">
+                            <span>Claimant: {claim.claimant_name || claim.claimant?.full_name || 'Unknown'}</span>
+                            <span>•</span>
+                            <span>Phone: {claim.claimant_phone || claim.claimant?.phone_number || 'N/A'}</span>
+                            <span>•</span>
+                            <span>Date: {new Date(claim.created_at).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <span className={`px-2 py-1 text-xs rounded-full ${claim.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : claim.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{claim.status || 'pending'}</span>
+                          {claim.status === 'pending' && (
+                            <>
+                              <button className="px-3 py-1 text-xs bg-green-600 text-white rounded-lg" onClick={() => approveMutation.mutate(claim.id)}>Approve</button>
+                              <button className="px-3 py-1 text-xs bg-red-600 text-white rounded-lg" onClick={() => rejectMutation.mutate(claim.id)}>Reject</button>
+                            </>
+                          )}
                         </div>
                       </div>
-                      <div className="ad-card-actions">
-                        <span className={`ad-badge ${claim.status === 'pending' ? 'ad-badge-yellow' : claim.status === 'claimed' ? 'ad-badge-green' : 'ad-badge-red'}`}>{claim.status}</span>
-                        {claim.status === 'pending' && (
-                          <>
-                            <button className="ad-btn-sm ad-btn-approve" onClick={() => approveMutation.mutate(claim.id)} disabled={approveMutation.isPending}><FiCheck size={12} /> Approve</button>
-                            <button className="ad-btn-sm ad-btn-reject" onClick={() => rejectMutation.mutate(claim.id)} disabled={rejectMutation.isPending}><FiX size={12} /> Reject</button>
-                          </>
-                        )}
-                      </div>
                     </div>
-                  </div>
-                )) : <div className="ad-empty"><div className="ad-empty-icon">{'\u2705'}</div><p>No claims found</p></div>}
-              </>
+                  ))
+                ) : (
+                  <div className="text-center py-12 text-gray-500">No claims found</div>
+                )}
+              </div>
             )}
 
+            {/* Reports Tab */}
             {activeTab === 'reports' && (
-              <>
-                {reports && reports.length > 0 ? reports.map(report => (
-                  <div key={report.id} className="ad-card">
-                    <div className="ad-card-row">
-                      <div className="ad-card-info">
-                        <div className="ad-card-title" title={safeStr(report.announcement_title) || safeStr(report.content_title)}>{safeStr(report.announcement_title) || safeStr(report.content_title) || 'Reported Content'}</div>
-                        <div className="ad-card-meta">
-                          <span>By: {safeStr(report.reported_by_name)}</span><span className="meta-separator">{'\u00B7'}</span>
-                          <span>Reason: {safeStr(report.reason)}</span><span className="meta-separator">{'\u00B7'}</span>
-                          <span>{new Date(report.created_at).toLocaleDateString()}</span>
+              <div className="space-y-2">
+                {reports && reports.length > 0 ? (
+                  reports.map(report => (
+                    <div key={report.id} className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+                      <div className="flex flex-wrap justify-between items-start gap-4">
+                        <div className="flex-1">
+                          <div className="font-semibold">{report.announcement_title || report.content_title || 'Reported Content'}</div>
+                          <div className="text-sm text-gray-500 flex flex-wrap gap-2 mt-1">
+                            <span>Reported by: {report.reported_by_name || 'Unknown'}</span>
+                            <span>•</span>
+                            <span>Reason: {report.reason}</span>
+                            <span>•</span>
+                            <span>{new Date(report.created_at).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <span className={`px-2 py-1 text-xs rounded-full ${report.is_resolved ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{report.is_resolved ? 'Resolved' : 'Pending'}</span>
+                          {!report.is_resolved && (
+                            <button className="px-3 py-1 text-xs bg-indigo-600 text-white rounded-lg" onClick={() => resolveReportMutation.mutate(report.id)}>Resolve</button>
+                          )}
                         </div>
                       </div>
-                      <div className="ad-card-actions">
-                        <span className={`ad-badge ${report.is_resolved ? 'ad-badge-green' : 'ad-badge-yellow'}`}>{report.is_resolved ? 'Resolved' : 'Pending'}</span>
-                        {!report.is_resolved && (
-                          <button className="ad-btn-sm ad-btn-resolve" onClick={() => resolveReportMutation.mutate(report.id)} disabled={resolveReportMutation.isPending}><FiCheck size={12} /> Resolve</button>
-                        )}
-                      </div>
                     </div>
-                  </div>
-                )) : <div className="ad-empty"><div className="ad-empty-icon">{'\uD83D\uDEA9'}</div><p>No reports found</p></div>}
-              </>
+                  ))
+                ) : (
+                  <div className="text-center py-12 text-gray-500">No reports found</div>
+                )}
+              </div>
             )}
 
-            {/* Delete Confirmation Modal */}
-            {deleteConfirm && (
-              <div className="ad-modal-overlay">
-                <div className="ad-modal-backdrop" onClick={() => setDeleteConfirm(null)} />
-                <div className="ad-modal">
-                  <div className="ad-modal-header">
-                    <div className="ad-modal-icon"><FiAlertTriangle size={20} /></div>
-                    <div className="ad-modal-title">Delete {deleteConfirm.type === 'blog' ? 'Blog Post' : 'Announcement'}</div>
+            {/* Announcements Tab */}
+            {activeTab === 'announcements' && (
+              <div>
+                <div className="mb-4">
+                  <input type="text" placeholder="Search announcements..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full px-4 py-2 border rounded-lg" />
+                </div>
+                <div className="space-y-2">
+                  {announcements && announcements.length > 0 ? (
+                    announcements.filter(a => !search || a.title?.toLowerCase().includes(search.toLowerCase())).map(announcement => (
+                      <div key={announcement.id} className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+                        <div className="flex flex-wrap justify-between items-start gap-4">
+                          <div className="flex-1">
+                            <div className="font-semibold">{announcement.title}</div>
+                            <div className="text-sm text-gray-500 flex flex-wrap gap-2 mt-1">
+                              <span>By: {getAuthorName(announcement)}</span>
+                              <span>•</span>
+                              <span>{new Date(announcement.created_at).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <span className={`px-2 py-1 text-xs rounded-full ${announcement.is_active !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{announcement.is_active !== false ? 'Active' : 'Inactive'}</span>
+                            <button className="px-3 py-1 text-xs bg-red-600 text-white rounded-lg" onClick={() => handleDeleteClick(announcement, 'announcement')}>Delete</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-12 text-gray-500">No announcements found</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Opportunities Tab */}
+            {activeTab === 'opportunities' && (
+              <div>
+                <div className="mb-4">
+                  <input type="text" placeholder="Search opportunities..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full px-4 py-2 border rounded-lg" />
+                </div>
+                <div className="space-y-2">
+                  {opportunities && opportunities.length > 0 ? (
+                    opportunities.filter(o => !search || o.title?.toLowerCase().includes(search.toLowerCase())).map(opportunity => (
+                      <div key={opportunity.id} className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+                        <div className="flex flex-wrap justify-between items-start gap-4">
+                          <div className="flex-1">
+                            <div className="font-semibold">{opportunity.title || 'Untitled Opportunity'}</div>
+                            <div className="text-sm text-gray-500 flex flex-wrap gap-2 mt-1">
+                              <span>Organization: {opportunity.organization || 'Unknown'}</span>
+                              <span>•</span>
+                              <span>Type: {opportunity.type || 'General'}</span>
+                            </div>
+                            <div className="text-sm text-gray-500">Posted by: {getAuthorName(opportunity)} • {new Date(opportunity.created_at).toLocaleDateString()}</div>
+                          </div>
+                          <div className="flex gap-2">
+                            <span className={`px-2 py-1 text-xs rounded-full ${opportunity.is_active !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{opportunity.is_active !== false ? 'Active' : 'Inactive'}</span>
+                            <button className="px-3 py-1 text-xs bg-indigo-600 text-white rounded-lg" onClick={() => navigate(`/opportunities/${opportunity.id}`)}>View</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-12 text-gray-500">No opportunities found</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Classes Tab */}
+            {activeTab === 'classes' && (
+              <div>
+                <div className="mb-4">
+                  <input type="text" placeholder="Search classes..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full px-4 py-2 border rounded-lg" />
+                </div>
+                <div className="space-y-2">
+                  {classes && classes.length > 0 ? (
+                    classes.filter(cls => !search || (cls.name || cls.title || '')?.toLowerCase().includes(search.toLowerCase())).map(cls => (
+                      <div key={cls.id} className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+                        <div className="flex flex-wrap justify-between items-start gap-4">
+                          <div className="flex-1">
+                            <div className="font-semibold">{cls.name || cls.title || 'Unnamed Class'}</div>
+                            <div className="text-sm text-gray-500 flex flex-wrap gap-2 mt-1">
+                              <span>Code: {cls.class_code || cls.course_code || 'N/A'}</span>
+                              <span>•</span>
+                              <span>Instructor: {cls.instructor_name || cls.instructor?.full_name || 'Not Assigned'}</span>
+                            </div>
+                            {(cls.department || cls.faculty) && <div className="text-sm text-gray-500">Department: {cls.department || cls.faculty}</div>}
+                            {(cls.semester || cls.academic_year) && <div className="text-sm text-gray-500">Semester: {cls.semester || cls.academic_year}</div>}
+                            {(cls.venue || cls.location || cls.room) && <div className="text-sm text-gray-500">Venue: {cls.venue || cls.location || cls.room}</div>}
+                            <div className="text-sm text-gray-500">Schedule: {cls.day_of_week || 'TBA'} {cls.time || cls.start_time ? ` at ${cls.time || cls.start_time}` : ''}{cls.end_time ? ` - ${cls.end_time}` : ''}</div>
+                          </div>
+                          <div className="flex gap-2">
+                            <span className={`px-2 py-1 text-xs rounded-full ${cls.is_active !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{cls.is_active !== false ? 'Active' : 'Inactive'}</span>
+                            <button className="px-3 py-1 text-xs bg-indigo-600 text-white rounded-lg" onClick={() => navigate(`/classes/${cls.id}`)}>View</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-12 text-gray-500">No classes found</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Attendance Tab */}
+            {activeTab === 'attendance' && (
+              <div className="space-y-2">
+                {attendanceRecords && attendanceRecords.length > 0 ? (
+                  attendanceRecords.map(record => (
+                    <div key={record.id} className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+                      <div className="flex flex-wrap justify-between items-start gap-4">
+                        <div className="flex-1">
+                          <div className="font-semibold">Student: {record.student_name || record.student?.full_name || 'Unknown'}</div>
+                          <div className="text-sm text-gray-500 flex flex-wrap gap-2 mt-1">
+                            <span>Class: {record.class_name || record.class_group?.name || 'Unknown'}</span>
+                            <span>•</span>
+                            <span>Date: {new Date(record.date).toLocaleDateString()}</span>
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            Status: <span className={`px-2 py-0.5 rounded-full text-xs ${record.status === 'present' ? 'bg-green-100 text-green-700' : record.status === 'late' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{record.status || 'absent'}</span>
+                            <span className="mx-2">•</span>
+                            Marked by: {record.marked_by_name || record.marked_by?.full_name || 'System'}
+                          </div>
+                        </div>
+                        <div>
+                          <button className="px-3 py-1 text-xs bg-indigo-600 text-white rounded-lg" onClick={() => navigate(`/classes/attendance/${record.id}`)}>View</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-12 text-gray-500">No attendance records found</div>
+                )}
+              </div>
+            )}
+
+            {/* Blog Tab */}
+            {activeTab === 'blog' && (
+              <div>
+                <div className="mb-4">
+                  <input type="text" placeholder="Search blog posts..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full px-4 py-2 border rounded-lg" />
+                </div>
+                <div className="space-y-2">
+                  {blogPosts && blogPosts.length > 0 ? (
+                    blogPosts.filter(p => !search || p.title?.toLowerCase().includes(search.toLowerCase())).map(post => (
+                      <div key={post.id} className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+                        <div className="flex flex-wrap justify-between items-start gap-4">
+                          <div className="flex-1">
+                            <div className="font-semibold">{post.title || 'Untitled Post'}</div>
+                            <div className="text-sm text-gray-500 flex flex-wrap gap-2 mt-1">
+                              <span>By: {getAuthorName(post)}</span>
+                              <span>•</span>
+                              <span>{new Date(post.created_at).toLocaleDateString()}</span>
+                            </div>
+                            {post.tags && <div className="text-sm text-gray-500">Tags: {post.tags}</div>}
+                          </div>
+                          <div className="flex gap-2">
+                            <span className={`px-2 py-1 text-xs rounded-full ${post.is_published ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{post.is_published ? 'Published' : 'Draft'}</span>
+                            <button className="px-3 py-1 text-xs bg-red-600 text-white rounded-lg" onClick={() => handleDeleteClick(post, 'blog')}>Delete</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-12 text-gray-500">No blog posts found</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* System Tab */}
+            {activeTab === 'system' && (
+              <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
+                <h2 className="text-lg font-semibold mb-4">System Health</h2>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="font-medium">Status:</span>
+                    <span className={`px-2 py-1 rounded-full text-sm ${systemHealth?.status === 'ok' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{systemHealth?.status === 'ok' ? 'Healthy' : 'Issues Detected'}</span>
                   </div>
-                  <div className="ad-modal-body">
-                    <p>Are you sure you want to delete this item? This action cannot be undone.</p>
-                    <span className="ad-modal-highlight">{deleteConfirm.title}</span>
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="font-medium">Version:</span>
+                    <span>{systemHealth?.version || '1.0.0'}</span>
                   </div>
-                  <div className="ad-modal-footer">
-                    <button className="ad-modal-btn ad-modal-cancel" onClick={() => setDeleteConfirm(null)} disabled={deleteAnnouncementMutation.isPending || deleteBlogMutation.isPending}>
-                      <FiX size={14} /> Cancel
-                    </button>
-                    <button className="ad-modal-btn ad-modal-delete" onClick={handleConfirmDelete} disabled={deleteAnnouncementMutation.isPending || deleteBlogMutation.isPending}>
-                      {deleteAnnouncementMutation.isPending || deleteBlogMutation.isPending ? 'Deleting...' : <><FiTrash2 size={14} /> Delete Permanently</>}
-                    </button>
-                  </div>
+                  {systemHealth?.services && (
+                    <div className="flex justify-between items-center py-2 border-b">
+                      <span className="font-medium">Services:</span>
+                      <span>{Object.keys(systemHealth.services).join(', ')}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
           </>
         )}
       </div>
-    </>
+
+      {/* Assign Role Modal */}
+      {assignModalOpen && selectedUserForRole && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setAssignModalOpen(false)} />
+          <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold mb-4">Assign Role to {selectedUserForRole.full_name}</h3>
+            <div className="space-y-4">
+              <select className="w-full px-3 py-2 border rounded-lg" id="assign-role-type" defaultValue="class_rep">
+                <option value="class_rep">Class Representative</option>
+                <option value="student_leader">Student Leader</option>
+                <option value="faculty_rep">Faculty Representative</option>
+              </select>
+              {classGroupsLoading ? (
+                <p>Loading class groups...</p>
+              ) : (
+                <select className="w-full px-3 py-2 border rounded-lg" id="assign-class-group" required>
+                  <option value="">Select a class group...</option>
+                  {classGroups.map(g => <option key={g.id} value={g.id}>{g.name} ({g.institution})</option>)}
+                </select>
+              )}
+              <div className="flex gap-3 pt-4">
+                <button className="flex-1 px-4 py-2 border rounded-lg" onClick={() => setAssignModalOpen(false)}>Cancel</button>
+                <button
+                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg"
+                  onClick={() => {
+                    const roleType = document.getElementById('assign-role-type').value;
+                    const classGroupId = document.getElementById('assign-class-group').value;
+                    if (!classGroupId) { toast.error('Please select a class group'); return; }
+                    assignRoleMutation.mutate({
+                      user_id: selectedUserForRole.id, role: roleType, scope_type: 'class', scope_id: classGroupId,
+                      scope_name: classGroups.find(g => g.id === classGroupId)?.name || '',
+                      start_date: new Date().toISOString(),
+                      end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+                    });
+                  }}
+                  disabled={assignRoleMutation.isPending}
+                >
+                  {assignRoleMutation.isPending ? 'Assigning...' : 'Assign Role'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setDeleteConfirm(null)} />
+          <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                <FiAlertTriangle className="text-red-600" size={20} />
+              </div>
+              <h3 className="text-lg font-semibold">Delete {deleteConfirm.type === 'blog' ? 'Blog Post' : 'Announcement'}</h3>
+            </div>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">Are you sure you want to delete "{deleteConfirm.title}"? This action cannot be undone.</p>
+            <div className="flex gap-3">
+              <button className="flex-1 px-4 py-2 border rounded-lg" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+              <button className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg" onClick={handleConfirmDelete}>Delete Permanently</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

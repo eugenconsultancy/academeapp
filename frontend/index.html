@@ -166,19 +166,26 @@
     <!-- Main entry point -->
     <script type="module" src="/src/main.jsx"></script>
 
-    <!-- Optional: Register Service Worker for PWA capabilities -->
-    <script>
-        if ('serviceWorker' in navigator && import.meta.env.PROD) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
-                    .then(registration => {
-                        console.log('SW registered: ', registration);
-                    })
-                    .catch(registrationError => {
-                        console.log('SW registration failed: ', registrationError);
-                    });
-            });
-        }
+    <!-- FIX: Service Worker registration with type="module" -->
+    <script type="module">
+        // This script runs as a module, so import.meta is available
+        const registerServiceWorker = () => {
+            if ('serviceWorker' in navigator && import.meta.env.PROD) {
+                window.addEventListener('load', () => {
+                    navigator.serviceWorker.register('/sw.js')
+                        .then(registration => {
+                            console.log('✅ Service Worker registered successfully:', registration.scope);
+                        })
+                        .catch(error => {
+                            console.error('❌ Service Worker registration failed:', error);
+                        });
+                });
+            } else if (import.meta.env.DEV) {
+                console.log('📱 Service Worker not registered in development mode');
+            }
+        };
+        
+        registerServiceWorker();
     </script>
 </body>
 </html>

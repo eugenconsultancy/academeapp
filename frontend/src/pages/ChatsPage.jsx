@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+// frontend/src/pages/ChatsPage.jsx
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useChatStore from '../stores/useChatStore';
 import { chatApi } from '../api/chatApi';
@@ -13,6 +14,9 @@ const TABS = [
   { key: 'archived', label: 'Archived', icon: '📦' },
 ];
 
+// Search debounce delay
+const SEARCH_DEBOUNCE_DELAY = 500;
+
 // Skeleton Loader Component
 const ConversationSkeleton = () => (
   <div className="flex items-center gap-3 px-4 py-3 animate-pulse">
@@ -23,6 +27,35 @@ const ConversationSkeleton = () => (
     </div>
   </div>
 );
+
+// Avatar Component with fallback
+const Avatar = React.memo(({ src, name, size = 'w-12 h-12', online = false }) => {
+  const [imgError, setImgError] = useState(false);
+
+  return (
+    <div className="relative flex-shrink-0">
+      <div className={`${size} rounded-full bg-gradient-to-br from-blue-400 to-indigo-600 flex items-center justify-center text-white font-semibold text-sm overflow-hidden`}>
+        {src && !imgError ? (
+          <img
+            src={src}
+            alt={name || 'User'}
+            className="w-full h-full object-cover"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <span className="flex items-center justify-center w-full h-full">
+            {name?.charAt(0).toUpperCase() || '?'}
+          </span>
+        )}
+      </div>
+      {online && (
+        <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-gray-900 rounded-full animate-pulse" />
+      )}
+    </div>
+  );
+});
+
+Avatar.displayName = 'Avatar';
 
 // Conversation Item Component - Memoized for Performance
 const ConversationItem = React.memo(({
@@ -37,36 +70,29 @@ const ConversationItem = React.memo(({
   const isArchived = activeTab === 'archived';
   const isTyping = typingUser && typingUser !== '';
 
+  const handleClick = () => {
+    if (!isArchived && conv.id) onNavigate(`/chat/${conv.id}`);
+  };
+
+  const handleUnarchive = (e) => {
+    e.stopPropagation();
+    onUnarchive(conv.id);
+  };
+
   return (
     <div
-      onClick={() => {
-        if (!isArchived && conv.id) onNavigate(`/chat/${conv.id}`);
-      }}
-      className={`group flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-800 transition-all duration-200 ${isArchived ? 'opacity-70 cursor-default hover:bg-gray-50 dark:hover:bg-gray-800/50' : 'cursor-pointer hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 dark:hover:from-gray-800 dark:hover:to-gray-800/50'
+      onClick={handleClick}
+      className={`group flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-800 transition-all duration-200 ${isArchived
+          ? 'opacity-70 cursor-default hover:bg-gray-50 dark:hover:bg-gray-800/50'
+          : 'cursor-pointer hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 dark:hover:from-gray-800 dark:hover:to-gray-800/50'
         }`}
     >
       {/* Avatar with Online Indicator */}
-      <div className="relative flex-shrink-0">
-        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-indigo-600 flex items-center justify-center text-white font-semibold text-sm overflow-hidden">
-          {conv.participant?.avatar_url ? (
-            <img
-              src={conv.participant.avatar_url}
-              alt={conv.participant?.full_name}
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                e.target.style.display = 'none';
-                e.target.nextElementSibling.style.display = 'flex';
-              }}
-            />
-          ) : null}
-          <span className="flex items-center justify-center w-full h-full bg-gradient-to-br from-blue-400 to-indigo-600">
-            {conv.participant?.full_name?.charAt(0).toUpperCase() || '?'}
-          </span>
-        </div>
-        {conv.participant?.is_online && (
-          <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-gray-900 rounded-full animate-pulse" />
-        )}
-      </div>
+      <Avatar
+        src={conv.participant?.avatar_url}
+        name={conv.participant?.full_name}
+        online={conv.participant?.is_online}
+      />
 
       {/* Content */}
       <div className="flex-1 min-w-0">
@@ -87,7 +113,10 @@ const ConversationItem = React.memo(({
         <div className="flex items-center justify-between gap-2">
           <div className="flex-1 min-w-0">
             {isTyping ? (
-              <p className="text-xs text-indigo-500 font-medium animate-pulse">{typingUser} is typing...</p>
+              <p className="text-xs text-indigo-500 font-medium animate-pulse flex items-center gap-1">
+                <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" />
+                {typingUser} is typing...
+              </p>
             ) : (
               <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                 {conv.last_message_preview || 'No messages yet'}
@@ -105,10 +134,7 @@ const ConversationItem = React.memo(({
       {/* Archive/Restore Button */}
       {isArchived && (
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onUnarchive(conv.id);
-          }}
+          onClick={handleUnarchive}
           className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors duration-200"
         >
           Restore
@@ -117,19 +143,22 @@ const ConversationItem = React.memo(({
     </div>
   );
 }, (prevProps, nextProps) => {
+  // Optimized comparison
   return (
     prevProps.conv.id === nextProps.conv.id &&
     prevProps.typingUser === nextProps.typingUser &&
     prevProps.activeTab === nextProps.activeTab &&
     prevProps.conv.unread_count === nextProps.conv.unread_count &&
-    prevProps.conv.last_message_preview === nextProps.conv.last_message_preview
+    prevProps.conv.last_message_preview === nextProps.conv.last_message_preview &&
+    prevProps.conv.is_pinned === nextProps.conv.is_pinned &&
+    prevProps.conv.is_muted === nextProps.conv.is_muted
   );
 });
 
 ConversationItem.displayName = 'ConversationItem';
 
 // New Chat Modal Component
-const NewChatModal = ({
+const NewChatModal = React.memo(({
   isOpen,
   onClose,
   searchQuery,
@@ -179,7 +208,6 @@ const NewChatModal = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && onSearch()}
                 placeholder="Search by name..."
                 className="w-full pl-10 pr-3 py-2.5 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 text-gray-900 dark:text-white transition-all"
                 autoFocus
@@ -207,27 +235,12 @@ const NewChatModal = ({
                   disabled={startingChat === foundUser.id}
                   className="w-full flex items-center gap-3 px-6 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 text-left group"
                 >
-                  <div className="relative flex-shrink-0">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-indigo-600 flex items-center justify-center text-white font-semibold text-sm overflow-hidden">
-                      {foundUser.profile_pic ? (
-                        <img
-                          src={foundUser.profile_pic}
-                          alt={foundUser.full_name}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                            e.target.nextElementSibling.style.display = 'flex';
-                          }}
-                        />
-                      ) : null}
-                      <span className="flex items-center justify-center w-full h-full">
-                        {foundUser.full_name?.charAt(0).toUpperCase() || '?'}
-                      </span>
-                    </div>
-                    {foundUser.is_online && (
-                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white dark:border-gray-700 rounded-full animate-pulse" />
-                    )}
-                  </div>
+                  <Avatar
+                    src={foundUser.profile_pic}
+                    name={foundUser.full_name}
+                    size="w-10 h-10"
+                    online={foundUser.is_online}
+                  />
                   <div className="flex-1 text-left">
                     <p className="text-sm font-medium text-gray-900 dark:text-white">{foundUser.full_name || 'Unknown User'}</p>
                     <p className="text-xs text-gray-500 dark:text-gray-400">{foundUser.class_name || 'Student'}</p>
@@ -272,7 +285,9 @@ const NewChatModal = ({
       `}</style>
     </div>
   );
-};
+});
+
+NewChatModal.displayName = 'NewChatModal';
 
 // Main ChatsPage Component
 const ChatsPage = () => {
@@ -285,6 +300,10 @@ const ChatsPage = () => {
   const [startingChat, setStartingChat] = useState(null);
   const [typingConversations, setTypingConversations] = useState({});
 
+  // Refs for debouncing
+  const searchTimeoutRef = useRef(null);
+  const isMountedRef = useRef(true);
+
   const conversations = useChatStore((s) => s.conversations);
   const archivedConversations = useChatStore((s) => s.archivedConversations);
   const loadingConversations = useChatStore((s) => s.loadingConversations);
@@ -293,19 +312,23 @@ const ChatsPage = () => {
   const socket = useChatStore((s) => s.socket);
   const userId = useChatStore((s) => s.userId);
 
+  // Cleanup on unmount
   useEffect(() => {
-    fetchConversations(false);
-  }, [fetchConversations]);
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
 
+  // Fetch conversations on mount and tab change
   useEffect(() => {
-    if (activeTab === 'archived') {
-      fetchConversations(true);
-    } else {
-      fetchConversations(false);
-    }
-  }, [activeTab, fetchConversations]);
+    fetchConversations(activeTab === 'archived');
+  }, [fetchConversations, activeTab]);
 
-  // Real-time WebSocket Updates
+  // Real-time WebSocket Updates - Fixed memory leak issue
   useEffect(() => {
     if (!socket) return;
 
@@ -338,22 +361,29 @@ const ChatsPage = () => {
           }
 
           case 'typing': {
-            if (data.user_id !== userId) {
+            if (data.user_id !== userId && data.conversation_id) {
               setTypingConversations(prev => ({
                 ...prev,
                 [data.conversation_id]: data.is_typing ? data.user_name : null
               }));
+
               if (data.is_typing) {
-                setTimeout(() => {
+                // Auto-clear after 3 seconds
+                const timeoutId = setTimeout(() => {
                   setTypingConversations(prev => {
-                    if (prev[data.conversation_id] === data.user_name) {
-                      const newState = { ...prev };
+                    const newState = { ...prev };
+                    if (newState[data.conversation_id] === data.user_name) {
                       delete newState[data.conversation_id];
-                      return newState;
                     }
-                    return prev;
+                    return newState;
                   });
                 }, 3000);
+
+                // Store timeout ID for cleanup if needed
+                if (window._typingTimeouts) {
+                  clearTimeout(window._typingTimeouts[data.conversation_id]);
+                  window._typingTimeouts[data.conversation_id] = timeoutId;
+                }
               }
             }
             break;
@@ -383,8 +413,17 @@ const ChatsPage = () => {
       }
     };
 
+    // CRITICAL: Proper event listener management
     socket.addEventListener('message', handleMessage);
-    return () => socket.removeEventListener('message', handleMessage);
+
+    return () => {
+      socket.removeEventListener('message', handleMessage);
+      // Clean up any pending typing timeouts
+      if (window._typingTimeouts) {
+        Object.values(window._typingTimeouts).forEach(timeout => clearTimeout(timeout));
+        window._typingTimeouts = {};
+      }
+    };
   }, [socket, userId]);
 
   const handleUnarchive = useCallback(async (convId) => {
@@ -397,21 +436,59 @@ const ChatsPage = () => {
     }
   }, [unarchiveConversation]);
 
-  const handleSearchUsers = useCallback(async () => {
-    if (!searchQuery.trim()) return;
-    setSearching(true);
-    setSearchResults([]);
-    try {
-      const response = await apiClient.get('/accounts/students/search/', { params: { q: searchQuery } });
-      const results = response.data || [];
-      setSearchResults(Array.isArray(results) ? results : []);
-    } catch (err) {
-      toast.error('Failed to search users');
+  // Debounced search function
+  const performSearch = useCallback(async () => {
+    if (!searchQuery.trim()) {
       setSearchResults([]);
+      return;
+    }
+
+    setSearching(true);
+    try {
+      const response = await apiClient.get('/accounts/students/search/', {
+        params: { q: searchQuery.trim() }
+      });
+      const results = response.data || [];
+      if (isMountedRef.current) {
+        setSearchResults(Array.isArray(results) ? results : []);
+      }
+    } catch (err) {
+      if (isMountedRef.current) {
+        toast.error('Failed to search users');
+        setSearchResults([]);
+      }
     } finally {
-      setSearching(false);
+      if (isMountedRef.current) {
+        setSearching(false);
+      }
     }
   }, [searchQuery]);
+
+  // Debounced search effect - FIXED to prevent multiple API calls
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      performSearch();
+    }, SEARCH_DEBOUNCE_DELAY);
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery, performSearch]);
+
+  const handleSearchChange = useCallback((value) => {
+    setSearchQuery(value);
+  }, []);
 
   const handleStartConversation = useCallback(async (userId) => {
     if (!userId) return;
@@ -498,13 +575,13 @@ const ChatsPage = () => {
             >
               <span>{tab.icon}</span>
               <span>{tab.label}</span>
-              {count > 0 && (
+              {count !== undefined && count > 0 && (
                 <span className="ml-1 px-2 py-0.5 text-xs font-bold text-white bg-indigo-600 rounded-full">
                   {count}
                 </span>
               )}
               {isActive && (
-                <span className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-600 to-blue-600 rounded-full" />
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-600 to-blue-600 rounded-full" />
               )}
             </button>
           );
@@ -564,10 +641,13 @@ const ChatsPage = () => {
           setShowNewChat(false);
           setSearchQuery('');
           setSearchResults([]);
+          if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current);
+          }
         }}
         searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        onSearch={handleSearchUsers}
+        onSearchChange={handleSearchChange}
+        onSearch={performSearch}
         searchResults={searchResults}
         searching={searching}
         startingChat={startingChat}

@@ -39,6 +39,11 @@ import './index.css';
 
   if (window.visualViewport) {
     setVh(window.visualViewport.height);
+
+    // Also listen for viewport changes (keyboard opening/closing)
+    window.visualViewport.addEventListener('resize', () => {
+      setVh(window.visualViewport.height);
+    });
   } else {
     setVh(window.innerHeight);
   }
@@ -89,11 +94,16 @@ window.addEventListener('unhandledrejection', (e) =>
   console.error('[Unhandled Rejection]:', e.reason)
 );
 
+window.addEventListener('error', (e) => {
+  console.error('[Global Error]:', e.error || e.message);
+});
+
 async function initializeApp() {
   try {
     await offlineStorage.performMaintenance();
-  } catch {
-    console.warn('[App] Offline storage init failed');
+    console.log('✅ Offline storage initialized');
+  } catch (err) {
+    console.warn('[App] Offline storage init failed:', err);
   }
 }
 initializeApp();
@@ -119,6 +129,7 @@ root.render(
                   toastOptions={{
                     className:
                       '!bg-white dark:!bg-slate-800 !text-slate-800 dark:!text-slate-100 shadow-lg border border-black/5',
+                    duration: 3000,
                   }}
                 />
               </AuthProvider>
@@ -132,10 +143,44 @@ root.render(
 );
 
 // ═══════════════════════════════════════════════════════════════
-// PWA SERVICE WORKER
+// PWA SERVICE WORKER (Safe Pattern - Module Aware)
 // ═══════════════════════════════════════════════════════════════
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(console.error);
-  });
-}
+const registerServiceWorker = () => {
+  // Check if we're in a production environment and service workers are supported
+  if ('serviceWorker' in navigator && import.meta.env.PROD) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then(registration => {
+          console.log('✅ Service Worker registered with scope:', registration.scope);
+
+          // Check for updates
+          registration.onupdatefound = () => {
+            const installingWorker = registration.installing;
+            if (installingWorker) {
+              installingWorker.onstatechange = () => {
+                if (installingWorker.state === 'installed') {
+                  if (navigator.serviceWorker.controller) {
+                    console.log('🔄 New content available, please refresh');
+                  } else {
+                    console.log('✅ Content cached for offline use');
+                  }
+                }
+              };
+            }
+          };
+        })
+        .catch(error => {
+          console.error('❌ Service Worker registration failed:', error);
+        });
+    });
+  } else if (import.meta.env.DEV) {
+    console.log('📱 Service Worker not registered in development mode');
+  }
+};
+
+registerServiceWorker();
+
+// ═══════════════════════════════════════════════════════════════
+// EXPORT FOR TESTING (optional)
+// ═══════════════════════════════════════════════════════════════
+export { queryClient };

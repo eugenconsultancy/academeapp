@@ -43,6 +43,9 @@ const EditBlogPage = lazy(() => import('./pages/EditBlogPage'));
 const MyBlogPostsPage = lazy(() => import('./pages/MyBlogPostsPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const ProfileEditPage = lazy(() => import('./pages/ProfileEditPage'));
+const ChangePasswordPage = lazy(() => import('./pages/ChangePasswordPage'));
+const DataExportPage = lazy(() => import('./pages/DataExportPage'));
+const DeleteAccountConfirmation = lazy(() => import('./pages/DeleteAccountConfirmation'));
 const TwoFactorSetupPage = lazy(() => import('./pages/TwoFactorSetupPage'));
 const BiometricEnrollmentPage = lazy(() => import('./pages/BiometricEnrollmentPage'));
 const SessionsPage = lazy(() => import('./pages/SessionsPage'));
@@ -65,6 +68,7 @@ const SearchResultsPage = lazy(() => import('./pages/SearchResultsPage'));
 const ResourceUploadPage = lazy(() => import('./pages/ResourceUploadPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 const MyTicketsPage = lazy(() => import('./pages/MyTicketsPage'));
+const TicketDetailPage = lazy(() => import('./pages/TicketDetailPage'));
 const AdminTicketsPage = lazy(() => import('./pages/AdminTicketsPage'));
 const ChatsPage = lazy(() => import('./pages/ChatsPage'));
 const ChatDetail = lazy(() => import('./pages/ChatDetail'));
@@ -94,6 +98,9 @@ const ROUTE_TITLES = {
   '/blog': 'Blog',
   '/profile': 'My Profile',
   '/profile/edit': 'Edit Profile',
+  '/profile/change-password': 'Change Password',
+  '/profile/data-export': 'Data Export',
+  '/profile/delete-account': 'Delete Account',
   '/profile/biometrics': 'Biometric Security',
   '/profile/2fa': 'Two-Factor Authentication',
   '/two-factor-setup': 'Two-Factor Authentication',
@@ -108,6 +115,7 @@ const ROUTE_TITLES = {
   '/search': 'Search',
   '/resources/upload': 'Upload Resource',
   '/my-tickets': 'My Tickets',
+  '/my-tickets/:id': 'Ticket Details',
   '/admin/tickets': 'Admin Tickets',
   '/chats': 'My Chats',
   '/chat': 'Chat',
@@ -401,28 +409,38 @@ export default function App() {
           >
             <div key={location.pathname} className="animate-fadeIn">
               <Routes location={location}>
-                {/* Auth */}
+                {/* ============================================================ */}
+                {/* AUTHENTICATION ROUTES */}
+                {/* ============================================================ */}
                 <Route path="/login" element={!user ? <LoginPage /> : <Navigate to={location.state?.from || '/'} replace />} />
                 <Route path="/signup" element={!user ? <SignupPage /> : <Navigate to="/" replace />} />
                 <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-                {/* Home */}
+                {/* ============================================================ */}
+                {/* HOME */}
+                {/* ============================================================ */}
                 <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
 
-                {/* Announcements */}
+                {/* ============================================================ */}
+                {/* ANNOUNCEMENTS */}
+                {/* ============================================================ */}
                 <Route path="/announcements" element={<ProtectedRoute><AnnouncementsPage /></ProtectedRoute>} />
                 <Route path="/announcements/:id" element={<ProtectedRoute><AnnouncementDetailPage /></ProtectedRoute>} />
                 <Route path="/announcements/requests" element={<ProtectedRoute><AnnouncementRequestsPage /></ProtectedRoute>} />
                 <Route path="/announcements/requests/new" element={<ProtectedRoute><CreateAnnouncementRequestPage /></ProtectedRoute>} />
 
-                {/* Opportunities */}
+                {/* ============================================================ */}
+                {/* OPPORTUNITIES */}
+                {/* ============================================================ */}
                 <Route path="/opportunities" element={<ProtectedRoute><OpportunitiesPage /></ProtectedRoute>} />
                 <Route path="/opportunities/new" element={<ProtectedRoute><CreateOpportunityPage /></ProtectedRoute>} />
                 <Route path="/opportunities/:id" element={<ProtectedRoute><OpportunityDetailPage /></ProtectedRoute>} />
                 <Route path="/opportunities/:id/edit" element={<ProtectedRoute><EditOpportunityPage /></ProtectedRoute>} />
 
-                {/* Found Items */}
+                {/* ============================================================ */}
+                {/* FOUND ITEMS */}
+                {/* ============================================================ */}
                 <Route path="/found-items" element={<ProtectedRoute><FoundItemsPage /></ProtectedRoute>} />
                 <Route path="/found-items/post" element={<ProtectedRoute><PostFoundItem /></ProtectedRoute>} />
                 <Route path="/found-items/my-listings" element={<ProtectedRoute><MyFoundItemsPage /></ProtectedRoute>} />
@@ -431,68 +449,98 @@ export default function App() {
                 <Route path="/claims" element={<ProtectedRoute><ClaimListPage /></ProtectedRoute>} />
                 <Route path="/claims/:claimId" element={<ProtectedRoute><ClaimDetail /></ProtectedRoute>} />
 
-                {/* Classes */}
+                {/* ============================================================ */}
+                {/* CLASSES */}
+                {/* ============================================================ */}
                 <Route path="/classes" element={<ProtectedRoute><ClassesPage /></ProtectedRoute>} />
                 <Route path="/classes/attendance" element={<ProtectedRoute><AttendanceSummary /></ProtectedRoute>} />
                 <Route path="/classes/attendance/:entryId" element={<ProtectedRoute><AttendanceDetail /></ProtectedRoute>} />
                 <Route path="/classes/manage" element={<ProtectedRoute allowedRoles={['class_rep', 'admin']}><ManageTimetablePage /></ProtectedRoute>} />
 
-                {/* Location / Map */}
+                {/* ============================================================ */}
+                {/* LOCATION / MAP */}
+                {/* ============================================================ */}
                 <Route path="/nearby-classes" element={<ProtectedRoute><NearbyClassesPage /></ProtectedRoute>} />
                 <Route path="/campus-map" element={<ProtectedRoute><CampusMapPage /></ProtectedRoute>} />
                 <Route path="/venues/:venueId" element={<ProtectedRoute><VenueDetailPage /></ProtectedRoute>} />
 
-                {/* Blog */}
+                {/* ============================================================ */}
+                {/* BLOG */}
+                {/* ============================================================ */}
                 <Route path="/blog" element={<ProtectedRoute><BlogPage /></ProtectedRoute>} />
                 <Route path="/blog/create" element={<ProtectedRoute><CreateBlog /></ProtectedRoute>} />
                 <Route path="/blog/my-posts" element={<ProtectedRoute><MyBlogPostsPage /></ProtectedRoute>} />
                 <Route path="/blog/:slug" element={<ProtectedRoute><BlogDetail /></ProtectedRoute>} />
                 <Route path="/blog/:slug/edit" element={<ProtectedRoute><EditBlogPage /></ProtectedRoute>} />
 
-                {/* Profile & Account */}
+                {/* ============================================================ */}
+                {/* PROFILE & ACCOUNT (COMPLETE) */}
+                {/* ============================================================ */}
                 <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
                 <Route path="/profile/edit" element={<ProtectedRoute><ProfileEditPage /></ProtectedRoute>} />
+                <Route path="/profile/change-password" element={<ProtectedRoute><ChangePasswordPage /></ProtectedRoute>} />
+                <Route path="/profile/data-export" element={<ProtectedRoute><DataExportPage /></ProtectedRoute>} />
+                <Route path="/profile/delete-account" element={<ProtectedRoute><DeleteAccountConfirmation /></ProtectedRoute>} />
                 <Route path="/profile/biometrics" element={<ProtectedRoute><BiometricEnrollmentPage /></ProtectedRoute>} />
                 <Route path="/profile/2fa" element={<ProtectedRoute><TwoFactorSetupPage /></ProtectedRoute>} />
                 <Route path="/two-factor-setup" element={<Navigate to="/profile/2fa" replace />} />
                 <Route path="/sessions" element={<ProtectedRoute><SessionsPage /></ProtectedRoute>} />
 
-                {/* Notifications */}
+                {/* ============================================================ */}
+                {/* NOTIFICATIONS */}
+                {/* ============================================================ */}
                 <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
                 <Route path="/notifications/preferences" element={<ProtectedRoute><NotificationPreferencesPage /></ProtectedRoute>} />
 
-                {/* Search */}
+                {/* ============================================================ */}
+                {/* SEARCH */}
+                {/* ============================================================ */}
                 <Route path="/search" element={<ProtectedRoute><SearchResultsPage /></ProtectedRoute>} />
 
-                {/* Resources */}
+                {/* ============================================================ */}
+                {/* RESOURCES */}
+                {/* ============================================================ */}
                 <Route path="/resources/upload" element={<ProtectedRoute><ResourceUploadPage /></ProtectedRoute>} />
 
-                {/* Static Pages */}
+                {/* ============================================================ */}
+                {/* STATIC PAGES */}
+                {/* ============================================================ */}
                 <Route path="/contact" element={<ProtectedRoute><ContactPage /></ProtectedRoute>} />
                 <Route path="/about" element={<ProtectedRoute><AboutPage /></ProtectedRoute>} />
                 <Route path="/privacy" element={<ProtectedRoute><PrivacyPage /></ProtectedRoute>} />
 
-                {/* Admin */}
+                {/* ============================================================ */}
+                {/* ADMIN */}
+                {/* ============================================================ */}
                 <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
                 <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={['admin']}><AdminAuditLogsPage /></ProtectedRoute>} />
                 <Route path="/admin/roles" element={<ProtectedRoute allowedRoles={['admin']}><AdminRolesPage /></ProtectedRoute>} />
                 <Route path="/admin/reports" element={<ProtectedRoute allowedRoles={['admin']}><AdminReportsPage /></ProtectedRoute>} />
                 <Route path="/admin/stats" element={<ProtectedRoute allowedRoles={['admin']}><GovernanceStats /></ProtectedRoute>} />
 
-                {/* Governance */}
+                {/* ============================================================ */}
+                {/* GOVERNANCE */}
+                {/* ============================================================ */}
                 <Route path="/governance" element={<ProtectedRoute allowedRoles={['student_leader', 'faculty_rep']}><GovernanceDashboard /></ProtectedRoute>} />
                 <Route path="/governance/stats" element={<ProtectedRoute allowedRoles={['student_leader', 'faculty_rep']}><GovernanceStats /></ProtectedRoute>} />
 
-                {/* Support Tickets */}
+                {/* ============================================================ */}
+                {/* SUPPORT TICKETS (COMPLETE) */}
+                {/* ============================================================ */}
                 <Route path="/my-tickets" element={<ProtectedRoute><MyTicketsPage /></ProtectedRoute>} />
+                <Route path="/my-tickets/:id" element={<ProtectedRoute><TicketDetailPage /></ProtectedRoute>} />
                 <Route path="/admin/tickets" element={<ProtectedRoute allowedRoles={['admin']}><AdminTicketsPage /></ProtectedRoute>} />
 
-                {/* Chat */}
+                {/* ============================================================ */}
+                {/* CHAT */}
+                {/* ============================================================ */}
                 <Route path="/chat" element={<Navigate to="/chats" replace />} />
                 <Route path="/chats" element={<ProtectedRoute><ChatsPage /></ProtectedRoute>} />
                 <Route path="/chat/:conversationId" element={<ProtectedRoute><ChatDetail /></ProtectedRoute>} />
 
-                {/* 404 */}
+                {/* ============================================================ */}
+                {/* 404 NOT FOUND */}
+                {/* ============================================================ */}
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </div>

@@ -6,10 +6,9 @@ from datetime import timedelta
 from django.shortcuts import get_object_or_404
 from django.conf import settings
 from django.utils import timezone
-from django.db.models import Count, Q, OuterRef, Subquery, Exists, Value
-from django.db.models.functions import Coalesce
+from django.db.models import Count, Q
 from django.core.cache import cache
-from ninja import Router, Query
+from ninja import Router
 from ninja.errors import HttpError
 
 from common.jwt_auth import JWTAuth
@@ -53,7 +52,7 @@ ALLOWED_MIME_TYPES = [
 BLOCKED_MIME_PREFIXES = ['video/']
 
 
-# ─── Helpers with Optimized Queries ───
+# ─── Helpers ───
 
 def build_participant_info(conv, current_user):
     """Return ParticipantInfo dict for the other user in the conversation."""
@@ -73,15 +72,6 @@ def build_participant_info(conv, current_user):
         "last_active": other_user.last_activity,
         "avatar_url": other_user.profile_pic or None,
     }
-
-
-def get_unread_count_subquery(user_id):
-    """Return subquery for unread count per conversation - optimized N+1 fix"""
-    from django.db.models import OuterRef, Count, Q
-    return Count('messages', filter=Q(
-        messages__is_read=False,
-        messages__sender_id=OuterRef('participant_id')
-    ))
 
 
 def check_rate_limit(user_id, action, limit, window_seconds):
@@ -169,7 +159,6 @@ def start_conversation(request, payload: StartConversationIn):
 def list_conversations(request, archived: bool = False):
     user = request.auth
 
-    # Optimized query with prefetching and subqueries to eliminate N+1
     convs = Conversation.objects.filter(
         participants=user,
         is_active=not archived
@@ -177,17 +166,14 @@ def list_conversations(request, archived: bool = False):
         deleted_by=user
     ).prefetch_related('participants').order_by('-last_message_at')
 
-    # Get pinned IDs in a single query
     pinned_ids = set(
         PinnedConversation.objects.filter(user=user).values_list('conversation_id', flat=True)
     )
     
-    # Get muted IDs in a single query
     muted_ids = set(
         MutedConversation.objects.filter(user=user).values_list('conversation_id', flat=True)
     )
     
-    # Get unread counts in a single query per conversation (optimized)
     unread_counts = {}
     for conv in convs:
         unread_counts[conv.id] = Message.objects.filter(
@@ -217,7 +203,6 @@ def list_conversations(request, archived: bool = False):
         else:
             unpinned_convs.append(conv_data)
 
-    # Sort pinned by pinned_at descending (most recent pin first)
     pinned_sorted = sorted(
         pinned_convs,
         key=lambda c: PinnedConversation.objects.get(
@@ -226,7 +211,6 @@ def list_conversations(request, archived: bool = False):
         reverse=True
     )
 
-    # Sort unpinned by last_message_at descending
     unpinned_sorted = sorted(
         unpinned_convs,
         key=lambda c: c['last_message_at'] or timezone.datetime.min.replace(tzinfo=timezone.utc),
@@ -256,6 +240,7 @@ def get_messages(request, conv_id: uuid.UUID, before: str = None, limit: int = 5
 
     return [{
         "id": m.id,
+        "_tempId": None,  # Historical messages don't have tempId
         "conversation_id": m.conversation_id,
         "sender_id": m.sender_id,
         "content": m.content if not m.is_deleted else "[Message deleted]",
@@ -276,13 +261,12 @@ def post_message(request, conv_id: uuid.UUID, payload: MessageIn):
     if not check_rate_limit(request.auth.id, 'send_message', RATE_LIMIT_MESSAGE_PER_MINUTE, 60):
         raise HttpError(429, "Too many messages. Please slow down.")
 
-    # Check idempotency
     idempotency_key = request.headers.get('Idempotency-Key')
     if idempotency_key:
         cache_key = f"idempotent:{idempotency_key}"
         if cache.get(cache_key):
             raise HttpError(409, "Duplicate message detected")
-        cache.set(cache_key, True, timeout=300)  # 5 minutes
+        cache.set(cache_key, True, timeout=300)
 
     conv = get_object_or_404(
         Conversation, id=conv_id, participants=request.auth, is_active=True
@@ -290,7 +274,6 @@ def post_message(request, conv_id: uuid.UUID, payload: MessageIn):
 
     other_user = conv.participants.exclude(id=request.auth.id).first()
     if other_user:
-        # Check both directions for blocks
         if is_user_blocked(other_user, request.auth):
             raise HttpError(403, "You have been blocked by this user.")
         if is_user_blocked(request.auth, other_user):
@@ -326,8 +309,10 @@ def post_message(request, conv_id: uuid.UUID, payload: MessageIn):
 
     User.objects.filter(id=request.auth.id).update(last_activity=timezone.now())
 
+    # IMPORTANT: Return _tempId for frontend reconciliation
     return {
         "id": message.id,
+        "_tempId": payload._tempId,  # Send back the client's tempId for reconciliation
         "conversation_id": message.conversation_id,
         "sender_id": message.sender_id,
         "content": message.content,
@@ -350,13 +335,11 @@ def edit_message(request, conv_id: uuid.UUID, msg_id: uuid.UUID, payload: Messag
         Message, id=msg_id, conversation_id=conv_id, sender=request.auth, is_deleted=False
     )
     
-    # Check edit window (5 minutes)
     now = timezone.now()
     time_diff = now - message.created_at
     if time_diff.total_seconds() > 300:
         raise HttpError(403, "Messages can only be edited within 5 minutes of sending")
     
-    # Store edit history
     edit_history = message.edit_history or []
     edit_history.append({
         'old_content': message.content,
@@ -371,6 +354,7 @@ def edit_message(request, conv_id: uuid.UUID, msg_id: uuid.UUID, payload: Messag
     
     return {
         "id": message.id,
+        "_tempId": None,  # Edited messages don't need tempId
         "conversation_id": message.conversation_id,
         "sender_id": message.sender_id,
         "content": message.content,
@@ -497,7 +481,6 @@ def block_user(request, payload: BlockUserIn):
 
     BlockedUser.objects.create(blocker=request.auth, blocked=blocked_user)
 
-    # Deactivate conversations in both directions
     Conversation.objects.filter(
         participants=request.auth
     ).filter(
@@ -555,7 +538,7 @@ def unmute_conversation(request, conv_id: uuid.UUID):
     return {"success": True, "unmuted": deleted > 0}
 
 
-# ─── Pin / Unpin (fixed sorting) ───
+# ─── Pin / Unpin ───
 
 @router.post('/conversations/{conv_id}/pin', auth=auth)
 def pin_conversation(request, conv_id: uuid.UUID):

@@ -10,7 +10,22 @@ let activeListenerCount = 0;
 const listeners = new Map();
 let nextListenerId = 0;
 
+// FIX: Add seen notification ID cache for deduplication
+const seenNotificationIds = new Set();
+
 function notifyListeners(notification) {
+    // FIX: Deduplicate by ID to prevent duplicate UI updates
+    if (notification && notification.id && seenNotificationIds.has(notification.id)) {
+        console.log(`Deduplicating notification ${notification.id}`);
+        return;
+    }
+
+    if (notification && notification.id) {
+        seenNotificationIds.add(notification.id);
+        // Clean up memory after 5 seconds
+        setTimeout(() => seenNotificationIds.delete(notification.id), 5000);
+    }
+
     listeners.forEach((callback, id) => {
         try {
             callback(notification);
@@ -71,10 +86,12 @@ function connectWebSocket(accessToken) {
         return;
     }
 
-    // Close existing connection if in other state
-    if (globalSocket && globalSocket.readyState !== WebSocket.CLOSED) {
-        console.log('Closing existing notification WebSocket');
+    // FIX: Clean up existing socket properly before creating new one
+    if (globalSocket) {
+        // Prevent the closing socket from triggering a reconnect
+        globalSocket.onclose = null;
         globalSocket.close();
+        globalSocket = null;
     }
 
     const url = getWebSocketUrl();
@@ -99,6 +116,9 @@ function connectWebSocket(accessToken) {
             clearTimeout(globalReconnectTimeout);
             globalReconnectTimeout = null;
         }
+
+        // Clear seen IDs cache on reconnect
+        seenNotificationIds.clear();
     };
 
     ws.onmessage = (event) => {
@@ -114,7 +134,12 @@ function connectWebSocket(accessToken) {
                 return;
             }
 
+            // Dispatch notification to listeners
             notifyListeners(data);
+
+            // Also dispatch a custom event for other components
+            const eventBus = new CustomEvent('websocket_message', { detail: data });
+            window.dispatchEvent(eventBus);
         } catch (e) {
             console.error('Failed to parse notification', e);
         }
@@ -139,7 +164,10 @@ function connectWebSocket(accessToken) {
                     console.log('Token refreshed, reconnecting notification socket...');
                     window.removeEventListener('storage', handleTokenChange);
                     setTimeout(() => {
-                        if (activeListenerCount > 0) connectWebSocket(storageEvent.newValue);
+                        if (activeListenerCount > 0) {
+                            const freshToken = localStorage.getItem('access_token');
+                            if (freshToken) connectWebSocket(freshToken);
+                        }
                     }, 1000);
                 }
             };
@@ -158,8 +186,8 @@ function connectWebSocket(accessToken) {
 
         console.log(`Reconnecting notification socket in ${Math.round(delay)}ms (attempt ${attempt})`);
         globalReconnectTimeout = setTimeout(() => {
-            const token = localStorage.getItem('access_token');
-            if (token && activeListenerCount > 0) connectWebSocket(token);
+            const freshToken = localStorage.getItem('access_token');
+            if (freshToken && activeListenerCount > 0) connectWebSocket(freshToken);
         }, delay);
     };
 
@@ -171,6 +199,8 @@ function connectWebSocket(accessToken) {
 function disconnectGlobalSocket() {
     console.log('Disconnecting global notification socket');
     if (globalSocket) {
+        // Prevent reconnect triggers
+        globalSocket.onclose = null;
         stopHeartbeat();
         globalSocket.close();
         globalSocket = null;
@@ -179,6 +209,8 @@ function disconnectGlobalSocket() {
         clearTimeout(globalReconnectTimeout);
         globalReconnectTimeout = null;
     }
+    // Clear seen IDs cache
+    seenNotificationIds.clear();
 }
 
 // Reconnect when tab becomes visible
@@ -261,6 +293,7 @@ export default function useNotificationWebSocket(onNewNotification) {
                 if (globalSocket) {
                     const oldSocket = globalSocket;
                     globalSocket = null;
+                    oldSocket.onclose = null; // Prevent reconnect trigger
                     oldSocket.close();
                 }
                 if (e.newValue && activeListenerCount > 0) {
