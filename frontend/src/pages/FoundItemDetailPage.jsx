@@ -1,3 +1,4 @@
+// frontend/src/pages/FoundItemDetailPage.jsx
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { foundItemsApi } from '../api/foundItemsApi';
@@ -55,12 +56,15 @@ export default function FoundItemDetailPage() {
                 toast.error(result.error || 'Verification failed');
             }
         } catch (err) {
+            // Log 422 validation errors for debugging
+            if (err.response?.status === 422) {
+                console.error("422 Validation Error:", err.response.data.detail);
+            }
             toast.error(err.response?.data?.error || 'Verification failed');
         } finally { setVerifying(false); }
     };
 
     const handleClaimNow = () => {
-        // Navigate to claim page; ownership already verified (admission match)
         navigate(`/found-items/${id}/claim`);
     };
 

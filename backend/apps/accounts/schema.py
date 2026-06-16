@@ -1,3 +1,4 @@
+# backend/apps/accounts/schema.py
 from ninja import Schema
 from typing import Optional, List
 from pydantic import field_validator
@@ -80,3 +81,8 @@ class ProfileOut(Schema):
         if v and len(v) > 6:
             return v[:3] + '****' + v[-3:]
         return v
+
+# ✅ NEW: Token response schema for refresh endpoint
+class TokenOut(Schema):
+    access: str
+    refresh: str

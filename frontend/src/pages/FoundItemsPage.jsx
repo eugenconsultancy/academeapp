@@ -1,3 +1,4 @@
+// frontend/src/pages/FoundItemsPage.jsx
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
@@ -45,6 +46,7 @@ export default function FoundItemsPage() {
     const { data: items, isLoading, refetch } = useQuery({
         queryKey: ['found-items', category, search, status],
         queryFn: async () => {
+            // Only send params that have values
             const params = new URLSearchParams();
             if (category) params.append('category', category);
             if (search) params.append('search', search);

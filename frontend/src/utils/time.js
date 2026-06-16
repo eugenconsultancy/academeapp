@@ -1,4 +1,35 @@
-// ── Constants; ALSO I HAVE date-fns (`date-fns`) INSTALLED ────────────────────────────────────────────────────────────
+// frontend/src/utils/time.js
+/**
+ * Time & date utilities powered by date-fns for safety and consistency.
+ */
+
+import {
+    format,
+    formatDistanceToNow,
+    formatDistanceToNowStrict,
+    isToday as fnsIsToday,
+    isThisWeek as fnsIsThisWeek,
+    isThisMonth as fnsIsThisMonth,
+    isPast,
+    parseISO,
+    getDay,
+    getMonth,
+    getYear,
+    addDays,
+    subDays,
+    startOfWeek,
+    differenceInSeconds,
+    differenceInMinutes,
+    differenceInHours,
+    differenceInDays,
+    differenceInWeeks,
+    differenceInMonths,
+    differenceInYears,
+    addMinutes,
+    isValid,
+} from 'date-fns';
+
+// ── Constants ────────────────────────────────────────────────────────────
 
 const SCHOOL_HOLIDAYS_KE = [
     '01-01', // New Year's Day
@@ -7,7 +38,7 @@ const SCHOOL_HOLIDAYS_KE = [
     '05-01', // Labour Day
     '06-01', // Madaraka Day
     '08-08', // General Election (every 5 years)
-    '10-10', // Utamaduni Day (Moi Day)
+    '10-10', // Utamaduni Day
     '10-20', // Mashujaa Day
     '12-12', // Jamhuri Day
     '12-25', // Christmas Day
@@ -18,81 +49,67 @@ const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Satu
 const DAY_NAMES_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-// ── Server Time Synchronization ───────────────────────────────────────────
+// ── Server Time Synchronization ──────────────────────────────────────────
 
 let timeOffset = 0;
 
 export function setTimeOffset(serverDateString) {
-    const serverTime = new Date(serverDateString).getTime();
-    const clientTime = Date.now();
-    timeOffset = serverTime - clientTime;
+    const serverTime = parseISO(serverDateString);
+    if (!isValid(serverTime)) return;
+    timeOffset = serverTime.getTime() - Date.now();
 }
 
+/**
+ * Returns a Date object adjusted by the server time offset.
+ * All other functions should use this instead of new Date() for "now".
+ */
 export function getSyncedDate() {
     return new Date(Date.now() + timeOffset);
 }
 
-// ── Time Formatting ───────────────────────────────────────────────────────
+// ── Safe Date Parsing ────────────────────────────────────────────────────
 
-export function formatTime(time, locale = 'en-US') {
-    if (!time) return '';
-    const date = new Date(time);
-    if (isNaN(date.getTime())) return '';
-    return date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+/**
+ * Converts any input to a valid Date, or null if invalid.
+ */
+function toDate(input) {
+    if (!input) return null;
+    const d = typeof input === 'string' ? parseISO(input) : new Date(input);
+    return isValid(d) ? d : null;
+}
+
+// ── Formatting ───────────────────────────────────────────────────────────
+
+export function formatTime(time) {
+    const d = toDate(time);
+    return d ? format(d, 'HH:mm') : '';
 }
 
 export function formatTime24(time) {
-    if (!time) return '';
-    const date = new Date(time);
-    if (isNaN(date.getTime())) return '';
-    const h = String(date.getHours()).padStart(2, '0');
-    const m = String(date.getMinutes()).padStart(2, '0');
-    return `${h}:${m}`;
+    return formatTime(time);   // identical
 }
 
-export function formatDate(date, locale = 'en-US') {
-    if (!date) return '';
-    const d = new Date(date);
-    if (isNaN(d.getTime())) return '';
-    return d.toLocaleDateString(locale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+export function formatDate(date) {
+    const d = toDate(date);
+    return d ? format(d, 'EEEE, MMMM do, yyyy') : '';
 }
 
 export function formatDateShort(date) {
-    if (!date) return '';
-    const d = new Date(date);
-    if (isNaN(d.getTime())) return '';
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
-    return `${day}/${month}/${year}`;
+    const d = toDate(date);
+    return d ? format(d, 'dd/MM/yyyy') : '';
 }
 
 export function formatISODate(date) {
-    if (!date) return '';
-    const d = new Date(date);
-    if (isNaN(d.getTime())) return '';
-    return d.toISOString().split('T')[0];
+    const d = toDate(date);
+    return d ? format(d, 'yyyy-MM-dd') : '';
 }
-
-// export function formatDateShort(date) {
-//     if (!date) return '';
-//     const d = new Date(date);
-//     if (isNaN(d.getTime())) return '';
-//     const day = String(d.getDate()).padStart(2, '0');
-//     const month = String(d.getMonth() + 1).padStart(2, '0');
-//     const year = d.getFullYear();
-//     return '${day}/${month}/${year}';
-
-// }
 
 export function formatISO(date) {
-    if (!date) return '';
-    const d = new Date(date);
-    if (isNaN(d.getTime())) return '';
-    return d.toISOString();
+    const d = toDate(date);
+    return d ? d.toISOString() : '';
 }
 
-// ── Date & Time Validation ────────────────────────────────────────────────
+// ── Validation ───────────────────────────────────────────────────────────
 
 export function isValidTime(timeStr) {
     if (!timeStr) return false;
@@ -100,65 +117,37 @@ export function isValidTime(timeStr) {
 }
 
 export function isValidDate(dateStr) {
-    if (!dateStr) return false;
-    const date = new Date(dateStr);
-    return date instanceof Date && !isNaN(date.getTime());
+    return !!toDate(dateStr);
 }
 
 export function isValidTimeRange(startTime, endTime) {
-    if (!isValidTime(startTime) || !isValidTime(endTime)) return false;
-    return startTime < endTime;
+    return isValidTime(startTime) && isValidTime(endTime) && startTime < endTime;
 }
 
-// ── Relative Time ─────────────────────────────────────────────────────────
+// ── Relative Time ────────────────────────────────────────────────────────
 
 export function getRelativeTime(date) {
-    if (!date) return '';
-    const now = getSyncedDate();
-    const d = new Date(date);
-    if (isNaN(d.getTime())) return '';
-
-    const diff = now - d;
-    const seconds = Math.floor(diff / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
+    const d = toDate(date);
+    if (!d) return '';
+    const seconds = differenceInSeconds(getSyncedDate(), d);
     if (seconds < 5) return 'just now';
     if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
     if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
     if (days < 7) return `${days}d ago`;
-    return formatDateShort(date);
+    return formatDateShort(d);
 }
 
 export function getRelativeTimeDetailed(date) {
-    if (!date) return '';
-    const now = getSyncedDate();
-    const d = new Date(date);
-    if (isNaN(d.getTime())) return '';
-
-    const diff = now - d;
-    const seconds = Math.floor(diff / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-    const weeks = Math.floor(days / 7);
-    const months = Math.floor(days / 30);
-    const years = Math.floor(days / 365);
-
-    if (seconds < 5) return 'just now';
-    if (seconds < 60) return `${seconds} seconds ago`;
-    if (minutes < 60) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
-    if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
-    if (days < 7) return `${days} day${days > 1 ? 's' : ''} ago`;
-    if (weeks < 4) return `${weeks} week${weeks > 1 ? 's' : ''} ago`;
-    if (months < 12) return `${months} month${months > 1 ? 's' : ''} ago`;
-    if (years === 1) return '1 year ago';
-    return `${years} years ago`;
+    const d = toDate(date);
+    if (!d) return '';
+    return formatDistanceToNowStrict(d, { addSuffix: true });
 }
 
-// ── Day & Date Utilities ──────────────────────────────────────────────────
+// ── Calendar Checks ─────────────────────────────────────────────────────
 
 export function getDayName(dayOfWeek) {
     return DAY_NAMES[dayOfWeek] || '';
@@ -169,52 +158,42 @@ export function getDayNameShort(dayOfWeek) {
 }
 
 export function isToday(date) {
-    if (!date) return false;
-    const now = getSyncedDate();
-    const d = new Date(date);
-    return d.toDateString() === now.toDateString();
+    const d = toDate(date);
+    return d ? fnsIsToday(d) : false;
 }
 
 export function isThisWeek(date) {
-    if (!date) return false;
-    const now = getSyncedDate();
-    const d = new Date(date);
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - now.getDay() + 1);
-    weekStart.setHours(0, 0, 0, 0);
-    return d >= weekStart;
+    const d = toDate(date);
+    return d ? fnsIsThisWeek(d, { weekStartsOn: 1 }) : false;
 }
 
 export function isThisMonth(date) {
-    if (!date) return false;
-    const now = getSyncedDate();
-    const d = new Date(date);
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    const d = toDate(date);
+    return d ? fnsIsThisMonth(d) : false;
 }
 
 export function isOverdue(date) {
-    if (!date) return false;
-    return new Date(date) < getSyncedDate();
+    const d = toDate(date);
+    return d ? isPast(d) : false;
 }
+
+// ── Week Number ─────────────────────────────────────────────────────────
 
 export function getWeekNumber(date = getSyncedDate()) {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
-    const week1 = new Date(d.getFullYear(), 0, 4);
-    return 1 + Math.round(((d - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+    const d = toDate(date) || getSyncedDate();
+    return format(d, 'w');
 }
 
-// ── Academic Helpers ──────────────────────────────────────────────────────
+// ── Academic Helpers ────────────────────────────────────────────────────
 
 export function getAcademicYear(date = getSyncedDate()) {
-    const d = new Date(date);
+    const d = toDate(date) || getSyncedDate();
     const year = d.getFullYear();
     return `${year}-${year + 1}`;
 }
 
 export function getCurrentTerm(date = getSyncedDate()) {
-    const d = new Date(date);
+    const d = toDate(date) || getSyncedDate();
     const month = d.getMonth() + 1;
     if (month >= 1 && month <= 3) return 1;
     if (month >= 5 && month <= 7) return 2;
@@ -232,40 +211,40 @@ export function isSchoolTerm(date = getSyncedDate()) {
 }
 
 export function isSchoolDay(date = getSyncedDate()) {
-    const d = new Date(date);
-    if (d.getDay() === 0 || d.getDay() === 6) return false;
-    const dateStr = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const d = toDate(date) || getSyncedDate();
+    const day = d.getDay();
+    if (day === 0 || day === 6) return false;
+    const dateStr = format(d, 'MM-dd');   // ensures two-digit month/day
     if (SCHOOL_HOLIDAYS_KE.includes(dateStr)) return false;
-    if (!isSchoolTerm(date)) return false;
-    return true;
+    return isSchoolTerm(d);
 }
 
 export function getNextSchoolDay(date = getSyncedDate()) {
-    const next = new Date(date);
-    next.setDate(next.getDate() + 1);
+    const d = toDate(date) || getSyncedDate();
+    let next = addDays(d, 1);
     let attempts = 0;
     while (!isSchoolDay(next) && attempts < 30) {
-        next.setDate(next.getDate() + 1);
+        next = addDays(next, 1);
         attempts++;
     }
     return attempts < 30 ? next : null;
 }
 
 export function getPreviousSchoolDay(date = getSyncedDate()) {
-    const prev = new Date(date);
-    prev.setDate(prev.getDate() - 1);
+    const d = toDate(date) || getSyncedDate();
+    let prev = subDays(d, 1);
     let attempts = 0;
     while (!isSchoolDay(prev) && attempts < 30) {
-        prev.setDate(prev.getDate() - 1);
+        prev = subDays(prev, 1);
         attempts++;
     }
     return attempts < 30 ? prev : null;
 }
 
-// ── Duration Helpers ──────────────────────────────────────────────────────
+// ── Duration Formatting ─────────────────────────────────────────────────
 
 export function formatDuration(minutes) {
-    if (!minutes && minutes !== 0) return '';
+    if (minutes == null) return '';
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
     if (h === 0) return `${m} min`;
@@ -274,7 +253,7 @@ export function formatDuration(minutes) {
 }
 
 export function formatDurationLong(minutes) {
-    if (!minutes && minutes !== 0) return '0 minutes';
+    if (minutes == null) return '0 minutes';
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
     const parts = [];
@@ -283,18 +262,18 @@ export function formatDurationLong(minutes) {
     return parts.join(' ') || '0 minutes';
 }
 
-// ── Attendance Window Helpers ────────────────────────────────────────────
+// ── Attendance Window ───────────────────────────────────────────────────
 
 export function isWithinAttendanceWindow(startTime, endTime) {
     if (!startTime || !endTime) return false;
     const now = getSyncedDate();
-    const [startHour, startMinute] = startTime.split(':').map(Number);
-    const [endHour, endMinute] = endTime.split(':').map(Number);
+    const [sh, sm] = startTime.split(':').map(Number);
+    const [eh, em] = endTime.split(':').map(Number);
 
     const start = new Date(now);
-    start.setHours(startHour, startMinute - 10, 0, 0);
+    start.setHours(sh, sm - 10, 0, 0);
     const end = new Date(now);
-    end.setHours(endHour, endMinute + 10, 0, 0);
+    end.setHours(eh, em + 10, 0, 0);
 
     return now >= start && now <= end;
 }
@@ -302,14 +281,13 @@ export function isWithinAttendanceWindow(startTime, endTime) {
 export function getRemainingTime(endTime) {
     if (!endTime) return 0;
     const now = getSyncedDate();
-    const [endHour, endMinute] = endTime.split(':').map(Number);
+    const [eh, em] = endTime.split(':').map(Number);
     const end = new Date(now);
-    end.setHours(endHour, endMinute + 10, 0, 0);
-    const diff = end - now;
-    return Math.max(0, Math.floor(diff / 60000));
+    end.setHours(eh, em + 10, 0, 0);
+    return Math.max(0, differenceInMinutes(end, now));
 }
 
-// ── Time Slot Generation ─────────────────────────────────────────────────
+// ── Time Slot Generation ────────────────────────────────────────────────
 
 export function generateTimeSlots(startTime = '08:00', endTime = '17:00', intervalMinutes = 40) {
     if (!isValidTime(startTime) || !isValidTime(endTime)) return [];
@@ -317,16 +295,16 @@ export function generateTimeSlots(startTime = '08:00', endTime = '17:00', interv
     const [startH, startM] = startTime.split(':').map(Number);
     const [endH, endM] = endTime.split(':').map(Number);
 
-    const current = getSyncedDate();
+    let current = new Date(getSyncedDate());
     current.setHours(startH, startM, 0, 0);
-    const end = new Date(current);
+    const end = new Date(getSyncedDate());
     end.setHours(endH, endM, 0, 0);
 
     let periodNumber = 1;
     while (current < end) {
-        const slotStart = `${String(current.getHours()).padStart(2, '0')}:${String(current.getMinutes()).padStart(2, '0')}`;
-        current.setMinutes(current.getMinutes() + intervalMinutes);
-        const slotEnd = `${String(current.getHours()).padStart(2, '0')}:${String(current.getMinutes()).padStart(2, '0')}`;
+        const slotStart = format(current, 'HH:mm');
+        current = addMinutes(current, intervalMinutes);
+        const slotEnd = format(current, 'HH:mm');
         slots.push({
             period: periodNumber,
             start: slotStart,
@@ -341,7 +319,7 @@ export function generateTimeSlots(startTime = '08:00', endTime = '17:00', interv
 
 export function getCurrentPeriod(schedule, time = getSyncedDate()) {
     if (!schedule?.length) return null;
-    const currentTime = `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
+    const currentTime = format(time, 'HH:mm');
     for (const period of schedule) {
         if (currentTime >= period.start && currentTime < period.end) return period;
     }
@@ -350,36 +328,33 @@ export function getCurrentPeriod(schedule, time = getSyncedDate()) {
 
 export function getNextPeriod(schedule, time = getSyncedDate()) {
     if (!schedule?.length) return null;
-    const currentTime = `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
+    const currentTime = format(time, 'HH:mm');
     for (const period of schedule) {
         if (period.start > currentTime) return period;
     }
     return null;
 }
 
-// ── Date Range Formatting ────────────────────────────────────────────────
+// ── Date Range Formatting ───────────────────────────────────────────────
 
 export function formatDateRange(startDate, endDate) {
-    if (!startDate || !endDate) return '';
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) return '';
-    if (start.toDateString() === end.toDateString()) return formatDate(start);
-    if (start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()) {
-        return `${start.getDate()} - ${end.getDate()} ${MONTH_NAMES[start.getMonth()]} ${start.getFullYear()}`;
-    }
-    if (start.getFullYear() === end.getFullYear()) {
-        return `${start.getDate()} ${MONTH_NAMES[start.getMonth()]} - ${end.getDate()} ${MONTH_NAMES[end.getMonth()]} ${start.getFullYear()}`;
-    }
-    return `${formatDateShort(start)} - ${formatDateShort(end)}`;
+    const s = toDate(startDate);
+    const e = toDate(endDate);
+    if (!s || !e) return '';
+    if (format(s, 'yyyy-MM-dd') === format(e, 'yyyy-MM-dd')) return formatDate(s);
+    if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear())
+        return `${s.getDate()} - ${e.getDate()} ${MONTH_NAMES[s.getMonth()]} ${s.getFullYear()}`;
+    if (s.getFullYear() === e.getFullYear())
+        return `${s.getDate()} ${MONTH_NAMES[s.getMonth()]} - ${e.getDate()} ${MONTH_NAMES[e.getMonth()]} ${s.getFullYear()}`;
+    return `${formatDateShort(s)} - ${formatDateShort(e)}`;
 }
 
-// ── Countdown Timer ───────────────────────────────────────────────────────
+// ── Countdown ───────────────────────────────────────────────────────────
 
 export function getCountdown(targetDate) {
-    if (!targetDate) return { expired: true, days: 0, hours: 0, minutes: 0, seconds: 0 };
+    const target = toDate(targetDate);
+    if (!target) return { expired: true, days: 0, hours: 0, minutes: 0, seconds: 0 };
     const now = getSyncedDate();
-    const target = new Date(targetDate);
     const diff = target - now;
     if (diff <= 0) return { expired: true, days: 0, hours: 0, minutes: 0, seconds: 0 };
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
@@ -399,39 +374,37 @@ export function formatCountdown(countdown) {
     return parts.join(' ');
 }
 
-// ── Age Calculation ───────────────────────────────────────────────────────
+// ── Age Calculation ────────────────────────────────────────────────────
 
 export function calculateAge(dob) {
-    if (!dob) return null;
-    const birthDate = new Date(dob);
-    if (isNaN(birthDate.getTime())) return null;
+    const birth = toDate(dob);
+    if (!birth) return null;
     const today = getSyncedDate();
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) age--;
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--;
     return age;
 }
 
-// ── Timestamp Utilities ───────────────────────────────────────────────────
+// ── Timestamp Utilities ────────────────────────────────────────────────
 
 export function toTimestamp(date) {
-    if (!date) return null;
-    return Math.floor(new Date(date).getTime() / 1000);
+    const d = toDate(date);
+    return d ? Math.floor(d.getTime() / 1000) : null;
 }
 
 export function fromTimestamp(timestamp) {
-    if (!timestamp) return null;
-    return new Date(timestamp * 1000);
+    return timestamp ? new Date(timestamp * 1000) : null;
 }
 
-// ── Timezone Utilities ────────────────────────────────────────────────────
+// ── Timezone Utilities ─────────────────────────────────────────────────
 
 export function toLocalTime(utcDate, timezone = 'Africa/Nairobi') {
-    if (!utcDate) return '';
-    return new Date(utcDate).toLocaleString('en-US', { timeZone: timezone });
+    const d = toDate(utcDate);
+    return d ? d.toLocaleString('en-US', { timeZone: timezone }) : '';
 }
 
 export function toUTC(localDate) {
-    if (!localDate) return '';
-    return new Date(localDate).toISOString();
+    const d = toDate(localDate);
+    return d ? d.toISOString() : '';
 }

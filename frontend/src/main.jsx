@@ -13,24 +13,14 @@ import OfflineIndicator from './components/shared/OfflineIndicator';
 import SkeletonLoader from './components/shared/SkeletonLoader';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 import { offlineStorage } from './utils/storage';
+import useUserStore from './stores/useUserStore';   // centralized auth store
 import './styles/globals.css';
 import './styles/themes.css';
 import './styles/fonts.css';
 import './index.css';
 
 // ═══════════════════════════════════════════════════════════════
-// CRITICAL-PATH VIEWPORT HEIGHT INITIALISATION to resolve the keyboard masking issues
-//
-// Run synchronously (before React mounts) so there is never a
-// frame where --visual-vh is missing and elements flash to
-// incorrect heights.
-//
-// Strategy:
-//   • Use window.visualViewport.height when available (most
-//     accurate — already excludes the keyboard).
-//   • Fall back to window.innerHeight.
-//   • Write --visual-vh to <html> so every CSS calc() using it
-//     has a value from the very first paint.
+// VIEWPORT HEIGHT (kept as-is – already correct)
 // ═══════════════════════════════════════════════════════════════
 (function initVisualVh() {
   const setVh = (h) => {
@@ -39,8 +29,6 @@ import './index.css';
 
   if (window.visualViewport) {
     setVh(window.visualViewport.height);
-
-    // Also listen for viewport changes (keyboard opening/closing)
     window.visualViewport.addEventListener('resize', () => {
       setVh(window.visualViewport.height);
     });
@@ -50,29 +38,58 @@ import './index.css';
 })();
 
 // ═══════════════════════════════════════════════════════════════
-// TANSTACK QUERY CONFIGURATION
+// CENTRALIZED 401 HANDLER
+// ═══════════════════════════════════════════════════════════════
+const handleAuthFailure = () => {
+  // Use the Zustand store (available outside React tree)
+  const { logout } = useUserStore.getState();
+  logout();                        // clears user + token
+  window.location.href = '/login'; // hard redirect (avoids stale state)
+};
+
+// ═══════════════════════════════════════════════════════════════
+// TANSTACK QUERY CLIENT – GLOBAL ERROR HANDLING
 // ═══════════════════════════════════════════════════════════════
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error, query) => {
-      if (error?.response?.status !== 404 && query.queryKey[0] !== 'weather') {
-        console.error('[Query Cache Error]:', error.message);
+      // Ignore 404s and weather (non-critical)
+      if (error?.response?.status === 404) return;
+      if (query?.queryKey?.[0] === 'weather') return;
+
+      // 401 → force logout (one single place)
+      if (error?.response?.status === 401) {
+        console.warn('[QueryCache] 401 – forcing logout');
+        handleAuthFailure();
+        return;
       }
+
+      // All other errors – log once
+      console.error('[Query Cache Error]:', error.message || error);
     },
   }),
   mutationCache: new MutationCache({
-    onError: (error) => {
-      if (error.message !== 'No claim ID') {
-        console.error('[Mutation Cache Error]:', error.message);
+    onError: (error, variables, context, mutation) => {
+      // Skip known benign errors
+      if (error?.message === 'No claim ID') return;
+
+      // 401 → logout
+      if (error?.response?.status === 401) {
+        console.warn('[MutationCache] 401 – forcing logout');
+        handleAuthFailure();
+        return;
       }
+
+      console.error('[Mutation Cache Error]:', error.message || error);
     },
   }),
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5,
-      gcTime: 1000 * 60 * 30,
+      staleTime: 1000 * 60 * 5,           // 5 minutes
+      gcTime: 1000 * 60 * 30,             // 30 minutes
       retry: (failureCount, error) => {
-        if (error?.response?.status === 401) return false;
+        // Never retry on 401 / 403
+        if (error?.response?.status === 401 || error?.response?.status === 403) return false;
         return failureCount < 2;
       },
       refetchOnWindowFocus: true,
@@ -80,7 +97,7 @@ const queryClient = new QueryClient({
     },
     mutations: {
       retry: (failureCount, error) => {
-        if (error?.response?.status === 401) return false;
+        if (error?.response?.status === 401 || error?.response?.status === 403) return false;
         return failureCount < 1;
       },
     },
@@ -88,16 +105,36 @@ const queryClient = new QueryClient({
 });
 
 // ═══════════════════════════════════════════════════════════════
-// GLOBAL ERROR HANDLER & APP INITIALISATION
+// GLOBAL UNHANDLED PROMISE REJECTION – LAST RESORT
 // ═══════════════════════════════════════════════════════════════
-window.addEventListener('unhandledrejection', (e) =>
-  console.error('[Unhandled Rejection]:', e.reason)
-);
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason;
 
-window.addEventListener('error', (e) => {
-  console.error('[Global Error]:', e.error || e.message);
+  // If the rejection is already an auth-related error, redirect
+  if (
+    reason?.response?.status === 401 ||
+    (reason?.message && reason.message.includes('No refresh token'))
+  ) {
+    event.preventDefault(); // prevent the default browser error
+    console.warn('[UnhandledRejection] Auth failure – redirecting');
+    handleAuthFailure();
+    return;
+  }
+
+  // For any other unexpected rejection, log and prevent the app from crashing
+  console.error('[Unhandled Rejection]:', reason);
+  event.preventDefault(); // suppress browser console error (dev-only behaviour)
 });
 
+// Catch synchronous errors as well (rare)
+window.addEventListener('error', (event) => {
+  console.error('[Global Error]:', event.error || event.message);
+  // Do NOT prevent default – browser may need to show its own error
+});
+
+// ═══════════════════════════════════════════════════════════════
+// OFFLINE STORAGE INIT
+// ═══════════════════════════════════════════════════════════════
 async function initializeApp() {
   try {
     await offlineStorage.performMaintenance();
@@ -143,17 +180,14 @@ root.render(
 );
 
 // ═══════════════════════════════════════════════════════════════
-// PWA SERVICE WORKER (Safe Pattern - Module Aware)
+// PWA SERVICE WORKER (unchanged)
 // ═══════════════════════════════════════════════════════════════
 const registerServiceWorker = () => {
-  // Check if we're in a production environment and service workers are supported
   if ('serviceWorker' in navigator && import.meta.env.PROD) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js')
         .then(registration => {
           console.log('✅ Service Worker registered with scope:', registration.scope);
-
-          // Check for updates
           registration.onupdatefound = () => {
             const installingWorker = registration.installing;
             if (installingWorker) {
@@ -177,10 +211,6 @@ const registerServiceWorker = () => {
     console.log('📱 Service Worker not registered in development mode');
   }
 };
-
 registerServiceWorker();
 
-// ═══════════════════════════════════════════════════════════════
-// EXPORT FOR TESTING (optional)
-// ═══════════════════════════════════════════════════════════════
 export { queryClient };

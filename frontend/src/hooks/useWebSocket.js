@@ -1,341 +1,312 @@
-// src/hooks/useWebSocket.js
+// frontend/src/hooks/useWebSocket.js
+/**
+ * WebSocket hook for real-time chat communication.
+ * 
+ * Features:
+ * - Waits for a valid, non-expired JWT token before connecting
+ * - Automatic reconnection with exponential backoff
+ * - Stops reconnecting on auth failure close codes (4001/4003)
+ * - Heartbeat ping/pong for connection health
+ * - Token-based authentication via URL query parameter
+ * - Missed message sync on reconnect
+ * - Token refresh handling
+ * - Message deduplication
+ */
+
 import { useEffect, useRef, useCallback } from 'react';
-import useChatStore from '../stores/useChatStore';
-import { TOKEN_REFRESHED_EVENT } from '../api/client';
+import useChatStore from '@/stores/useChatStore';
+import { TOKEN_REFRESHED_EVENT } from '@/api/client';
 
-export const useWebSocket = (conversationId) => {
-    const socketRef = useRef(null);
-    const reconnectTimeoutRef = useRef(null);
-    const reconnectAttemptRef = useRef(0);
-    const pingIntervalRef = useRef(null);
-    const pongTimeoutRef = useRef(null);
-    const conversationIdRef = useRef(conversationId);
-    const shouldReconnectRef = useRef(true);
+const MAX_RECONNECT_DELAY = 30000;
+const BASE_RECONNECT_DELAY = 1000;
+const HEARTBEAT_INTERVAL = 25000;
+const MAX_RECONNECT_ATTEMPTS = 10;
+const INITIAL_CONNECT_DELAY = 800; // short delay to let token settle
+
+// Auth failure close codes sent by the backend middleware/consumer
+const AUTH_FAILURE_CODES = new Set([4001, 4003]);
+
+/**
+ * Quick local check: is the JWT token expired?
+ * (Can be replaced by a shared utility from client.js if exported.)
+ */
+function isTokenExpired(token) {
+    try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        const now = Math.floor(Date.now() / 1000);
+        return payload.exp ? (payload.exp - 10) <= now : false; // 10s buffer
+    } catch {
+        return true;
+    }
+}
+
+const useWebSocket = (conversationId) => {
+    const wsRef = useRef(null);
+    const reconnectAttempt = useRef(0);
+    const reconnectTimer = useRef(null);
+    const heartbeatTimer = useRef(null);
+    const isManuallyClosed = useRef(false);
     const currentTokenRef = useRef(null);
-    const isConnectingRef = useRef(false);
-    const isUnmountedRef = useRef(false);
-    const visibilityListenerRef = useRef(null);
+    const initialConnectTimer = useRef(null);
 
-    const setSocket = useChatStore((s) => s.setSocket);
-    const disconnectSocket = useChatStore((s) => s.disconnectSocket);
-    const userId = useChatStore((s) => s.userId);
-    const flushQueue = useChatStore((s) => s.flushQueue);
+    const storeRef = useRef(useChatStore.getState());
 
-    // Update ref when conversationId changes
     useEffect(() => {
-        conversationIdRef.current = conversationId;
+        storeRef.current = useChatStore.getState();
+    });
+
+    useEffect(() => {
+        currentTokenRef.current = localStorage.getItem('access_token');
+    });
+
+    const clearTimers = useCallback(() => {
+        if (reconnectTimer.current) {
+            clearTimeout(reconnectTimer.current);
+            reconnectTimer.current = null;
+        }
+        if (heartbeatTimer.current) {
+            clearInterval(heartbeatTimer.current);
+            heartbeatTimer.current = null;
+        }
+        if (initialConnectTimer.current) {
+            clearTimeout(initialConnectTimer.current);
+            initialConnectTimer.current = null;
+        }
+    }, []);
+
+    const scheduleReconnect = useCallback(() => {
+        if (isManuallyClosed.current) return;
+        if (reconnectAttempt.current >= MAX_RECONNECT_ATTEMPTS) {
+            console.warn('Max reconnect attempts reached');
+            return;
+        }
+        const delay = Math.min(
+            BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempt.current) + Math.random() * 1000,
+            MAX_RECONNECT_DELAY
+        );
+        reconnectAttempt.current += 1;
+        console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempt.current})`);
+        reconnectTimer.current = setTimeout(() => {
+            connect();
+        }, delay);
+    }, []);
+
+    const startHeartbeat = useCallback(() => {
+        if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
+        heartbeatTimer.current = setInterval(() => {
+            const ws = wsRef.current;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ action: 'ping' }));
+            }
+        }, HEARTBEAT_INTERVAL);
+    }, []);
+
+    const getLastMessageTimestamp = useCallback(() => {
+        const state = storeRef.current;
+        const messages = state.messagesByConversation[conversationId] || [];
+        if (messages.length > 0) {
+            return messages[messages.length - 1].created_at;
+        }
+        return null;
     }, [conversationId]);
 
-    // Handle tab visibility changes (reconnect when tab becomes visible)
-    useEffect(() => {
-        const handleVisibilityChange = () => {
-            const isVisible = document.visibilityState === 'visible';
-            const isSocketClosed = !socketRef.current || socketRef.current.readyState === WebSocket.CLOSED;
-
-            if (isVisible && isSocketClosed && shouldReconnectRef.current && !isConnectingRef.current) {
-                console.log('👁️ Tab became visible, reconnecting WebSocket...');
-                connect();
+    // ✅ All store actions now match useChatStore API
+    const handleServerEvent = useCallback((data) => {
+        const state = storeRef.current;
+        const { type } = data;
+        switch (type) {
+            case 'message.new': {
+                const msg = data.message;
+                const messages = state.messagesByConversation[conversationId] || [];
+                const exists = messages.some(
+                    (m) => m.id === msg.id ||
+                        (msg.client_msg_id && m.client_msg_id === msg.client_msg_id)
+                );
+                if (!exists) {
+                    state.upsertMessage(conversationId, msg);
+                }
+                break;
             }
-        };
-
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        visibilityListenerRef.current = handleVisibilityChange;
-
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-        };
-    }, []);
-
-    // Listen for token changes - use refs to avoid re-renders
-    useEffect(() => {
-        const handleTokenChange = () => {
-            console.log('🔄 Token changed, reconnecting WebSocket...');
-            if (socketRef.current) {
-                // Prevent reconnect from the old socket
-                socketRef.current.onclose = null;
-                socketRef.current.close();
-                socketRef.current = null;
+            case 'message.sent': {
+                const msg = data.message;
+                state.upsertMessage(conversationId, msg);
+                break;
             }
-            // Clear any pending reconnect
-            if (reconnectTimeoutRef.current) {
-                clearTimeout(reconnectTimeoutRef.current);
-                reconnectTimeoutRef.current = null;
+            case 'message.status': {
+                state.updateMessageStatus(conversationId, data.message_id, data.status);
+                break;
             }
-            // Reset reconnect attempts on token change
-            reconnectAttemptRef.current = 0;
-            // Trigger reconnect with delay
-            setTimeout(() => connect(), 500);
-        };
-
-        window.addEventListener('storage', handleTokenChange);
-        window.addEventListener(TOKEN_REFRESHED_EVENT, handleTokenChange);
-
-        return () => {
-            window.removeEventListener('storage', handleTokenChange);
-            window.removeEventListener(TOKEN_REFRESHED_EVENT, handleTokenChange);
-        };
-    }, []);
-
-    const getAuthToken = useCallback(() => {
-        const token = localStorage.getItem('access_token');
-        if (token && token !== currentTokenRef.current) {
-            currentTokenRef.current = token;
-        }
-        return token;
-    }, []);
-
-    const getWebSocketUrl = useCallback((convId, token) => {
-        const isNgrok = window.location.hostname.includes('ngrok') ||
-            import.meta.env.VITE_WS_URL?.includes('ngrok');
-
-        let wsHost, protocol;
-        if (isNgrok) {
-            wsHost = import.meta.env.VITE_WS_URL || window.location.host;
-            protocol = 'wss';
-        } else if (import.meta.env.VITE_WS_URL && import.meta.env.VITE_WS_URL !== 'localhost:8000') {
-            wsHost = import.meta.env.VITE_WS_URL;
-            protocol = 'wss';
-        } else {
-            wsHost = 'localhost:8000';
-            protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        }
-
-        return `${protocol}://${wsHost}/ws/chat/${convId}/?token=${encodeURIComponent(token)}`;
-    }, []);
-
-    const startHeartbeat = useCallback((ws) => {
-        if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-        if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
-
-        pingIntervalRef.current = setInterval(() => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'ping' }));
-                pongTimeoutRef.current = setTimeout(() => {
-                    console.warn('No pong received, closing WebSocket');
-                    if (ws && ws.readyState === WebSocket.OPEN) {
-                        ws.close();
-                    }
-                }, 10000);
+            case 'message.deleted': {
+                const mode = data.mode || 'everyone';
+                state.deleteMessageLocally(conversationId, data.message_id, mode);
+                break;
             }
-        }, 30000);
-    }, []);
-
-    const stopHeartbeat = useCallback(() => {
-        if (pingIntervalRef.current) {
-            clearInterval(pingIntervalRef.current);
-            pingIntervalRef.current = null;
+            case 'message.edited': {
+                state.markMessageEdited(
+                    conversationId, data.message_id, data.content, data.edited_at
+                );
+                break;
+            }
+            case 'message.sync': {
+                const msgs = data.messages || [];
+                if (msgs.length > 0) {
+                    state.setMessages(conversationId, msgs, true);  // append older
+                }
+                break;
+            }
+            case 'presence': {
+                state.updatePresence(data.user_id, {
+                    online: data.online,
+                    lastSeen: data.last_seen,
+                });
+                break;
+            }
+            case 'typing':
+            case 'pong':
+            case 'error':
+                // handled elsewhere
+                break;
+            default:
+                break;
         }
-        if (pongTimeoutRef.current) {
-            clearTimeout(pongTimeoutRef.current);
-            pongTimeoutRef.current = null;
-        }
-    }, []);
+    }, [conversationId]);
 
     const connect = useCallback(() => {
-        // Don't connect if component is unmounted
-        if (isUnmountedRef.current) {
-            console.log('⏳ Component unmounted, skipping connection');
+        if (wsRef.current?.readyState === WebSocket.OPEN) return;
+
+        const token = currentTokenRef.current;
+        // Do NOT connect if no token exists, or if the token is expired
+        if (!token || isTokenExpired(token)) {
+            console.warn('No valid token available – WebSocket connection delayed');
+            reconnectTimer.current = setTimeout(() => connect(), 2000);
             return;
         }
 
-        // Prevent multiple simultaneous connection attempts
-        if (isConnectingRef.current) {
-            console.log('⏳ Connection already in progress, skipping...');
-            return;
-        }
+        // Build WebSocket URL with fallback
+        const wsBase = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+        const wsUrl = `${wsBase}/ws/chat/${conversationId}/?token=${token}`;
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
 
-        const currentConvId = conversationIdRef.current;
-        const token = getAuthToken();
+        ws.onopen = () => {
+            console.log('WebSocket connected');
+            storeRef.current.setOnline(true);
+            reconnectAttempt.current = 0;
+            startHeartbeat();
+            const lastTimestamp = getLastMessageTimestamp();
+            if (lastTimestamp) {
+                ws.send(JSON.stringify({
+                    action: 'message.sync',
+                    last_message_at: lastTimestamp,
+                }));
+            }
+        };
 
-        if (!currentConvId || !userId || currentConvId === 'undefined' || !token) {
-            console.warn('❌ Cannot connect: missing required data', {
-                hasConvId: !!currentConvId,
-                hasUserId: !!userId,
-                hasToken: !!token,
-                convId: currentConvId
-            });
-            return;
-        }
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                handleServerEvent(data);
+            } catch (err) {
+                console.error('WebSocket parse error:', err);
+            }
+        };
 
-        // Close existing connection cleanly
-        if (socketRef.current) {
-            stopHeartbeat();
-            // Remove onclose handler to prevent reconnect trigger
-            socketRef.current.onclose = null;
-            socketRef.current.close();
-            socketRef.current = null;
-        }
+        ws.onclose = (event) => {
+            console.log('WebSocket closed:', event.code, event.reason);
+            storeRef.current.setOnline(false);
+            clearTimers();
 
-        const url = getWebSocketUrl(currentConvId, token);
-        console.log(`🔌 Connecting WebSocket to: ${url.replace(token, '***HIDDEN***')}`);
+            // 🔑 If the server explicitly closed the connection due to
+            // authentication failure, do NOT reconnect.
+            if (AUTH_FAILURE_CODES.has(event.code)) {
+                console.warn('Auth failure detected – will not reconnect');
+                return;
+            }
 
-        isConnectingRef.current = true;
+            if (!event.wasClean && !isManuallyClosed.current) {
+                scheduleReconnect();
+            }
+        };
 
-        try {
-            const ws = new WebSocket(url);
-            socketRef.current = ws;
-
-            ws.onopen = () => {
-                console.log('✅ WebSocket connected successfully');
-                isConnectingRef.current = false;
-                reconnectAttemptRef.current = 0; // Reset on successful connection
-                setSocket(ws);
-                startHeartbeat(ws);
-
-                // Get fresh queue snapshot directly from store
-                const queue = useChatStore.getState().queuedMessages[currentConvId];
-                if (queue?.length > 0) {
-                    console.log(`📤 Flushing ${queue.length} queued messages`);
-                    flushQueue(currentConvId);
-                }
-            };
-
-            ws.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-
-                    // Handle pong response
-                    if (data.type === 'pong') {
-                        if (pongTimeoutRef.current) {
-                            clearTimeout(pongTimeoutRef.current);
-                            pongTimeoutRef.current = null;
-                        }
-                        return;
-                    }
-
-                    // Dispatch custom event for store handlers
-                    const eventBus = new CustomEvent('websocket_message', { detail: data });
-                    window.dispatchEvent(eventBus);
-                } catch (err) {
-                    console.error('Failed to parse WebSocket message:', err);
-                }
-            };
-
-            ws.onclose = (e) => {
-                console.log(`❌ WebSocket closed: Code ${e.code}, Reason: ${e.reason || 'No reason'}`);
-                isConnectingRef.current = false;
-                stopHeartbeat();
-                setSocket(null);
-
-                // Don't trigger reconnect from this socket instance
-                if (socketRef.current === ws) {
-                    socketRef.current = null;
-                }
-
-                // Don't reconnect if component is unmounted or intentionally disconnected
-                if (!shouldReconnectRef.current || isUnmountedRef.current) {
-                    console.log('Manual disconnect or unmounted, not reconnecting');
-                    return;
-                }
-
-                // Terminal codes - don't reconnect
-                const terminalCodes = [4001, 4002, 4003, 4004];
-                if (terminalCodes.includes(e.code)) {
-                    console.log(`Connection rejected with terminal code ${e.code}, not reconnecting`);
-                    return;
-                }
-
-                // Clear any existing reconnect timeout
-                if (reconnectTimeoutRef.current) {
-                    clearTimeout(reconnectTimeoutRef.current);
-                    reconnectTimeoutRef.current = null;
-                }
-
-                // Exponential backoff with jitter - increased max delay to 60s
-                const attempt = reconnectAttemptRef.current + 1;
-                reconnectAttemptRef.current = attempt;
-                const baseDelay = Math.min(2000 * Math.pow(2, attempt - 1), 60000);
-                const jitter = Math.random() * 2000;
-                const delay = Math.min(baseDelay + jitter, 65000);
-
-                console.log(`🔄 Reconnecting in ${Math.round(delay)}ms (attempt ${attempt})`);
-                reconnectTimeoutRef.current = setTimeout(() => {
-                    // Check again before reconnecting
-                    if (shouldReconnectRef.current && !isUnmountedRef.current) {
-                        connect();
-                    }
-                }, delay);
-            };
-
-            ws.onerror = (err) => {
-                console.error('⚠️ WebSocket error:', err);
-                // onclose will fire after onerror
-            };
-        } catch (err) {
-            console.error('💥 Failed to create WebSocket connection:', err);
-            isConnectingRef.current = false;
-
-            if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-            const attempt = reconnectAttemptRef.current + 1;
-            reconnectAttemptRef.current = attempt;
-            const baseDelay = Math.min(2000 * Math.pow(2, attempt - 1), 60000);
-            const jitter = Math.random() * 2000;
-            const delay = Math.min(baseDelay + jitter, 65000);
-            reconnectTimeoutRef.current = setTimeout(() => connect(), delay);
-        }
-    }, [userId, setSocket, startHeartbeat, stopHeartbeat, getAuthToken, flushQueue, getWebSocketUrl]);
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
+    }, [conversationId, clearTimers, scheduleReconnect, startHeartbeat, getLastMessageTimestamp, handleServerEvent]);
 
     const disconnect = useCallback(() => {
-        console.log('🔌 Manually disconnecting WebSocket');
-        shouldReconnectRef.current = false;
-        isConnectingRef.current = false;
-
-        if (reconnectTimeoutRef.current) {
-            clearTimeout(reconnectTimeoutRef.current);
-            reconnectTimeoutRef.current = null;
+        isManuallyClosed.current = true;
+        clearTimers();
+        reconnectAttempt.current = 0;
+        if (wsRef.current) {
+            wsRef.current.close(1000, 'Manual disconnect');
+            wsRef.current = null;
         }
-        if (socketRef.current) {
-            // Prevent onclose from triggering reconnect
-            socketRef.current.onclose = null;
-            stopHeartbeat();
-            socketRef.current.close();
-            socketRef.current = null;
-        }
-        disconnectSocket();
-    }, [disconnectSocket, stopHeartbeat]);
+    }, [clearTimers]);
 
-    // Initial connection
+    // Token refresh event – reconnect with new token
     useEffect(() => {
-        shouldReconnectRef.current = true;
-        isConnectingRef.current = false;
-        isUnmountedRef.current = false;
+        const handleTokenRefresh = (event) => {
+            const newToken = event.detail?.token;
+            if (newToken) {
+                currentTokenRef.current = newToken;
+                disconnect();
+                isManuallyClosed.current = false;
+                setTimeout(() => connect(), 500);
+            }
+        };
+        window.addEventListener(TOKEN_REFRESHED_EVENT, handleTokenRefresh);
+        return () => window.removeEventListener(TOKEN_REFRESHED_EVENT, handleTokenRefresh);
+    }, [connect, disconnect]);
 
-        // Small delay to ensure store is ready
-        const timer = setTimeout(() => connect(), 100);
+    // Main connect effect – triggered when conversationId changes
+    useEffect(() => {
+        isManuallyClosed.current = false;
+        reconnectAttempt.current = 0;
+
+        // Delayed initial connection to allow token to be written
+        initialConnectTimer.current = setTimeout(() => {
+            connect();
+        }, INITIAL_CONNECT_DELAY);
 
         return () => {
-            isUnmountedRef.current = true;
-            shouldReconnectRef.current = false;
-            clearTimeout(timer);
-
-            if (reconnectTimeoutRef.current) {
-                clearTimeout(reconnectTimeoutRef.current);
-                reconnectTimeoutRef.current = null;
+            isManuallyClosed.current = true;
+            clearTimers();
+            if (wsRef.current) {
+                wsRef.current.close(1000, 'Conversation changed');
+                wsRef.current = null;
             }
-            if (socketRef.current) {
-                socketRef.current.onclose = null;
-                stopHeartbeat();
-                socketRef.current.close();
-                socketRef.current = null;
-            }
-            disconnectSocket();
         };
-    }, [connect, disconnectSocket, stopHeartbeat]);
+    }, [conversationId, connect, clearTimers]);
 
-    // Log connection state for debugging
+    // Unmount cleanup
     useEffect(() => {
-        const interval = setInterval(() => {
-            if (socketRef.current) {
-                console.log(`📊 WebSocket state: ${socketRef.current.readyState} - ${socketRef.current.readyState === WebSocket.OPEN ? 'OPEN' : socketRef.current.readyState === WebSocket.CONNECTING ? 'CONNECTING' : socketRef.current.readyState === WebSocket.CLOSING ? 'CLOSING' : 'CLOSED'}`);
-            }
-        }, 60000); // Log every minute
+        return () => {
+            isManuallyClosed.current = true;
+            clearTimers();
+            wsRef.current?.close(1000, 'Component unmounted');
+            wsRef.current = null;
+        };
+    }, [clearTimers]);
 
-        return () => clearInterval(interval);
+    const sendMessage = useCallback((payload) => {
+        const ws = wsRef.current;
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ action: 'message.send', payload }));
+            return true;
+        }
+        return false;
     }, []);
 
-    return {
-        reconnect: connect,
-        disconnect,
-        isConnected: socketRef.current?.readyState === WebSocket.OPEN,
-    };
+    const sendTyping = useCallback((typing) => {
+        const ws = wsRef.current;
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                action: typing ? 'typing.start' : 'typing.stop',
+            }));
+        }
+    }, []);
+
+    return { sendMessage, sendTyping, disconnect, isConnected: !!wsRef.current };
 };
+
+export default useWebSocket;

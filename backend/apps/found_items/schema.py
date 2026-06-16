@@ -1,9 +1,11 @@
+# backend/apps/found_items/schema.py
 from ninja import Schema, File
 from ninja.files import UploadedFile
 from datetime import datetime
 from typing import Optional, List
 from pydantic import validator
 from common.constants import ItemCategory, ClaimStatus, ItemStatus
+
 
 class FoundItemCreateIn(Schema):
     title: str
@@ -18,6 +20,7 @@ class FoundItemCreateIn(Schema):
     locator_name: Optional[str] = None
     admission_number_on_item: Optional[str] = None
     image: Optional[UploadedFile] = File(None)  # optional
+
 
 class FoundItemOut(Schema):
     id: str
@@ -36,8 +39,10 @@ class FoundItemOut(Schema):
     created_at: str
     posted_by: Optional[dict] = None
 
+
 class TipIn(Schema):
     message: str
+
 
 class ClaimOut(Schema):
     id: str
@@ -48,6 +53,7 @@ class ClaimOut(Schema):
     payment_received: bool
     created_at: str
     confirmed_at: Optional[str] = None
+
 
 class ClaimDetailOut(Schema):
     id: str
@@ -66,6 +72,7 @@ class ClaimDetailOut(Schema):
     created_at: str
     confirmed_at: Optional[str] = None
 
+
 class ClaimStatusOut(Schema):
     claim_id: str
     status: str
@@ -74,24 +81,30 @@ class ClaimStatusOut(Schema):
     requires_payment: bool
     security_question: Optional[str] = None
 
+
 class VerifyOwnershipOut(Schema):
     verified: bool
     error: Optional[str] = None
     admission_match: bool = False
 
+
 class SecurityAnswerIn(Schema):
     answer: str
 
+
 class EvidenceSubmitIn(Schema):
     description: Optional[str] = None
+
 
 class PaymentInitiateOut(Schema):
     message: str
     invoice_id: Optional[str] = None
     status: str
 
+
 class PaymentStatusOut(Schema):
     status: str
+
 
 class ConfirmPaymentOut(Schema):
     status: str

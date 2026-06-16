@@ -15,18 +15,16 @@ User = get_user_model()
 
 
 class NotificationService:
-    _firebase_initialized = None  # None = not attempted, True = success, False = failed
+    _firebase_initialized = None
 
     @staticmethod
     def _init_firebase():
-        """Lazy Firebase initialization with retry support."""
         if NotificationService._firebase_initialized is not None:
             return NotificationService._firebase_initialized
 
         try:
             cred_path = getattr(settings, 'FIREBASE_CREDENTIALS', None)
             if cred_path:
-                # Check if already initialized
                 if not firebase_admin._apps:
                     cred = credentials.Certificate(cred_path)
                     firebase_admin.initialize_app(cred)
@@ -37,17 +35,14 @@ class NotificationService:
                 NotificationService._firebase_initialized = False
         except Exception as e:
             logger.error(f"Firebase init failed: {e}")
-            # Allow retry on next call by resetting to None
             NotificationService._firebase_initialized = None
 
         return NotificationService._firebase_initialized
 
     @staticmethod
     def _send_push(user, title, body, data_payload=None):
-        """Send a push notification to a single user if token exists and preference allows"""
         if not user.fcm_token:
             return False
-        # Check preference
         pref, _ = NotificationPreference.objects.get_or_create(user=user)
         notification_type = data_payload.get('type', 'system') if data_payload else 'system'
         if not pref.is_enabled(notification_type):
@@ -65,7 +60,6 @@ class NotificationService:
             messaging.send(message)
             return True
         except messaging.UnregisteredError:
-            # Remove invalid token
             user.fcm_token = None
             user.save(update_fields=['fcm_token'])
             logger.info(f"Invalid FCM token removed for user {user.id}")
@@ -75,7 +69,6 @@ class NotificationService:
 
     @staticmethod
     def _send_websocket(user, notification_dict):
-        """Send notification via Django Channels to the user's WebSocket group"""
         try:
             channel_layer = get_channel_layer()
             if channel_layer:
@@ -91,7 +84,6 @@ class NotificationService:
 
     @staticmethod
     def create_and_push(user, title, message, notification_type="system", link=None, data=None, source_type=None, source_id=None, client_id=None):
-        """Create DB notification and deliver via WebSocket + push"""
         notification = Notification.objects.create(
             user=user,
             title=title,
@@ -103,7 +95,7 @@ class NotificationService:
         )
         payload = {
             "id": str(notification.id),
-            "client_id": client_id,  # ADDED: For frontend reconciliation
+            "client_id": client_id,
             "title": notification.title,
             "message": notification.message,
             "type": notification.notification_type,
@@ -114,9 +106,7 @@ class NotificationService:
             "source_type": notification.source_type,
             "source_id": str(notification.source_id) if notification.source_id else None,
         }
-        # Push to WebSocket
         NotificationService._send_websocket(user, payload)
-        # Push notification via FCM
         data_payload = {"type": notification_type, "notification_id": str(notification.id)}
         if link:
             data_payload["link"] = link
@@ -127,11 +117,9 @@ class NotificationService:
 
     @staticmethod
     def send_bulk(users, title, message, notification_type="system", link=None, data=None, source_type=None, source_id=None):
-        """Create notifications for multiple users efficiently."""
         if not users:
             return []
 
-        # Step 1: Bulk create DB records
         notifications = [
             Notification(
                 user=user,
@@ -146,14 +134,13 @@ class NotificationService:
         ]
         created = Notification.objects.bulk_create(notifications, batch_size=500)
 
-        # Step 2: Send WebSocket + FCM in chunks
         chunk_size = 100
         for i in range(0, len(created), chunk_size):
             chunk = created[i:i + chunk_size]
             for notification in chunk:
                 payload = {
                     "id": str(notification.id),
-                    "client_id": None,  # No client_id for bulk creates
+                    "client_id": None,
                     "title": notification.title,
                     "message": notification.message,
                     "type": notification.notification_type,
@@ -164,9 +151,7 @@ class NotificationService:
                     "source_type": notification.source_type,
                     "source_id": str(notification.source_id) if notification.source_id else None,
                 }
-                # WebSocket push
                 NotificationService._send_websocket(notification.user, payload)
-                # FCM push
                 data_payload = {"type": notification_type, "notification_id": str(notification.id)}
                 if link:
                     data_payload["link"] = link

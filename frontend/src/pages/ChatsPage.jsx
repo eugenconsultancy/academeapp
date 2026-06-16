@@ -1,658 +1,976 @@
 // frontend/src/pages/ChatsPage.jsx
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, {
+  useEffect, useState, useCallback, useMemo, useRef,
+} from 'react';
+import useChatStore from '@/stores/useChatStore';
+import chatApi from '@/api/chatApi';
+import ChatListItem from '@/components/chat/ChatListItem';
 import { useNavigate } from 'react-router-dom';
-import useChatStore from '../stores/useChatStore';
-import { chatApi } from '../api/chatApi';
-import apiClient from '../api/client';
-import toast from 'react-hot-toast';
-import { format } from 'date-fns';
-import { FiPlus, FiSearch, FiX, FiMessageCircle, FiLoader } from 'react-icons/fi';
+import { debounce } from '@/utils/debounce';
 
-const TABS = [
-  { key: 'all', label: 'All', icon: '💬' },
-  { key: 'unread', label: 'Unread', icon: '🔔' },
-  { key: 'archived', label: 'Archived', icon: '📦' },
-];
+const FILTERS = ['all', 'unread', 'read', 'archived', 'blocked'];
 
-// Search debounce delay
-const SEARCH_DEBOUNCE_DELAY = 500;
+// ─── CSS ─────────────────────────────────────────────────────────────────
+const CSS = `
+  .cp-root {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+    overflow: hidden;
+    position: relative;
+  }
 
-// Skeleton Loader Component
-const ConversationSkeleton = () => (
-  <div className="flex items-center gap-3 px-4 py-3 animate-pulse">
-    <div className="w-12 h-12 rounded-full bg-gray-200 dark:bg-gray-700" />
-    <div className="flex-1">
-      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-32 mb-2" />
-      <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-48" />
+  @media (prefers-color-scheme: dark) {
+    .cp-root {
+      --bg:          #0d0f16;
+      --bg2:         #131720;
+      --surface:     #1a1e2e;
+      --surface2:    #1f2540;
+      --border:      #252c42;
+      --text:        #e8eaf0;
+      --text2:       #8b92a8;
+      --text3:       #5a6180;
+      --accent:      #6c63ff;
+      --accent-soft: rgba(108,99,255,0.14);
+      --accent2:     #a855f7;
+      --online:      #22c55e;
+      --online-ring: rgba(34,197,94,0.2);
+      --offline:     #64748b;
+      --danger:      #ef4444;
+      --warn-bg:     rgba(245,158,11,0.1);
+      --warn-text:   #fbbf24;
+      --offline-bg:  rgba(239,68,68,0.1);
+      --offline-text:#f87171;
+      --skeleton:    #1a1e2e;
+      --skeleton2:   #252c42;
+      --glass-bg:    rgba(19,23,32,0.9);
+      --glass-border:rgba(255,255,255,0.06);
+      --shadow:      rgba(0,0,0,0.45);
+      --pin-bg:      rgba(108,99,255,0.08);
+      --unread-dot:  #6c63ff;
+      --unread-bg:   rgba(108,99,255,0.12);
+      --chip-bg:     #1f2540;
+      --chip-text:   #8b92a8;
+      --chip-active: #6c63ff;
+      --input-bg:    #1a1e2e;
+      --input-border:#252c42;
+    }
+  }
+
+  @media (prefers-color-scheme: light) {
+    .cp-root {
+      --bg:          #f0f2f8;
+      --bg2:         #e8eaf2;
+      --surface:     #ffffff;
+      --surface2:    #f8f9fc;
+      --border:      #e2e5ef;
+      --text:        #0f1523;
+      --text2:       #5a6180;
+      --text3:       #9ba3bf;
+      --accent:      #6c63ff;
+      --accent-soft: rgba(108,99,255,0.09);
+      --accent2:     #a855f7;
+      --online:      #16a34a;
+      --online-ring: rgba(22,163,74,0.18);
+      --offline:     #94a3b8;
+      --danger:      #dc2626;
+      --warn-bg:     #fffbeb;
+      --warn-text:   #d97706;
+      --offline-bg:  #fef2f2;
+      --offline-text:#dc2626;
+      --skeleton:    #eceef5;
+      --skeleton2:   #d8dbe8;
+      --glass-bg:    rgba(255,255,255,0.9);
+      --glass-border:rgba(0,0,0,0.06);
+      --shadow:      rgba(0,0,0,0.07);
+      --pin-bg:      rgba(108,99,255,0.05);
+      --unread-dot:  #6c63ff;
+      --unread-bg:   rgba(108,99,255,0.08);
+      --chip-bg:     #eceef5;
+      --chip-text:   #5a6180;
+      --chip-active: #6c63ff;
+      --input-bg:    #f4f5fa;
+      --input-border:#dde0ed;
+    }
+  }
+
+  /* ── Background ── */
+  .cp-bg {
+    position: absolute;
+    inset: 0;
+    background: var(--bg);
+    z-index: 0;
+  }
+  .cp-bg::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, rgba(108,99,255,0.04) 1px, transparent 1px);
+    background-size: 28px 28px;
+    pointer-events: none;
+  }
+
+  /* ── Offline banner ── */
+  .cp-offline-banner {
+    position: relative;
+    z-index: 30;
+    background: var(--offline-bg);
+    color: var(--offline-text);
+    font-size: 12px;
+    font-weight: 500;
+    text-align: center;
+    padding: 6px 16px;
+    border-bottom: 1px solid rgba(239,68,68,0.15);
+  }
+
+  /* ── Glass Header ── */
+  .cp-header {
+    position: relative;
+    z-index: 20;
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px) saturate(1.6);
+    -webkit-backdrop-filter: blur(20px) saturate(1.6);
+    border-bottom: 1px solid var(--glass-border);
+    box-shadow: 0 2px 20px var(--shadow);
+    padding: 16px 16px 0;
+  }
+
+  /* Greeting row */
+  .cp-greeting {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text3);
+    margin-bottom: 2px;
+    letter-spacing: 0.2px;
+  }
+
+  /* Title row */
+  .cp-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .cp-title-left { display: flex; flex-direction: column; }
+  .cp-title {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: var(--text);
+    line-height: 1.1;
+  }
+  .cp-subtitle {
+    font-size: 12px;
+    color: var(--text3);
+    margin-top: 2px;
+  }
+  .cp-new-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 4px 14px rgba(108,99,255,0.4);
+    transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+  }
+  .cp-new-btn:hover  { opacity: 0.9; transform: scale(1.06); }
+  .cp-new-btn:active { transform: scale(0.93); }
+
+  /* Search */
+  .cp-search-wrap {
+    position: relative;
+    margin-bottom: 14px;
+  }
+  .cp-search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text3);
+    pointer-events: none;
+    width: 16px;
+    height: 16px;
+  }
+  .cp-search-input {
+    width: 100%;
+    padding: 11px 36px 11px 36px;
+    background: var(--input-bg);
+    border: 1.5px solid var(--input-border);
+    border-radius: 14px;
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .cp-search-input::placeholder { color: var(--text3); }
+  .cp-search-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(108,99,255,0.14);
+  }
+  .cp-search-clear {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text3);
+    padding: 4px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, background 0.15s;
+  }
+  .cp-search-clear:hover { color: var(--text); background: var(--border); }
+
+  /* ── Filter chips ── */
+  .cp-chips {
+    display: flex;
+    gap: 7px;
+    padding: 0 0 14px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .cp-chips::-webkit-scrollbar { display: none; }
+  .cp-chip {
+    padding: 6px 14px;
+    border-radius: 22px;
+    border: 1.5px solid transparent;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    background: var(--chip-bg);
+    color: var(--chip-text);
+    transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s, box-shadow 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .cp-chip:hover { opacity: 0.85; }
+  .cp-chip:active { transform: scale(0.95); }
+  .cp-chip.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 3px 12px rgba(108,99,255,0.35);
+  }
+  .cp-chip-badge {
+    background: rgba(255,255,255,0.25);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 10px;
+    padding: 1px 6px;
+    min-width: 18px;
+    text-align: center;
+  }
+  .cp-chip:not(.active) .cp-chip-badge {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  /* ── List area ── */
+  .cp-list-area {
+    position: relative;
+    z-index: 5;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Section label ── */
+  .cp-section-label {
+    padding: 10px 16px 4px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--text3);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .cp-section-label-line {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+    opacity: 0.6;
+  }
+
+  /* ── Pull-to-refresh spinner ── */
+  .cp-ptr {
+    display: flex;
+    justify-content: center;
+    padding: 10px;
+    position: relative;
+    z-index: 5;
+  }
+  .cp-ptr-spin {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: cp-spin 0.7s linear infinite;
+  }
+  @keyframes cp-spin { to { transform: rotate(360deg); } }
+
+  /* ── Load more ── */
+  .cp-load-more {
+    display: flex;
+    justify-content: center;
+    padding: 10px;
+  }
+  .cp-load-more-btn {
+    padding: 8px 24px;
+    background: var(--surface);
+    color: var(--text2);
+    border: 1.5px solid var(--border);
+    border-radius: 22px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .cp-load-more-btn:hover   { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .cp-load-more-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ── Empty state ── */
+  .cp-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 40px 32px;
+    text-align: center;
+    gap: 10px;
+  }
+  .cp-empty-icon   { font-size: 52px; margin-bottom: 4px; opacity: 0.85; }
+  .cp-empty-title  { font-size: 18px; font-weight: 800; color: var(--text); letter-spacing: -0.3px; }
+  .cp-empty-sub    { font-size: 13.5px; color: var(--text3); line-height: 1.6; max-width: 240px; }
+  .cp-empty-cta {
+    margin-top: 8px;
+    padding: 11px 28px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 700;
+    box-shadow: 0 4px 14px rgba(108,99,255,0.4);
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  .cp-empty-cta:hover  { opacity: 0.9; transform: translateY(-1px); }
+  .cp-empty-cta:active { transform: scale(0.95); }
+
+  /* ── Skeletons ── */
+  .cp-skeletons { padding: 8px 0; }
+  .cp-skel-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+  }
+  .cp-skel {
+    background: var(--skeleton);
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+  }
+  .cp-skel::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, var(--skeleton2) 50%, transparent);
+    animation: cp-shimmer 1.4s infinite;
+  }
+  @keyframes cp-shimmer {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+  .cp-skel-av   { width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0; }
+  .cp-skel-body { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+  .cp-skel-line { height: 12px; border-radius: 4px; }
+
+  /* ── Connection dot ── */
+  .cp-conn-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .cp-conn-dot.online  { background: var(--online); box-shadow: 0 0 0 2.5px var(--online-ring); }
+  .cp-conn-dot.offline { background: var(--offline); }
+
+  /* ── New Chat Modal ── */
+  .cp-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: rgba(0,0,0,0.55);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    backdrop-filter: blur(6px);
+    animation: cp-fade 0.15s ease;
+  }
+  @keyframes cp-fade { from { opacity: 0; } to { opacity: 1; } }
+  .cp-modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 24px 24px 0 0;
+    width: 100%;
+    max-width: 480px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 -8px 40px var(--shadow);
+    animation: cp-slide-up 0.2s cubic-bezier(0.34, 1.3, 0.64, 1);
+  }
+  @keyframes cp-slide-up {
+    from { transform: translateY(40px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+  .cp-modal-handle {
+    width: 36px; height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    margin: 12px auto 0;
+  }
+  .cp-modal-header {
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+  .cp-modal-title  { font-size: 16px; font-weight: 800; color: var(--text); }
+  .cp-modal-close  {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: var(--chip-bg);
+    color: var(--text3);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+  }
+  .cp-modal-close:hover { background: var(--border); color: var(--text); }
+  .cp-modal-body { padding: 14px 16px; flex: 1; overflow-y: auto; }
+  .cp-modal-search {
+    width: 100%;
+    padding: 11px 14px;
+    background: var(--input-bg);
+    border: 1.5px solid var(--input-border);
+    border-radius: 12px;
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    margin-bottom: 12px;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+  }
+  .cp-modal-search:focus { border-color: var(--accent); }
+  .cp-modal-search::placeholder { color: var(--text3); }
+  .cp-modal-hint { font-size: 12.5px; color: var(--text3); text-align: center; margin-top: 20px; }
+  .cp-user-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 10px;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .cp-user-item:hover { background: var(--accent-soft); }
+  .cp-user-av {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .cp-user-name   { font-size: 14px; font-weight: 700; color: var(--text); }
+  .cp-user-detail { font-size: 12px; color: var(--text3); margin-top: 1px; }
+
+  /* ── Unread elevated card ── */
+  .cp-conv-unread {
+    background: var(--unread-bg);
+  }
+`;
+
+// ─── Greeting helper ──────────────────────────────────────────────────────
+const getGreeting = () => {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning 👋';
+  if (h < 17) return 'Good afternoon 👋';
+  return 'Good evening 👋';
+};
+
+// ─── Skeleton Row ─────────────────────────────────────────────────────────
+const SkeletonRow = () => (
+  <div className="cp-skel-item">
+    <div className="cp-skel cp-skel-av" />
+    <div className="cp-skel-body">
+      <div className="cp-skel cp-skel-line" style={{ width: '52%' }} />
+      <div className="cp-skel cp-skel-line" style={{ width: '78%' }} />
     </div>
   </div>
 );
 
-// Avatar Component with fallback
-const Avatar = React.memo(({ src, name, size = 'w-12 h-12', online = false }) => {
-  const [imgError, setImgError] = useState(false);
+const SectionLabel = ({ icon, text }) => (
+  <div className="cp-section-label">
+    {icon && <span>{icon}</span>}
+    <span>{text}</span>
+    <div className="cp-section-label-line" />
+  </div>
+);
 
-  return (
-    <div className="relative flex-shrink-0">
-      <div className={`${size} rounded-full bg-gradient-to-br from-blue-400 to-indigo-600 flex items-center justify-center text-white font-semibold text-sm overflow-hidden`}>
-        {src && !imgError ? (
-          <img
-            src={src}
-            alt={name || 'User'}
-            className="w-full h-full object-cover"
-            onError={() => setImgError(true)}
+// ─── ChatsPage ────────────────────────────────────────────────────────────
+const ChatsPage = () => {
+  const {
+    conversations, setConversations, setActiveConversation,
+    presence, isOnline, cursors,
+  } = useChatStore();
+
+  const [filter, setFilter] = useState('all');
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState(null);
+  const navigate = useNavigate();
+  const [ListComponent, setListComponent] = useState(null);
+
+  // New chat modal
+  const [showNewChat, setShowNewChat] = useState(false);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userSearchResults, setUserSearchResults] = useState([]);
+  const [searchingUsers, setSearchingUsers] = useState(false);
+
+  const convCursor = cursors?.['conversations'] ?? null;
+
+  // Dynamic import
+  useEffect(() => {
+    import('react-window').then(mod => {
+      const List = mod.FixedSizeList || mod.default?.FixedSizeList;
+      if (List) setListComponent(() => List);
+    }).catch(() => { });
+  }, []);
+
+  const waitForToken = useCallback(() => new Promise(resolve => {
+    const t = localStorage.getItem('access_token');
+    if (t) { resolve(t); return; }
+    let n = 0;
+    const id = setInterval(() => {
+      const tok = localStorage.getItem('access_token');
+      if (tok || ++n > 30) { clearInterval(id); resolve(tok); }
+    }, 100);
+  }), []);
+
+  const fetchConversations = useCallback(async (cursor = null, isRefresh = false) => {
+    const token = await waitForToken();
+    if (!token) { setError('Not authenticated.'); setLoading(false); return; }
+
+    if (isRefresh) setRefreshing(true);
+    else if (!cursor) setLoading(true);
+    else setLoadingMore(true);
+    setError(null);
+
+    try {
+      const res = await chatApi.getConversations(filter, cursor);
+      const items = res.data?.results ?? res.data ?? [];
+      const nextCursor = res.data?.next_cursor ?? null;
+
+      if (cursor && !isRefresh) {
+        setConversations([...conversations, ...items]);
+      } else {
+        setConversations(items);
+      }
+
+      if (useChatStore.getState().setCursor) {
+        useChatStore.getState().setCursor('conversations', nextCursor);
+      }
+    } catch {
+      setError('Could not load conversations.');
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+      setRefreshing(false);
+    }
+  }, [filter, setConversations, waitForToken, conversations]);
+
+  useEffect(() => {
+    fetchConversations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter]);
+
+  // Subscribe to real-time updates
+  useEffect(() => {
+    const unsub = useChatStore.subscribe(s => s.conversations, () => { });
+    return unsub;
+  }, []);
+
+  const debouncedSearch = useMemo(() => debounce(q => setSearch(q), 280), []);
+  const handleSearchChange = e => {
+    setSearchInput(e.target.value);
+    debouncedSearch(e.target.value);
+  };
+  const clearSearch = () => { setSearchInput(''); setSearch(''); };
+
+  // Counts
+  const unreadCount = useMemo(
+    () => conversations.filter(c => (c.unread_count || 0) > 0).length,
+    [conversations]
+  );
+
+  // Sort, filter, section
+  const { pinned, recent } = useMemo(() => {
+    let list = [...conversations].sort((a, b) => {
+      if (a.is_pinned && !b.is_pinned) return -1;
+      if (!a.is_pinned && b.is_pinned) return 1;
+      return new Date(b.last_message_at || 0) - new Date(a.last_message_at || 0);
+    });
+
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(c =>
+        (c.name || c.display_name || '').toLowerCase().includes(q) ||
+        (c.last_message?.content || '').toLowerCase().includes(q)
+      );
+    }
+
+    return {
+      pinned: list.filter(c => c.is_pinned),
+      recent: list.filter(c => !c.is_pinned),
+    };
+  }, [conversations, search]);
+
+  const filteredCount = pinned.length + recent.length;
+
+  const handleSelect = useCallback(convId => {
+    setActiveConversation(convId);
+    navigate(`/chat/${convId}`);
+  }, [setActiveConversation, navigate]);
+
+  // New chat: search users
+  const searchUsersForNewChat = useMemo(
+    () => debounce(async query => {
+      if (!query.trim()) { setUserSearchResults([]); return; }
+      setSearchingUsers(true);
+      try {
+        const res = await chatApi.searchUsers(query);
+        setUserSearchResults(res.data || []);
+      } catch {
+        setUserSearchResults([]);
+      } finally {
+        setSearchingUsers(false);
+      }
+    }, 300),
+    []
+  );
+
+  useEffect(() => {
+    if (showNewChat) searchUsersForNewChat(userSearchQuery);
+  }, [userSearchQuery, showNewChat, searchUsersForNewChat]);
+
+  const handleStartChat = async userId => {
+    try {
+      const res = await chatApi.createConversation([userId]);
+      const convId = res.data?.id ?? res.data?.conversation_id;
+      if (convId) {
+        setShowNewChat(false);
+        setUserSearchQuery('');
+        setUserSearchResults([]);
+        navigate(`/chat/${convId}`);
+      }
+    } catch (err) {
+      console.error('Failed to create conversation', err);
+    }
+  };
+
+  // Virtual list rendering
+  const listHeight = typeof window !== 'undefined' ? window.innerHeight - 188 : 600;
+
+  const flatList = useMemo(() => {
+    const items = [];
+    if (pinned.length > 0) {
+      items.push({ type: 'section', label: '📌 Pinned', key: 'sec-pinned' });
+      pinned.forEach(c => items.push({ type: 'conv', conv: c, key: c.id }));
+    }
+    if (recent.length > 0) {
+      if (pinned.length > 0) {
+        items.push({ type: 'section', label: '💬 Recent', key: 'sec-recent' });
+      }
+      recent.forEach(c => items.push({ type: 'conv', conv: c, key: c.id }));
+    }
+    return items;
+  }, [pinned, recent]);
+
+  const ITEM_SIZE = 74;
+  const SECTION_SIZE = 36;
+
+  const getItemSizeForList = useCallback(index => {
+    return flatList[index]?.type === 'section' ? SECTION_SIZE : ITEM_SIZE;
+  }, [flatList]);
+
+  const renderFallbackList = () => (
+    <div style={{ height: listHeight, overflowY: 'auto' }}>
+      {flatList.map(item => {
+        if (item.type === 'section') {
+          return <SectionLabel key={item.key} text={item.label} />;
+        }
+        return (
+          <ChatListItem
+            key={item.conv.id}
+            conv={item.conv}
+            presence={presence}
+            onClick={() => handleSelect(item.conv.id)}
+            className={item.conv.unread_count > 0 ? 'cp-conv-unread' : ''}
           />
-        ) : (
-          <span className="flex items-center justify-center w-full h-full">
-            {name?.charAt(0).toUpperCase() || '?'}
-          </span>
-        )}
-      </div>
-      {online && (
-        <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-gray-900 rounded-full animate-pulse" />
-      )}
+        );
+      })}
     </div>
   );
-});
 
-Avatar.displayName = 'Avatar';
-
-// Conversation Item Component - Memoized for Performance
-const ConversationItem = React.memo(({
-  conv,
-  isActive,
-  activeTab,
-  typingUser,
-  onNavigate,
-  onUnarchive,
-  formatLastActive,
-}) => {
-  const isArchived = activeTab === 'archived';
-  const isTyping = typingUser && typingUser !== '';
-
-  const handleClick = () => {
-    if (!isArchived && conv.id) onNavigate(`/chat/${conv.id}`);
-  };
-
-  const handleUnarchive = (e) => {
-    e.stopPropagation();
-    onUnarchive(conv.id);
-  };
-
-  return (
-    <div
-      onClick={handleClick}
-      className={`group flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-800 transition-all duration-200 ${isArchived
-          ? 'opacity-70 cursor-default hover:bg-gray-50 dark:hover:bg-gray-800/50'
-          : 'cursor-pointer hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 dark:hover:from-gray-800 dark:hover:to-gray-800/50'
-        }`}
-    >
-      {/* Avatar with Online Indicator */}
-      <Avatar
-        src={conv.participant?.avatar_url}
-        name={conv.participant?.full_name}
-        online={conv.participant?.is_online}
-      />
-
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white truncate flex items-center gap-2">
-            {conv.participant?.full_name || 'Unknown User'}
-            <span className="flex gap-1">
-              {conv.is_pinned && <span className="text-xs">📌</span>}
-              {conv.is_muted && <span className="text-xs">🔕</span>}
-            </span>
-          </h3>
-          <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            {conv.last_message_at ? formatLastActive(conv.last_message_at) : ''}
-          </span>
-        </div>
-
-        {/* Message Preview or Typing Indicator */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            {isTyping ? (
-              <p className="text-xs text-indigo-500 font-medium animate-pulse flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" />
-                {typingUser} is typing...
-              </p>
-            ) : (
-              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                {conv.last_message_preview || 'No messages yet'}
-              </p>
-            )}
-          </div>
-          {conv.unread_count > 0 && !isArchived && (
-            <span className="flex-shrink-0 px-2 py-0.5 text-xs font-bold text-white bg-gradient-to-r from-indigo-500 to-blue-500 rounded-full ml-2 shadow-md">
-              {conv.unread_count > 99 ? '99+' : conv.unread_count}
-            </span>
-          )}
-        </div>
+  const VRow = useCallback(({ index, style }) => {
+    const item = flatList[index];
+    if (!item) return null;
+    if (item.type === 'section') {
+      return <div style={style}><SectionLabel text={item.label} /></div>;
+    }
+    return (
+      <div style={{ ...style, paddingLeft: 0, paddingRight: 0 }}>
+        <ChatListItem
+          conv={item.conv}
+          presence={presence}
+          onClick={() => handleSelect(item.conv.id)}
+          className={item.conv.unread_count > 0 ? 'cp-conv-unread' : ''}
+        />
       </div>
+    );
+  }, [flatList, presence, handleSelect]);
 
-      {/* Archive/Restore Button */}
-      {isArchived && (
-        <button
-          onClick={handleUnarchive}
-          className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors duration-200"
-        >
-          Restore
-        </button>
-      )}
-    </div>
-  );
-}, (prevProps, nextProps) => {
-  // Optimized comparison
-  return (
-    prevProps.conv.id === nextProps.conv.id &&
-    prevProps.typingUser === nextProps.typingUser &&
-    prevProps.activeTab === nextProps.activeTab &&
-    prevProps.conv.unread_count === nextProps.conv.unread_count &&
-    prevProps.conv.last_message_preview === nextProps.conv.last_message_preview &&
-    prevProps.conv.is_pinned === nextProps.conv.is_pinned &&
-    prevProps.conv.is_muted === nextProps.conv.is_muted
-  );
-});
-
-ConversationItem.displayName = 'ConversationItem';
-
-// New Chat Modal Component
-const NewChatModal = React.memo(({
-  isOpen,
-  onClose,
-  searchQuery,
-  onSearchChange,
-  onSearch,
-  searchResults,
-  searching,
-  startingChat,
-  onStartChat,
-}) => {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4">
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/30 dark:bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
-        style={{ animation: 'fadeIn 0.2s ease-out' }}
-      />
-
-      {/* Modal */}
-      <div
-        className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md max-h-[70vh] flex flex-col z-50"
-        style={{ animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}
+  const chip = (f) => {
+    const label = f.charAt(0).toUpperCase() + f.slice(1);
+    const count = f === 'unread' ? unreadCount : null;
+    return (
+      <button
+        key={f}
+        onClick={() => setFilter(f)}
+        className={`cp-chip${filter === f ? ' active' : ''}`}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">New Message</h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Start a conversation</p>
+        {label}
+        {count != null && count > 0 && (
+          <span className="cp-chip-badge">{count}</span>
+        )}
+      </button>
+    );
+  };
+
+  return (
+    <div className="cp-root">
+      <style>{CSS}</style>
+      <div className="cp-bg" />
+
+      {/* Offline */}
+      {!isOnline && (
+        <div className="cp-offline-banner">
+          ⚡ You're offline — conversations may be outdated
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="cp-header">
+        <div className="cp-greeting">{getGreeting()}</div>
+        <div className="cp-title-row">
+          <div className="cp-title-left">
+            <div className="cp-title">Messages</div>
+            <div className="cp-subtitle" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span className={`cp-conn-dot ${isOnline ? 'online' : 'offline'}`} />
+              {conversations.length > 0
+                ? `${conversations.length} conversation${conversations.length !== 1 ? 's' : ''}`
+                : isOnline ? 'Connected' : 'Offline'}
+            </div>
           </div>
           <button
-            onClick={onClose}
-            className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            className="cp-new-btn"
+            onClick={() => setShowNewChat(true)}
+            aria-label="New chat"
           >
-            <FiX size={20} />
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+            </svg>
           </button>
         </div>
 
-        {/* Search Input */}
-        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
-          <div className="flex gap-2">
-            <div className="flex-1 relative">
-              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => onSearchChange(e.target.value)}
-                placeholder="Search by name..."
-                className="w-full pl-10 pr-3 py-2.5 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 text-gray-900 dark:text-white transition-all"
-                autoFocus
-              />
-            </div>
-            <button
-              onClick={onSearch}
-              disabled={searching || !searchQuery.trim()}
-              className="px-4 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-blue-600 rounded-lg hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
-            >
-              {searching ? <FiLoader size={16} className="animate-spin" /> : <FiSearch size={16} />}
-              Search
+        {/* Search */}
+        <div className="cp-search-wrap">
+          <svg className="cp-search-icon" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+          </svg>
+          <input
+            type="text"
+            className="cp-search-input"
+            placeholder="Search conversations…"
+            value={searchInput}
+            onChange={handleSearchChange}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          {searchInput && (
+            <button className="cp-search-clear" onClick={clearSearch} aria-label="Clear">
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
             </button>
-          </div>
+          )}
         </div>
 
-        {/* Results */}
-        <div className="flex-1 overflow-y-auto">
-          {searchResults.length > 0 ? (
-            <div className="divide-y divide-gray-100 dark:divide-gray-700">
-              {searchResults.map((foundUser) => (
-                <button
-                  key={foundUser.id}
-                  onClick={() => onStartChat(foundUser.id)}
-                  disabled={startingChat === foundUser.id}
-                  className="w-full flex items-center gap-3 px-6 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 text-left group"
-                >
-                  <Avatar
-                    src={foundUser.profile_pic}
-                    name={foundUser.full_name}
-                    size="w-10 h-10"
-                    online={foundUser.is_online}
-                  />
-                  <div className="flex-1 text-left">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">{foundUser.full_name || 'Unknown User'}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{foundUser.class_name || 'Student'}</p>
-                  </div>
-                  {startingChat === foundUser.id && (
-                    <div className="flex-shrink-0">
-                      <FiLoader size={18} className="text-indigo-500 animate-spin" />
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
-          ) : searchQuery && !searching ? (
-            <div className="flex flex-col items-center justify-center h-40 px-6">
-              <FiSearch className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-3" />
-              <p className="text-sm text-gray-500 dark:text-gray-400 text-center">No users found matching "{searchQuery}"</p>
-            </div>
-          ) : !searchQuery ? (
-            <div className="flex flex-col items-center justify-center h-40 px-6">
-              <FiSearch className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-3" />
-              <p className="text-sm text-gray-500 dark:text-gray-400 text-center">Search for a user by name to start messaging</p>
-            </div>
-          ) : null}
+        {/* Filter chips */}
+        <div className="cp-chips">
+          {FILTERS.map(chip)}
         </div>
       </div>
 
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes slideUp {
-          from {
-            opacity: 0;
-            transform: translateY(16px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
-    </div>
-  );
-});
+      {/* List area */}
+      <div className="cp-list-area">
+        {refreshing && (
+          <div className="cp-ptr"><div className="cp-ptr-spin" /></div>
+        )}
 
-NewChatModal.displayName = 'NewChatModal';
-
-// Main ChatsPage Component
-const ChatsPage = () => {
-  const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('all');
-  const [showNewChat, setShowNewChat] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [searching, setSearching] = useState(false);
-  const [startingChat, setStartingChat] = useState(null);
-  const [typingConversations, setTypingConversations] = useState({});
-
-  // Refs for debouncing
-  const searchTimeoutRef = useRef(null);
-  const isMountedRef = useRef(true);
-
-  const conversations = useChatStore((s) => s.conversations);
-  const archivedConversations = useChatStore((s) => s.archivedConversations);
-  const loadingConversations = useChatStore((s) => s.loadingConversations);
-  const fetchConversations = useChatStore((s) => s.fetchConversations);
-  const unarchiveConversation = useChatStore((s) => s.unarchiveConversation);
-  const socket = useChatStore((s) => s.socket);
-  const userId = useChatStore((s) => s.userId);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  // Fetch conversations on mount and tab change
-  useEffect(() => {
-    fetchConversations(activeTab === 'archived');
-  }, [fetchConversations, activeTab]);
-
-  // Real-time WebSocket Updates - Fixed memory leak issue
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleMessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-
-        switch (data.type) {
-          case 'chat_message': {
-            const msg = data.message || data;
-            const preview = msg.msg_type === 'VOICE' ? '🎤 Voice message' :
-              msg.msg_type === 'FILE' ? '📎 File attachment' :
-                msg.content?.substring(0, 200) || '';
-
-            useChatStore.setState((state) => ({
-              conversations: state.conversations.map(conv =>
-                conv.id === msg.conversation_id
-                  ? {
-                    ...conv,
-                    last_message_preview: preview,
-                    last_message_at: msg.created_at || msg.timestamp,
-                    unread_count: msg.sender_id !== userId
-                      ? (conv.unread_count || 0) + 1
-                      : conv.unread_count
-                  }
-                  : conv
-              )
-            }));
-            break;
-          }
-
-          case 'typing': {
-            if (data.user_id !== userId && data.conversation_id) {
-              setTypingConversations(prev => ({
-                ...prev,
-                [data.conversation_id]: data.is_typing ? data.user_name : null
-              }));
-
-              if (data.is_typing) {
-                // Auto-clear after 3 seconds
-                const timeoutId = setTimeout(() => {
-                  setTypingConversations(prev => {
-                    const newState = { ...prev };
-                    if (newState[data.conversation_id] === data.user_name) {
-                      delete newState[data.conversation_id];
-                    }
-                    return newState;
-                  });
-                }, 3000);
-
-                // Store timeout ID for cleanup if needed
-                if (window._typingTimeouts) {
-                  clearTimeout(window._typingTimeouts[data.conversation_id]);
-                  window._typingTimeouts[data.conversation_id] = timeoutId;
-                }
-              }
-            }
-            break;
-          }
-
-          case 'presence': {
-            useChatStore.setState((state) => ({
-              conversations: state.conversations.map(conv =>
-                conv.participant?.id === data.user_id
-                  ? { ...conv, participant: { ...conv.participant, is_online: data.is_online } }
-                  : conv
-              ),
-              archivedConversations: state.archivedConversations.map(conv =>
-                conv.participant?.id === data.user_id
-                  ? { ...conv, participant: { ...conv.participant, is_online: data.is_online } }
-                  : conv
-              )
-            }));
-            break;
-          }
-
-          default:
-            break;
-        }
-      } catch (err) {
-        // Ignore non-JSON messages
-      }
-    };
-
-    // CRITICAL: Proper event listener management
-    socket.addEventListener('message', handleMessage);
-
-    return () => {
-      socket.removeEventListener('message', handleMessage);
-      // Clean up any pending typing timeouts
-      if (window._typingTimeouts) {
-        Object.values(window._typingTimeouts).forEach(timeout => clearTimeout(timeout));
-        window._typingTimeouts = {};
-      }
-    };
-  }, [socket, userId]);
-
-  const handleUnarchive = useCallback(async (convId) => {
-    const success = await unarchiveConversation(convId);
-    if (success) {
-      toast.success('Conversation restored');
-      setActiveTab('all');
-    } else {
-      toast.error('Failed to restore conversation');
-    }
-  }, [unarchiveConversation]);
-
-  // Debounced search function
-  const performSearch = useCallback(async () => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    setSearching(true);
-    try {
-      const response = await apiClient.get('/accounts/students/search/', {
-        params: { q: searchQuery.trim() }
-      });
-      const results = response.data || [];
-      if (isMountedRef.current) {
-        setSearchResults(Array.isArray(results) ? results : []);
-      }
-    } catch (err) {
-      if (isMountedRef.current) {
-        toast.error('Failed to search users');
-        setSearchResults([]);
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setSearching(false);
-      }
-    }
-  }, [searchQuery]);
-
-  // Debounced search effect - FIXED to prevent multiple API calls
-  useEffect(() => {
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    searchTimeoutRef.current = setTimeout(() => {
-      performSearch();
-    }, SEARCH_DEBOUNCE_DELAY);
-
-    return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-    };
-  }, [searchQuery, performSearch]);
-
-  const handleSearchChange = useCallback((value) => {
-    setSearchQuery(value);
-  }, []);
-
-  const handleStartConversation = useCallback(async (userId) => {
-    if (!userId) return;
-    setStartingChat(userId);
-    try {
-      const conversation = await chatApi.startConversation(userId);
-      const convId = conversation?.id || conversation?.data?.id;
-      if (convId) {
-        toast.success('Conversation started');
-        setShowNewChat(false);
-        setSearchQuery('');
-        setSearchResults([]);
-        fetchConversations(false);
-        navigate(`/chat/${convId}`);
-      } else {
-        toast.error('Could not create conversation');
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to start conversation');
-    } finally {
-      setStartingChat(null);
-    }
-  }, [navigate, fetchConversations]);
-
-  const formatLastActive = useCallback((date) => {
-    if (!date) return '';
-    const msgDate = new Date(date);
-    const now = new Date();
-    const diffDays = Math.floor((now - msgDate) / (1000 * 60 * 60 * 24));
-    if (diffDays === 0) return format(msgDate, 'h:mm a');
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return format(msgDate, 'EEEE');
-    return format(msgDate, 'MMM d');
-  }, []);
-
-  // Filter and memoize displayed conversations
-  const displayConversations = useMemo(() => {
-    if (activeTab === 'archived') {
-      return Array.isArray(archivedConversations) ? archivedConversations : [];
-    }
-    if (!Array.isArray(conversations)) return [];
-    if (activeTab === 'unread') {
-      return conversations.filter((c) => c.unread_count > 0);
-    }
-    return conversations;
-  }, [conversations, archivedConversations, activeTab]);
-
-  const unreadCount = useMemo(() => {
-    return Array.isArray(conversations) ? conversations.filter((c) => c.unread_count > 0).length : 0;
-  }, [conversations]);
-
-  return (
-    <div className="flex flex-col h-screen bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-950 overflow-hidden">
-      {/* Header */}
-      <header className="flex items-center justify-between px-6 py-5 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/50 backdrop-blur-sm sticky top-0 z-40">
-        <div className="flex flex-col">
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">Messages</h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Stay connected</p>
-        </div>
-        <button
-          onClick={() => setShowNewChat(true)}
-          className="p-2.5 text-white bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 active:scale-95"
-          aria-label="New conversation"
-          title="Start a new conversation"
-        >
-          <FiPlus size={24} />
-        </button>
-      </header>
-
-      {/* Tabs */}
-      <div className="flex border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/50 px-6 sticky top-16 z-30">
-        {TABS.map((tab) => {
-          const isActive = activeTab === tab.key;
-          const count = tab.key === 'unread' ? unreadCount : undefined;
-
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 py-4 px-1 text-sm font-medium transition-all duration-200 relative ${isActive
-                  ? 'text-indigo-600 dark:text-indigo-400'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-300'
-                }`}
-            >
-              <span>{tab.icon}</span>
-              <span>{tab.label}</span>
-              {count !== undefined && count > 0 && (
-                <span className="ml-1 px-2 py-0.5 text-xs font-bold text-white bg-indigo-600 rounded-full">
-                  {count}
-                </span>
-              )}
-              {isActive && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-600 to-blue-600 rounded-full" />
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Conversations List */}
-      <div className="flex-1 overflow-y-auto">
-        {loadingConversations ? (
-          <div className="divide-y divide-gray-100 dark:divide-gray-800">
-            {[...Array(5)].map((_, i) => (
-              <ConversationSkeleton key={i} />
-            ))}
+        {loading ? (
+          <div className="cp-skeletons">
+            {Array.from({ length: 7 }).map((_, i) => <SkeletonRow key={i} />)}
           </div>
-        ) : !Array.isArray(displayConversations) || displayConversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full px-4 py-12">
-            <div className="text-6xl mb-4 opacity-50">
-              {activeTab === 'archived' ? '📦' : activeTab === 'unread' ? '✨' : '💬'}
+        ) : error ? (
+          <div className="cp-empty">
+            <div className="cp-empty-icon">⚠️</div>
+            <div className="cp-empty-title">Something went wrong</div>
+            <div className="cp-empty-sub">{error}</div>
+            <button className="cp-empty-cta" onClick={() => fetchConversations()}>Try again</button>
+          </div>
+        ) : filteredCount === 0 ? (
+          search ? (
+            <div className="cp-empty">
+              <div className="cp-empty-icon">🔍</div>
+              <div className="cp-empty-title">No results</div>
+              <div className="cp-empty-sub">No conversations match "{search}".<br />Try a different keyword.</div>
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-              {activeTab === 'archived' ? 'No archived conversations' : activeTab === 'unread' ? 'All caught up!' : 'No conversations yet'}
-            </h3>
-            <p className="text-gray-500 dark:text-gray-400 text-center mb-6">
-              {activeTab === 'archived' ? 'Your archived conversations will appear here' : activeTab === 'unread' ? 'You have read all your messages' : 'Start a new conversation to begin messaging'}
-            </p>
-            {activeTab !== 'archived' && (
-              <button
-                onClick={() => setShowNewChat(true)}
-                className="px-6 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-blue-600 rounded-lg hover:from-indigo-700 hover:to-blue-700 transition-all duration-200"
-              >
-                Start a conversation
+          ) : filter !== 'all' ? (
+            <div className="cp-empty">
+              <div className="cp-empty-icon">📭</div>
+              <div className="cp-empty-title">Nothing here</div>
+              <div className="cp-empty-sub">No {filter} conversations right now.</div>
+            </div>
+          ) : (
+            <div className="cp-empty">
+              <div className="cp-empty-icon">💬</div>
+              <div className="cp-empty-title">Start a conversation</div>
+              <div className="cp-empty-sub">
+                Connect with classmates, share ideas, and collaborate.
+              </div>
+              <button className="cp-empty-cta" onClick={() => setShowNewChat(true)}>
+                New Chat
               </button>
-            )}
-          </div>
+            </div>
+          )
         ) : (
-          <div className="divide-y divide-gray-100 dark:divide-gray-800">
-            {displayConversations.map((conv) => (
-              <ConversationItem
-                key={conv.id}
-                conv={conv}
-                isActive={activeTab !== 'archived'}
-                activeTab={activeTab}
-                typingUser={typingConversations[conv.id]}
-                onNavigate={navigate}
-                onUnarchive={handleUnarchive}
-                formatLastActive={formatLastActive}
-              />
-            ))}
-          </div>
+          <>
+            {ListComponent ? (
+              <ListComponent
+                height={listHeight}
+                itemCount={flatList.length}
+                itemSize={index => flatList[index]?.type === 'section' ? SECTION_SIZE : ITEM_SIZE}
+                width="100%"
+                itemKey={index => flatList[index]?.key ?? index}
+              >
+                {VRow}
+              </ListComponent>
+            ) : renderFallbackList()}
+
+            {convCursor && (
+              <div className="cp-load-more">
+                <button
+                  className="cp-load-more-btn"
+                  disabled={loadingMore}
+                  onClick={() => fetchConversations(convCursor)}
+                >
+                  {loadingMore ? 'Loading…' : 'Load more'}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* New Chat Modal */}
-      <NewChatModal
-        isOpen={showNewChat}
-        onClose={() => {
-          setShowNewChat(false);
-          setSearchQuery('');
-          setSearchResults([]);
-          if (searchTimeoutRef.current) {
-            clearTimeout(searchTimeoutRef.current);
-          }
-        }}
-        searchQuery={searchQuery}
-        onSearchChange={handleSearchChange}
-        onSearch={performSearch}
-        searchResults={searchResults}
-        searching={searching}
-        startingChat={startingChat}
-        onStartChat={handleStartConversation}
-      />
+      {/* New Chat Modal — bottom sheet */}
+      {showNewChat && (
+        <div className="cp-modal-overlay" onClick={() => setShowNewChat(false)}>
+          <div className="cp-modal" onClick={e => e.stopPropagation()}>
+            <div className="cp-modal-handle" />
+            <div className="cp-modal-header">
+              <span className="cp-modal-title">New Chat</span>
+              <button className="cp-modal-close" onClick={() => setShowNewChat(false)} aria-label="Close">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                </svg>
+              </button>
+            </div>
+            <div className="cp-modal-body">
+              <input
+                type="text"
+                className="cp-modal-search"
+                placeholder="Search by name or username…"
+                value={userSearchQuery}
+                onChange={e => setUserSearchQuery(e.target.value)}
+                autoFocus
+              />
+              {searchingUsers && (
+                <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0' }}>
+                  <div className="cp-ptr-spin" />
+                </div>
+              )}
+              {!searchingUsers && userSearchResults.length === 0 && userSearchQuery.trim() && (
+                <p className="cp-modal-hint">No users found for "{userSearchQuery}"</p>
+              )}
+              {!searchingUsers && !userSearchQuery.trim() && (
+                <p className="cp-modal-hint">Type a name or username to search</p>
+              )}
+              {userSearchResults.map(u => (
+                <div key={u.id} className="cp-user-item" onClick={() => handleStartChat(u.id)}>
+                  <div className="cp-user-av">
+                    {(u.display_name || u.username || '?').charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="cp-user-name">{u.display_name || u.username}</div>
+                    <div className="cp-user-detail">{u.class_name || u.email || ''}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

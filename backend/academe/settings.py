@@ -80,7 +80,7 @@ WSGI_APPLICATION = 'academe.wsgi.application'
 ASGI_APPLICATION = 'academe.asgi.application'
 
 # ============================================
-# DATABASE - PostgreSQL recommended for production
+# DATABASE - PostgreSQL with fallback to DATABASE_URL
 # ============================================
 if os.getenv('DATABASE_URL'):
     import dj_database_url
@@ -94,11 +94,12 @@ if os.getenv('DATABASE_URL'):
 else:
     DATABASES = {
         'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-            'OPTIONS': {
-                'timeout': 20,
-            },
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': 'academe_db',
+            'USER': 'academe_user',
+            'PASSWORD': 'my_secure_password_123',
+            'HOST': 'localhost',
+            'PORT': '5432',
         }
     }
 
@@ -177,7 +178,6 @@ EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@academe.com')
 
 # ============================================
-# CORS CONFIGURATION
 # CORS CONFIGURATION - FIXED FOR NGROK
 # ============================================
 
@@ -259,16 +259,7 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 USE_X_FORWARDED_HOST = True
 USE_X_FORWARDED_PORT = True
 
-# Session security (adjust for development)
-SESSION_COOKIE_SECURE = not DEBUG  # True in production
-SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SAMESITE = 'Lax'
-
-# CSRF cookie settings
-CSRF_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript to read CSRF token if needed
-CSRF_COOKIE_SAMESITE = 'Lax'
-
+# Session security (adjust for development) - defined once later
 
 # ============================================
 # CELERY CONFIGURATION
@@ -289,7 +280,7 @@ CELERY_TASK_TIME_LIMIT = 30 * 60
 CELERY_TASK_SOFT_TIME_LIMIT = 20 * 60
 
 # ============================================
-# JWT CONFIGURATION
+# JWT CONFIGURATION (for Django Ninja JWT)
 # ============================================
 JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', SECRET_KEY)
 
@@ -348,12 +339,34 @@ INTASEND_PUBLISHABLE_KEY = os.getenv('INTASEND_PUBLISHABLE_KEY')
 OTP_RATE_LIMIT = 3
 OTP_RATE_WINDOW = 3600  # seconds
 
-# Chat rate limits
-CHAT_RATE_LIMIT_MESSAGES_PER_MINUTE = 30
+# Chat rate limits (aligned with project specification)
+CHAT_RATE_LIMIT_MESSAGES_PER_DAY = 60     # 60 messages per day as per requirement
 CHAT_RATE_LIMIT_CONVERSATIONS_PER_HOUR = 10
 CHAT_RATE_LIMIT_REPORTS_PER_HOUR = 5
 CHAT_TYPING_RATE_LIMIT_PER_MINUTE = 5
-CHAT_MESSAGE_EDIT_WINDOW_SECONDS = 300  # 5 minutes
+CHAT_MESSAGE_EDIT_WINDOW_SECONDS = 300   # 5 minutes
+
+# ============================================
+# CHAT SPECIFIC SETTINGS
+# ============================================
+MAX_DAILY_MESSAGES = CHAT_RATE_LIMIT_MESSAGES_PER_DAY
+CHAT_MESSAGE_DELETE_FOR_EVERYONE_WINDOW_SECONDS = 3600   # 1 hour
+CHAT_PRESENCE_TTL_SECONDS = 300                          # 5 minutes
+CHAT_TYPING_INDICATOR_TIMEOUT_MS = 5000
+CHAT_MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024               # 10 MB
+CHAT_ALLOWED_ATTACHMENT_TYPES = [
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain',
+    'audio/webm',
+    'audio/mp4',
+    'audio/mpeg',
+]
 
 # ============================================
 # ATTENDANCE CONFIGURATION
@@ -414,10 +427,6 @@ if not DEBUG and REDIS_URL:
     # Session cache
     SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
     SESSION_CACHE_ALIAS = 'default'
-    SESSION_COOKIE_AGE = 86400  # 24 hours
-    SESSION_COOKIE_SECURE = not DEBUG
-    SESSION_COOKIE_HTTPONLY = True
-    SESSION_COOKIE_SAMESITE = 'Lax'
 else:
     CACHES = {
         'default': {
@@ -425,6 +434,17 @@ else:
             'LOCATION': 'unique-snowflake',
         }
     }
+
+# Session cookie settings (only once, not duplicated)
+SESSION_COOKIE_AGE = 86400  # 24 hours
+SESSION_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+
+# CSRF cookie settings
+CSRF_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript to read CSRF token if needed
+CSRF_COOKIE_SAMESITE = 'Lax'
 
 # ============================================
 # SECURITY SETTINGS (Production)
@@ -500,7 +520,7 @@ if not LOGS_DIR.exists():
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 # ============================================
-# JAZZMIN – ADMIN PANEL CONFIGURATION (FIXED)
+# JAZZMIN – ADMIN PANEL CONFIGURATION
 # ============================================
 JAZZMIN_SETTINGS = {
     "site_title": "Academe Admin",
@@ -570,10 +590,9 @@ JAZZMIN_SETTINGS = {
         "accounts.UserSession": "fas fa-history",
         "chat.Conversation": "fas fa-comments",
         "chat.Message": "fas fa-comment-dots",
-        "chat.BlockedUser": "fas fa-ban",
-        "chat.UserReport": "fas fa-flag",
-        "chat.MutedConversation": "fas fa-volume-mute",
-        "chat.PinnedConversation": "fas fa-thumbtack",
+        "chat.BlockList": "fas fa-ban",
+        "chat.Report": "fas fa-flag",
+        "chat.ConversationParticipant": "fas fa-user-cog",
         "found_items.FoundItem": "fas fa-box-open",
         "found_items.Claim": "fas fa-hand-holding-heart",
         "announcements.Announcement": "fas fa-bullhorn",
@@ -651,7 +670,8 @@ ADMIN_LIST_PER_PAGE = 20
 # ============================================
 # CUSTOM APP CONFIGURATIONS
 # ============================================
-
+# Disable automatic trailing slash redirects to prevent POST data loss
+APPEND_SLASH = False
 # Notification settings
 NOTIFICATION_EXPIRY_DAYS = 30
 NOTIFICATION_BATCH_SIZE = 100

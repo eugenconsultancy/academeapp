@@ -151,6 +151,15 @@ class SplitStatus(Enum):
 
 
 # ============================================
+# SCHOLARSHIP REVIEW STATUS
+# ============================================
+class ScholarshipReviewStatus(Enum):
+    PENDING = "pending"
+    PAID = "paid"
+    REVIEWED = "reviewed"
+
+
+# ============================================
 # AUDIT LOG ACTION TYPES
 # ============================================
 
@@ -240,6 +249,8 @@ class NotificationType:
     BADGE_EARNED = "badge_earned"
     OPPORTUNITY_EXPIRING = "opportunity_expiring"
     SYSTEM = "system"
+    # New
+    SCHOLARSHIP_REVIEW_READY = "scholarship_review_ready"
 
 
 class ReportReason(Enum):

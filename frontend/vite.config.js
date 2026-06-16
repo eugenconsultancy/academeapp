@@ -170,6 +170,26 @@ export default defineConfig(({ command, mode }) => {
         usePolling: false,
         ignored: ['**/node_modules/**', '**/dist/**', '**/.git/**'],
       },
+      proxy: {
+        '/api': {
+          target: 'http://localhost:8000',
+          changeOrigin: true,
+          secure: false,
+          // ✅ Force Vite to keep the original path intact (including trailing slash)
+          rewrite: (path) => path,
+          configure: (proxy, options) => {
+            proxy.on('proxyReq', (proxyReq, req, res) => {
+              // Debug: log the exact path being sent to Django
+              console.log(`[Vite Proxy] ${req.method} ${req.url} → ${proxyReq.path}`);
+            });
+          },
+        },
+        '/ws': {
+          target: 'ws://localhost:8000',
+          ws: true,
+          changeOrigin: true,
+        },
+      },
     },
 
     build: {
@@ -266,6 +286,7 @@ export default defineConfig(({ command, mode }) => {
       __BUILD_DATE__: JSON.stringify(new Date().toISOString()),
       __DEV__: JSON.stringify(isDevelopment),
       __PROD__: JSON.stringify(isProduction),
+      'process.env': JSON.stringify(process.env),
     },
 
     esbuild: {

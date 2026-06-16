@@ -1,5 +1,13 @@
+# apps/opportunities/models.py
+"""
+Opportunities models for Academe.
+Added ScholarshipReview for document upload and paid review workflow.
+"""
+
 from django.db import models
 from common.models import BaseModel
+from common.constants import ScholarshipReviewStatus
+
 
 class Opportunity(BaseModel):
     title = models.CharField(max_length=255)
@@ -32,6 +40,7 @@ class Opportunity(BaseModel):
     def __str__(self):
         return self.title
 
+
 class Like(BaseModel):
     opportunity = models.ForeignKey(
         Opportunity,
@@ -46,6 +55,7 @@ class Like(BaseModel):
     
     class Meta:
         unique_together = ['opportunity', 'user']
+
 
 class OpportunityReport(BaseModel):
     opportunity = models.ForeignKey(
@@ -70,3 +80,35 @@ class OpportunityReport(BaseModel):
     
     class Meta:
         unique_together = ['opportunity', 'reported_by']
+
+
+# ─── NEW: Scholarship Review ─────────────────────────────────────────────────
+class ScholarshipReview(BaseModel):
+    student = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.CASCADE,
+        related_name='scholarship_reviews'
+    )
+    opportunity = models.ForeignKey(
+        Opportunity,
+        on_delete=models.CASCADE,
+        related_name='scholarship_reviews'
+    )
+    document = models.FileField(upload_to='scholarship_docs/')
+    status = models.CharField(
+        max_length=20,
+        choices=[(s.value, s.name.title()) for s in ScholarshipReviewStatus],
+        default=ScholarshipReviewStatus.PENDING.value
+    )
+    invoice_id = models.CharField(max_length=100, blank=True, null=True)
+    admin_comments = models.TextField(blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"ScholarshipReview #{self.id} by {self.student}"

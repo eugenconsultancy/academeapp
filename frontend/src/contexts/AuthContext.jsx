@@ -1,45 +1,35 @@
+// frontend/src/contexts/AuthContext.jsx
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import apiClient from '../api/client';
+import apiClient, { storeTokens, clearAuthData, getStoredTokens } from '../api/client';
 import { jwtDecode } from 'jwt-decode';
 import { accountsApi } from '../api/accountsApi';
 
 const AuthContext = createContext(null);
 
-const ACCESS_TOKEN_KEY = 'access_token';
-const REFRESH_TOKEN_KEY = 'refresh_token';
-const USER_KEY = 'user_data';
+// ─── Constants (keep in sync with useUserStore) ──────────────────────────
+const USER_KEY = 'user';                // matches useUserStore's USER_KEY
+const TOKEN_REFRESH_BUFFER = 60;        // seconds before expiry to refresh
 const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
-const TOKEN_REFRESH_BUFFER = 60;
 
-function getStoredToken() {
-    try { return localStorage.getItem(ACCESS_TOKEN_KEY); } catch { return null; }
-}
-function getStoredRefreshToken() {
-    try { return localStorage.getItem(REFRESH_TOKEN_KEY); } catch { return null; }
-}
-function storeTokens(access, refresh) {
-    try {
-        if (access) localStorage.setItem(ACCESS_TOKEN_KEY, access);
-        if (refresh) localStorage.setItem(REFRESH_TOKEN_KEY, refresh);
-    } catch { /* ignore */ }
-}
-function clearTokens() {
-    try {
-        localStorage.removeItem(ACCESS_TOKEN_KEY);
-        localStorage.removeItem(REFRESH_TOKEN_KEY);
-        localStorage.removeItem(USER_KEY);
-        localStorage.removeItem('2fa_temp_token');
-        localStorage.removeItem('2fa_phone');
-    } catch { /* ignore */ }
-}
+// ─── Token helpers ──────────────────────────────────────────────────────────
 function isTokenExpired(token) {
     if (!token) return true;
     try {
         const decoded = jwtDecode(token);
         const now = Date.now() / 1000;
         return decoded.exp < now + TOKEN_REFRESH_BUFFER;
-    } catch { return true; }
+    } catch {
+        return true;
+    }
 }
+
+function storeUser(user) {
+    try {
+        if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+        else localStorage.removeItem(USER_KEY);
+    } catch { /* ignore */ }
+}
+
 function getStoredUser() {
     try {
         const stored = localStorage.getItem(USER_KEY);
@@ -49,10 +39,8 @@ function getStoredUser() {
         return null;
     }
 }
-function storeUser(user) {
-    try { localStorage.setItem(USER_KEY, JSON.stringify(user)); } catch { /* ignore */ }
-}
 
+// ─── Provider ────────────────────────────────────────────────────────────────
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(() => getStoredUser());
     const [loading, setLoading] = useState(true);
@@ -61,9 +49,11 @@ export function AuthProvider({ children }) {
     const [isRefreshingToken, setIsRefreshingToken] = useState(false);
     const idleTimerRef = useRef(null);
     const logoutRef = useRef(null);
+    const isCheckingRef = useRef(false);      // ⬅️ Prevent concurrent checkAuth
 
     const logout = useCallback(() => {
-        clearTokens();
+        clearAuthData();
+        storeUser(null);               // clear user from localStorage
         setUser(null);
         setError(null);
         if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
@@ -74,47 +64,60 @@ export function AuthProvider({ children }) {
         } catch { /* ignore */ }
     }, []);
 
+    // Keep logoutRef updated so checkAuth can safely call logout
     useEffect(() => {
         logoutRef.current = logout;
     }, [logout]);
 
     const checkAuth = useCallback(async () => {
-        const token = getStoredToken();
-        if (!token) { setLoading(false); return; }
-        let isCurrent = true;
-        if (isTokenExpired(token)) {
-            const refreshToken = getStoredRefreshToken();
-            if (refreshToken) {
+        // Prevent concurrent executions
+        if (isCheckingRef.current) return;
+        isCheckingRef.current = true;
+
+        try {
+            const { access, refresh } = getStoredTokens();
+
+            if (!access) {
+                setLoading(false);
+                return;
+            }
+
+            // Try refreshing if the access token is expired
+            if (isTokenExpired(access) && refresh) {
                 try {
                     setIsRefreshingToken(true);
-                    const response = await apiClient.post('/accounts/refresh-token/', { refresh: refreshToken });
-                    storeTokens(response.data.access, response.data.refresh || refreshToken);
+                    const response = await apiClient.post('/accounts/refresh-token/', { refresh });
+                    const { access: newAccess, refresh: newRefresh } = response.data;
+                    storeTokens(newAccess, newRefresh || refresh);
                 } catch {
-                    logout();
-                    setLoading(false);
+                    logoutRef.current?.();
                     return;
                 } finally {
                     setIsRefreshingToken(false);
                 }
-            } else {
-                logout();
-                setLoading(false);
-                return;
             }
-        }
-        try {
-            const response = await apiClient.get('/accounts/profile/');
-            if (!isCurrent) return;
-            setUser(response.data);
-            storeUser(response.data);
-        } catch (err) {
-            if (err.response?.status === 401) logout();
-        } finally {
-            if (isCurrent) setLoading(false);
-        }
-        return () => { isCurrent = false; };
-    }, [logout]);
 
+            // Fetch latest user profile
+            try {
+                const response = await apiClient.get('/accounts/profile/');
+                setUser(response.data);
+                storeUser(response.data);
+            } catch (err) {
+                if (err.response?.status === 401) {
+                    logoutRef.current?.();
+                }
+                // For other errors, keep existing user data if available
+            }
+        } catch (err) {
+            // Unexpected errors – stay logged out
+            logoutRef.current?.();
+        } finally {
+            setLoading(false);
+            isCheckingRef.current = false;
+        }
+    }, []);
+
+    // ── Auth actions ─────────────────────────────────────────────────────────
     const register = useCallback(async (userData) => {
         setLoginLoading(true);
         setError(null);
@@ -130,18 +133,22 @@ export function AuthProvider({ children }) {
         }
     }, []);
 
-    // ✅ FIXED: Proper OTP login with 2FA handling
     const login = useCallback(async (phone, otp) => {
         setLoginLoading(true);
         setError(null);
         try {
-            const response = await apiClient.post('/accounts/verify-otp/', { phone_number: phone, otp: otp });
+            const response = await apiClient.post('/accounts/verify-otp/', {
+                phone_number: phone,
+                otp: otp,
+            });
             const data = response.data;
+
             if (data.require_2fa) {
                 localStorage.setItem('2fa_temp_token', data.temp_token);
                 localStorage.setItem('2fa_phone', phone);
                 return { require_2fa: true, temp_token: data.temp_token };
             }
+
             const { access, refresh, user: userData } = data;
             if (access) {
                 storeTokens(access, refresh);
@@ -160,25 +167,22 @@ export function AuthProvider({ children }) {
         }
     }, []);
 
-    // ✅ FIXED: Biometric login with proper token handling
     const biometricLogin = useCallback(async (phone, imageData) => {
         setLoginLoading(true);
         setError(null);
         try {
             const response = await apiClient.post('/accounts/biometric/login/', {
                 phone_number: phone,
-                image_data: imageData
+                image_data: imageData,
             });
             const data = response.data;
 
-            // Handle 2FA challenge
             if (data.require_2fa) {
                 localStorage.setItem('2fa_temp_token', data.temp_token);
                 localStorage.setItem('2fa_phone', phone);
                 return { require_2fa: true, temp_token: data.temp_token };
             }
 
-            // Handle successful biometric login
             const { access, refresh, user: userData } = data;
             if (access) {
                 storeTokens(access, refresh);
@@ -200,7 +204,10 @@ export function AuthProvider({ children }) {
     const verify2FALogin = useCallback(async (tempToken, code) => {
         setLoginLoading(true);
         try {
-            const response = await apiClient.post('/accounts/2fa/verify-login/', { temp_token: tempToken, code: code });
+            const response = await apiClient.post('/accounts/2fa/verify-login/', {
+                temp_token: tempToken,
+                code: code,
+            });
             const { access, refresh, user: userData } = response.data;
             storeTokens(access, refresh);
             storeUser(userData);
@@ -286,11 +293,12 @@ export function AuthProvider({ children }) {
     }, []);
 
     const refreshAuth = useCallback(async () => {
-        const refreshToken = getStoredRefreshToken();
-        if (!refreshToken) throw new Error('No refresh token');
+        const { refresh } = getStoredTokens();
+        if (!refresh) throw new Error('No refresh token');
         try {
-            const response = await apiClient.post('/accounts/refresh-token/', { refresh: refreshToken });
-            storeTokens(response.data.access, response.data.refresh || refreshToken);
+            const response = await apiClient.post('/accounts/refresh-token/', { refresh });
+            const { access, refresh: newRefresh } = response.data;
+            storeTokens(access, newRefresh || refresh);
             return response.data;
         } catch (err) {
             logout();
@@ -298,7 +306,6 @@ export function AuthProvider({ children }) {
         }
     }, [logout]);
 
-    // ✅ FIXED: Biometric enrollment with proper response handling
     const enrollBiometric = useCallback(async (imageData) => {
         try {
             const response = await apiClient.post('/accounts/biometric/enroll/', { image_data: imageData });
@@ -310,7 +317,6 @@ export function AuthProvider({ children }) {
         }
     }, [updateUser]);
 
-    // ✅ FIXED: Biometric disable with proper cleanup
     const disableBiometric = useCallback(async () => {
         try {
             const response = await apiClient.post('/accounts/biometric/disable/');
@@ -344,12 +350,12 @@ export function AuthProvider({ children }) {
         return response.data;
     }, []);
 
-    // ✅ FIXED: Regenerate backup codes
     const regenerateBackupCodes = useCallback(async () => {
         const response = await apiClient.post('/accounts/2fa/regenerate-backup-codes/');
         return response.data;
     }, []);
 
+    // ── Derived state ────────────────────────────────────────────────────────
     const isAdmin = user?.role === 'admin' || user?.is_superuser;
     const isTeacher = user?.role === 'teacher' || user?.role === 'faculty';
     const isStudent = user?.role === 'student';
@@ -366,15 +372,18 @@ export function AuthProvider({ children }) {
         if (!user) return false;
         if (isAdmin) return true;
         const permissions = user?.permissions || [];
-        return permissions.some(p => (p.action === action || p.action === '*') && (p.resource === resource || p.resource === '*'));
+        return permissions.some(p =>
+            (p.action === action || p.action === '*') &&
+            (p.resource === resource || p.resource === '*')
+        );
     }, [user, isAdmin]);
 
-    // Restore session on mount
+    // ── Initial auth check ───────────────────────────────────────────────────
     useEffect(() => {
         checkAuth();
-    }, []);
+    }, [checkAuth]);
 
-    // Idle session timeout
+    // ── Idle timeout & cross‑tab sync ────────────────────────────────────────
     useEffect(() => {
         if (!user) return;
         const resetIdleTimer = () => {
@@ -384,6 +393,7 @@ export function AuthProvider({ children }) {
         const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
         events.forEach(ev => window.addEventListener(ev, resetIdleTimer));
         resetIdleTimer();
+
         let channel;
         try {
             channel = new BroadcastChannel('auth_channel');
@@ -392,6 +402,7 @@ export function AuthProvider({ children }) {
                 else if (event.data.type === 'LOGIN') checkAuth();
             };
         } catch { /* ignore */ }
+
         return () => {
             if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
             events.forEach(ev => window.removeEventListener(ev, resetIdleTimer));

@@ -12,7 +12,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useFont, FONT_REGISTRY } from '../../contexts/FontContext';
-import { chatApi } from '../../api/chatApi';
+import chatApi from '../../api/chatApi';
 import apiClient from '../../api/client';
 
 const NAV_LINKS = [

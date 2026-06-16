@@ -1,58 +1,97 @@
+// frontend/src/api/accountsApi.js
 import apiClient from './client';
 
 export const accountsApi = {
+  // ── Authentication ─────────────────────────────────────────────────────
   signup: (data) => apiClient.post('/accounts/signup/', data),
   requestOTP: (phone) => apiClient.post('/accounts/request-otp/', { phone_number: phone }),
-  verifyOTP: (phone, otp) => apiClient.post('/accounts/verify-otp/', { phone_number: phone, otp: otp }),
-  verify2FALogin: (tempToken, code) => apiClient.post('/accounts/2fa/verify-login/', { temp_token: tempToken, code: code }),
+  verifyOTP: (phone, otp) =>
+    apiClient.post('/accounts/verify-otp/', { phone_number: phone, otp: otp }),
 
-  forgotPassword: (phone) => apiClient.post('/accounts/forgot-password/', { phone_number: phone }),
+  verify2FALogin: (tempToken, code) =>
+    apiClient.post('/accounts/2fa/verify-login/', { temp_token: tempToken, code: code }),
+
+  // ── Password Management ────────────────────────────────────────────────
+  forgotPassword: (phone) =>
+    apiClient.post('/accounts/forgot-password/', { phone_number: phone }),
+
   resetPassword: (phone, otp, newPassword) =>
-    apiClient.post('/accounts/reset-password/', { phone_number: phone, otp: otp, new_password: newPassword }),
+    apiClient.post('/accounts/reset-password/', {
+      phone_number: phone,
+      otp: otp,
+      new_password: newPassword,
+    }),
 
   changePassword: (oldPassword, newPassword) =>
-    apiClient.post('/accounts/change-password/', { old_password: oldPassword, new_password: newPassword }),
+    apiClient.post('/accounts/change-password/', {
+      old_password: oldPassword,
+      new_password: newPassword,
+    }),
 
-  enrollBiometric: (imageData) => apiClient.post('/accounts/biometric/enroll/', { image_data: imageData }),
+  // ── Biometrics ─────────────────────────────────────────────────────────
+  enrollBiometric: (imageData) =>
+    apiClient.post('/accounts/biometric/enroll/', { image_data: imageData }),
+
   disableBiometric: () => apiClient.post('/accounts/biometric/disable/'),
+
   biometricLogin: (phone, imageData) =>
     apiClient.post('/accounts/biometric/login/', { phone_number: phone, image_data: imageData }),
 
+  // ── Profile ────────────────────────────────────────────────────────────
   getProfile: () => apiClient.get('/accounts/profile/'),
   updateProfile: (data) => apiClient.put('/accounts/profile/', data),
+
   uploadProfilePic: async (file) => {
     const formData = new FormData();
     formData.append('file', file);
     const response = await apiClient.post('/accounts/profile/upload-pic/', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': 'multipart/form-data' },
     });
     return response.data;
   },
-  searchStudents: (query) => apiClient.get('/accounts/students/search/', { params: { q: query } }),
 
-  exportData: (format = 'json') => apiClient.post('/accounts/export-data/', null, { params: { format } }),
+  searchStudents: (query) =>
+    apiClient.get('/accounts/students/search/', { params: { q: query } }),
+
+  // ── Account Actions ────────────────────────────────────────────────────
+  exportData: (format = 'json') =>
+    apiClient.post('/accounts/export-data/', null, { params: { format } }),
   deleteAccount: () => apiClient.post('/accounts/delete-account/'),
 
+  // ── Sessions ───────────────────────────────────────────────────────────
   listSessions: () => apiClient.get('/accounts/sessions/'),
-  revokeSession: (sessionId) => apiClient.post(`/accounts/sessions/${sessionId}/revoke/`),
+  revokeSession: (sessionId) =>
+    apiClient.post(`/accounts/sessions/${sessionId}/revoke/`),
   revokeAllSessions: () => apiClient.post('/accounts/sessions/revoke-all/'),
 
+  // ── Two‑Factor Auth ────────────────────────────────────────────────────
   setup2FA: () => apiClient.get('/accounts/2fa/setup/'),
-  verify2FASetup: (code) => apiClient.post('/accounts/2fa/verify-setup/', { code: code }),
-  disable2FA: (code) => apiClient.post('/accounts/2fa/disable/', { code: code }),
+  verify2FASetup: (code) =>
+    apiClient.post('/accounts/2fa/verify-setup/', { code: code }),
+  disable2FA: (code) =>
+    apiClient.post('/accounts/2fa/disable/', { code: code }),
   get2FAStatus: () => apiClient.get('/accounts/2fa/status/'),
 
+  // ── Roles (Admin / User) ───────────────────────────────────────────────
   listRoles: () => apiClient.get('/accounts/roles/'),
   assignRole: (data) => apiClient.post('/accounts/roles/assign/', data),
-  revokeRole: (roleId, reason) => apiClient.post(`/accounts/roles/${roleId}/revoke/`, { reason }),
+  revokeRole: (roleId, reason) =>
+    apiClient.post(`/accounts/roles/${roleId}/revoke/`, { reason }),
+
+  // ── User Management (Admin) ────────────────────────────────────────────
   listAllUsers: () => apiClient.get('/accounts/users/'),
+  deactivateUser: (userId) =>
+    apiClient.post(`/accounts/users/${userId}/deactivate/`),
+};
 
-  deactivateUser: (userId) => apiClient.post(`/accounts/users/${userId}/deactivate/`),
-
-  // Admin: Ticket Management
+// ── Support Tickets (moved to separate object) ──────────────────────────────
+export const supportApi = {
   listTickets: () => apiClient.get('/support/admin/all/'),
   getTicket: (id) => apiClient.get(`/support/admin/${id}/`),
   updateTicket: (id, data) => apiClient.put(`/support/admin/${id}/`, data),
   respondToTicket: (id, message, isInternal) =>
-    apiClient.post(`/support/admin/${id}/respond/`, { message, is_internal: isInternal }),
+    apiClient.post(`/support/admin/${id}/respond/`, {
+      message,
+      is_internal: isInternal,
+    }),
 };

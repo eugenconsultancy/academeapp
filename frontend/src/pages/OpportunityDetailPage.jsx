@@ -1,8 +1,12 @@
+// frontend/src/pages/OpportunityDetailPage.jsx
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { opportunitiesApi } from '../api/opportunitiesApi';
 import { useAuth } from '../contexts/AuthContext';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
+import ScholarshipReviewModal from '../components/opportunities/ScholarshipReviewModal';
+import useNotificationWebSocket from '../hooks/useNotificationWebSocket';
 import toast from 'react-hot-toast';
 import {
     FiArrowLeft,
@@ -13,6 +17,7 @@ import {
     FiFlag,
     FiTrash2,
     FiEdit3,
+    FiFileText,
 } from 'react-icons/fi';
 
 // ── Safe date formatter ──────────────────────────────────────
@@ -34,45 +39,48 @@ export default function OpportunityDetailPage() {
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
-    const [opportunity, setOpportunity] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [liked, setLiked] = useState(false);
-    const [likesCount, setLikesCount] = useState(0);
+    const queryClient = useQueryClient();
+
+    const [showReviewModal, setShowReviewModal] = useState(false);
     const [showReportModal, setShowReportModal] = useState(false);
     const [reportReason, setReportReason] = useState('spam');
     const [reportDescription, setReportDescription] = useState('');
 
+    // ── Fetch opportunity ────────────────────────────────────
+    const { data: opportunity, isLoading, error } = useQuery({
+        queryKey: ['opportunity', id],
+        queryFn: async () => {
+            const res = await opportunitiesApi.get(id);
+            return res.data;
+        },
+        staleTime: 1000 * 60 * 5,
+    });
+
+    const [liked, setLiked] = useState(false);
+    const [likesCount, setLikesCount] = useState(0);
+
     useEffect(() => {
-        fetchOpportunity();
-    }, [id]);
-
-    const fetchOpportunity = async () => {
-        setLoading(true);
-        try {
-            const response = await opportunitiesApi.get(id);   // Axios response
-            const data = response.data;                        // extract actual data
-            setOpportunity(data);
-            setLiked(data.is_liked);
-
-            const parsedCount = safeParseNumber(data.likes_count, 0);
-            setLikesCount(parsedCount);
-        } catch (err) {
-            setError(err.response?.data?.error || 'Failed to load opportunity');
-        } finally {
-            setLoading(false);
+        if (opportunity) {
+            setLiked(opportunity.is_liked);
+            setLikesCount(safeParseNumber(opportunity.likes_count, 0));
         }
-    };
+    }, [opportunity]);
+
+    // ── WebSocket listener for review updates ──────────────────
+    useNotificationWebSocket((notification) => {
+        if (notification?.type === 'scholarship_review_ready' || notification?.source_type === 'scholarship_review') {
+            // Refresh the opportunity detail to reflect any status changes
+            queryClient.invalidateQueries({ queryKey: ['opportunity', id] });
+            toast.success('Your review status has been updated!', { id: notification.id });
+        }
+    });
 
     const handleToggleLike = async () => {
         try {
-            // FIXED: extract .data from the Axios response
             const response = await opportunitiesApi.toggleLike(id);
-            const data = response.data;   // { liked: bool, count: number }
+            const data = response.data;
             setLiked(data.liked);
-
-            const newCount = safeParseNumber(data.count, 0);
-            setLikesCount(newCount);
+            setLikesCount(safeParseNumber(data.count, 0));
         } catch (err) {
             toast.error('Failed to update like');
         }
@@ -99,15 +107,12 @@ export default function OpportunityDetailPage() {
         }
     };
 
-    if (loading) return <SkeletonLoader type="detail" />;
+    if (isLoading) return <SkeletonLoader type="detail" />;
     if (error) {
         return (
             <div className="container mx-auto px-4 py-16 text-center">
-                <p className="text-red-500 text-lg">{error}</p>
-                <Link
-                    to="/opportunities"
-                    className="text-blue-500 hover:underline mt-4 inline-block"
-                >
+                <p className="text-red-500 text-lg">{error?.message || 'Failed to load opportunity'}</p>
+                <Link to="/opportunities" className="text-blue-500 hover:underline mt-4 inline-block">
                     Back to Opportunities
                 </Link>
             </div>
@@ -117,10 +122,7 @@ export default function OpportunityDetailPage() {
         return (
             <div className="container mx-auto px-4 py-16 text-center">
                 <p className="text-gray-500 text-lg">Opportunity not found</p>
-                <Link
-                    to="/opportunities"
-                    className="text-blue-500 hover:underline mt-4 inline-block"
-                >
+                <Link to="/opportunities" className="text-blue-500 hover:underline mt-4 inline-block">
                     Back to Opportunities
                 </Link>
             </div>
@@ -128,6 +130,7 @@ export default function OpportunityDetailPage() {
     }
 
     const isAdmin = user?.role === 'admin';
+    const isScholarship = opportunity.category === 'scholarship';
 
     const categoryColors = {
         internship: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
@@ -195,12 +198,12 @@ export default function OpportunityDetailPage() {
                     )}
 
                     <div className="flex flex-wrap items-center gap-4 pt-6 border-t border-gray-100 dark:border-gray-700">
-                        {/* Like button – now functional */}
+                        {/* Like button */}
                         <button
                             onClick={handleToggleLike}
                             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${liked
-                                ? 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400'
-                                : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'
+                                    ? 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400'
+                                    : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'
                                 }`}
                         >
                             <FiHeart className={`w-4 h-4 ${liked ? 'fill-current' : ''}`} />
@@ -210,6 +213,16 @@ export default function OpportunityDetailPage() {
                                     : `${likesCount} ${likesCount === 1 ? 'Like' : 'Likes'}`}
                             </span>
                         </button>
+
+                        {/* Scholarship Review button – only for scholarship category */}
+                        {isScholarship && (
+                            <button
+                                onClick={() => setShowReviewModal(true)}
+                                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 transition-colors"
+                            >
+                                <FiFileText className="w-4 h-4" /> Upload for Review
+                            </button>
+                        )}
 
                         <button
                             onClick={() => setShowReportModal(true)}
@@ -238,6 +251,16 @@ export default function OpportunityDetailPage() {
                 </div>
             </div>
 
+            {/* Scholarship Review Modal */}
+            {showReviewModal && (
+                <ScholarshipReviewModal
+                    opportunityId={id}
+                    onClose={() => setShowReviewModal(false)}
+                    onSuccess={() => queryClient.invalidateQueries({ queryKey: ['opportunity', id] })}
+                />
+            )}
+
+            {/* Report Modal */}
             {showReportModal && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6">

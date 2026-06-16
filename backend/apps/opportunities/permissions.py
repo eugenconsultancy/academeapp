@@ -1,3 +1,4 @@
+# apps/opportunities/permissions.py
 from common.jwt_auth import JWTAuth
 from common.constants import UserRole
 

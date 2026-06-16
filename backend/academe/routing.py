@@ -1,9 +1,9 @@
-# C:\Users\GATARA-BJTU\academe\backend\academe\routing.py
+# backend/academe/routing.py
 from django.urls import path
-from apps.chat.consumers import ChatConsumer
+from apps.chat.routing import websocket_urlpatterns as chat_ws_patterns
 from apps.notifications.consumers import NotificationConsumer
 
-websocket_urlpatterns = [
-    path('ws/chat/<uuid:conversation_id>/', ChatConsumer.as_asgi()),
+# Combine all app-level WebSocket patterns
+websocket_urlpatterns = chat_ws_patterns + [
     path('ws/notifications/', NotificationConsumer.as_asgi()),
 ]

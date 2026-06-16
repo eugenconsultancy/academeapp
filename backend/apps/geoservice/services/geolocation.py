@@ -15,14 +15,22 @@ import hashlib
 import logging
 import time
 
-# Conditional import for PostgreSQL trigram support (optional - only for fuzzy matching)
+# Conditional import for PostgreSQL trigram support (only used when DB engine is PostgreSQL)
 try:
     from django.contrib.postgres.search import TrigramSimilarity
-    HAS_POSTGRES = True
+    POSTGRES_MODULE_AVAILABLE = True
 except ImportError:
-    HAS_POSTGRES = False
+    POSTGRES_MODULE_AVAILABLE = False
+
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+
+
+def _is_postgresql():
+    """Return True if the default database engine is PostgreSQL."""
+    engine = settings.DATABASES['default']['ENGINE']
+    return 'postgresql' in engine or 'postgis' in engine
 
 
 class LocationService:
@@ -114,8 +122,11 @@ class LocationService:
             self._cache_geocoding_result(address_clean, coords[0], coords[1], 'venue_db', cache_key)
             return coords
         
-        # Step 4: Trigram similarity search (PostgreSQL only - optional)
-        if HAS_POSTGRES:
+        # Step 4: Fuzzy search - PostgreSQL trigram if available, otherwise SQLite icontains
+        use_postgres = _is_postgresql() and POSTGRES_MODULE_AVAILABLE
+        
+        if use_postgres:
+            # PostgreSQL trigram similarity (best fuzzy match)
             venues = CampusVenue.objects.filter(
                 is_active=True,
                 latitude__isnull=False,
@@ -131,7 +142,7 @@ class LocationService:
                 self._cache_geocoding_result(address_clean, coords[0], coords[1], 'venue_db_fuzzy', cache_key)
                 return coords
         else:
-            # Fallback for SQLite: simple icontains (less accurate but works)
+            # SQLite (or any non-PostgreSQL) fallback: simple icontains
             venues = CampusVenue.objects.filter(
                 name__icontains=address_clean,
                 is_active=True,
@@ -153,26 +164,17 @@ class LocationService:
         """
         Call Nominatim with non-blocking rate limiting.
         Returns None if rate limit exceeded or geocoding fails.
-        
-        Args:
-            address: Address to geocode
-            cache_key: Redis cache key for storing result
-            
-        Returns:
-            Tuple of (latitude, longitude) or None
         """
         from apps.geoservice.models import GeocodingCache
         
-        # Non-blocking rate limit check using Redis
         rate_key = "nominatim_rate_limit_global"
         last_call = cache.get(rate_key)
         now = time.time()
         
         if last_call and (now - last_call) < self._nominatim_min_interval:
             logger.warning(f"Nominatim rate limit hit for address: {address} - rejecting request")
-            return None  # Caller should return 429
+            return None
         
-        # Update rate limit counter (non-blocking)
         cache.set(rate_key, now, timeout=1)
         
         try:
@@ -181,10 +183,8 @@ class LocationService:
                 coords = (location.latitude, location.longitude)
                 logger.info(f"Geocoding via Nominatim succeeded: {address} -> ({location.latitude}, {location.longitude})")
                 
-                # Store in Redis cache
                 cache.set(cache_key, coords, self.cache_timeout)
                 
-                # Store in DB for audit trail
                 GeocodingCache.objects.get_or_create(
                     address=address,
                     defaults={
@@ -210,22 +210,11 @@ class LocationService:
     
     def _cache_geocoding_result(self, address: str, lat: float, lon: float, 
                                  source: str, cache_key: str):
-        """
-        Cache geocoding result in both Redis and DB.
-        
-        Args:
-            address: Original address string
-            lat: Latitude
-            lon: Longitude
-            source: Source of the geocoding ('venue_db', 'venue_db_fuzzy', etc.)
-            cache_key: Redis cache key
-        """
+        """Cache geocoding result in both Redis and DB."""
         from apps.geoservice.models import GeocodingCache
         
-        # Store in Redis (fast cache)
         cache.set(cache_key, (lat, lon), self.cache_timeout)
         
-        # Store in DB for audit trail (idempotent)
         GeocodingCache.objects.get_or_create(
             address=address,
             defaults={
@@ -240,30 +229,16 @@ class LocationService:
     # ============================================
     
     def geocode_address(self, address: str) -> Optional[Tuple[float, float]]:
-        """
-        Legacy method - now uses database-first approach.
-        Kept for backward compatibility with existing code.
-        """
+        """Legacy method - now uses database-first approach."""
         return self.geocode_address_db_first(address)
     
     def reverse_geocode(self, lat: float, lon: float) -> Optional[str]:
-        """
-        Convert GPS coordinates to a human-readable address.
-        Uses Nominatim with rate limiting.
-        
-        Args:
-            lat: Latitude
-            lon: Longitude
-            
-        Returns:
-            Address string or None if reverse geocoding fails
-        """
+        """Convert GPS coordinates to a human-readable address."""
         cache_key = f"revgeo:{hashlib.md5(f'{lat:.4f}:{lon:.4f}'.encode()).hexdigest()}"
         cached = cache.get(cache_key)
         if cached:
             return cached
         
-        # Non-blocking rate limit check
         rate_key = "nominatim_reverse_rate_limit"
         last_call = cache.get(rate_key)
         now = time.time()
@@ -279,19 +254,14 @@ class LocationService:
             if location:
                 address = location.address
                 cache.set(cache_key, address, self.cache_timeout)
-                logger.debug(f"Reverse geocoding succeeded: ({lat}, {lon}) -> {address[:50]}...")
                 return address
             else:
-                logger.warning(f"Reverse geocoding returned no results for ({lat}, {lon})")
                 return None
-        except GeocoderTimedOut as e:
-            logger.error(f"Reverse geocoding timeout for ({lat}, {lon}): {e}")
-            return None
-        except GeocoderServiceError as e:
-            logger.error(f"Reverse geocoding service error for ({lat}, {lon}): {e}")
+        except (GeocoderTimedOut, GeocoderServiceError) as e:
+            logger.error(f"Reverse geocoding error for ({lat}, {lon}): {e}")
             return None
         except Exception as e:
-            logger.error(f"Unexpected error during reverse geocoding for ({lat}, {lon}): {e}")
+            logger.error(f"Unexpected reverse geocoding error: {e}")
             return None
     
     # ============================================
@@ -299,120 +269,44 @@ class LocationService:
     # ============================================
     
     @staticmethod
-    def calculate_distance(
-        lat1: float, lon1: float,
-        lat2: float, lon2: float
-    ) -> float:
-        """
-        Calculate geodesic distance in meters using WGS-84 ellipsoid.
-        This is the SOURCE OF TRUTH for attendance verification.
-        
-        Args:
-            lat1, lon1: First point coordinates
-            lat2, lon2: Second point coordinates
-            
-        Returns:
-            Distance in meters (float)
-        """
-        point1 = (float(lat1), float(lon1))
-        point2 = (float(lat2), float(lon2))
-        return geodesic(point1, point2).meters
+    def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        """Calculate geodesic distance in meters using WGS-84 ellipsoid."""
+        return geodesic((float(lat1), float(lon1)), (float(lat2), float(lon2))).meters
     
     @staticmethod
-    def is_within_radius(
-        student_lat: float, student_lon: float,
-        venue_lat: float, venue_lon: float,
-        radius_meters: int = 100
-    ) -> Tuple[bool, float]:
-        """
-        Check if a student's location is within the allowed attendance radius.
-        
-        Args:
-            student_lat, student_lon: Student's GPS coordinates
-            venue_lat, venue_lon: Venue coordinates
-            radius_meters: Allowed radius in meters
-            
-        Returns:
-            Tuple of (is_within: bool, distance_meters: float)
-        """
-        distance = LocationService.calculate_distance(
-            student_lat, student_lon,
-            venue_lat, venue_lon
-        )
+    def is_within_radius(student_lat, student_lon, venue_lat, venue_lon, radius_meters=100):
+        """Check if a student's location is within the allowed radius."""
+        distance = LocationService.calculate_distance(student_lat, student_lon, venue_lat, venue_lon)
         return distance <= radius_meters, distance
     
     @staticmethod
     def format_distance(distance_meters: float) -> str:
-        """
-        Convert distance in meters to a human-readable string.
-        
-        Args:
-            distance_meters: Distance in meters
-            
-        Returns:
-            Formatted string (e.g., "50 meters", "1.2 km")
-        """
+        """Human-readable distance."""
         if distance_meters < 1:
             return "Less than 1 meter"
         elif distance_meters < 1000:
             return f"{distance_meters:.0f} meters"
-        else:
-            return f"{distance_meters / 1000:.1f} km"
+        return f"{distance_meters / 1000:.1f} km"
     
     @staticmethod
     def get_walking_time_minutes(distance_meters: float) -> int:
-        """
-        Estimate walking time assuming average walking speed of 80 m/min (4.8 km/h).
-        
-        Args:
-            distance_meters: Distance in meters
-            
-        Returns:
-            Estimated walking time in minutes (minimum 1 minute)
-        """
-        if distance_meters <= 0:
-            return 1
-        return max(1, round(distance_meters / 80))
+        """Estimate walking time (80 m/min)."""
+        return max(1, round(distance_meters / 80)) if distance_meters > 0 else 1
     
     # ============================================
     # SPATIAL VENUE SEARCH (Bounding box - No PostGIS required)
     # ============================================
     
-    def find_nearest_venues_spatial(
-        self, lat: float, lon: float,
-        institution: str = None,
-        limit: int = 10,
-        max_distance_meters: float = 1000
-    ) -> List[Dict]:
-        """
-        Find nearest venues using bounding-box pre-filter (no PostGIS required).
-        
-        This method:
-        1. Filters venues by a bounding box based on max_distance
-        2. Calculates exact distances in Python (on reduced candidate set)
-        3. Returns venues sorted by distance
-        
-        Performance: O(N) where N is venues in bounding box (not all venues)
-        
-        Args:
-            lat: Current latitude
-            lon: Current longitude
-            institution: Optional institution filter
-            limit: Maximum number of venues to return
-            max_distance_meters: Maximum search radius in meters
-            
-        Returns:
-            List of venue dicts with distance information
-        """
+    def find_nearest_venues_spatial(self, lat: float, lon: float,
+                                    institution: str = None,
+                                    limit: int = 10,
+                                    max_distance_meters: float = 1000) -> List[Dict]:
+        """Find nearest venues using bounding-box pre-filter."""
         from apps.geoservice.models import CampusVenue
         
-        # Convert meters to approximate degrees
-        # 1 degree latitude ≈ 111 km
         lat_range = max_distance_meters / 111000
-        # Longitude range depends on latitude (converges at poles)
         lon_range = max_distance_meters / (111000 * max(abs(lat), 0.01))
         
-        # Build initial query with bounding box filter
         qs = CampusVenue.objects.filter(
             is_active=True,
             latitude__isnull=False,
@@ -423,19 +317,12 @@ class LocationService:
             longitude__lte=lon + lon_range
         )
         
-        # Apply institution filter if provided
         if institution:
             qs = qs.filter(institution=institution)
         
-        # Calculate exact distances in Python (on reduced candidate set)
         venues_with_distance = []
         for venue in qs:
-            distance = self.calculate_distance(
-                lat, lon,
-                float(venue.latitude), float(venue.longitude)
-            )
-            
-            # Only include venues within max distance
+            distance = self.calculate_distance(lat, lon, float(venue.latitude), float(venue.longitude))
             if distance <= max_distance_meters:
                 venues_with_distance.append({
                     'id': str(venue.id),
@@ -451,28 +338,11 @@ class LocationService:
                     'walking_time_minutes': self.get_walking_time_minutes(distance),
                 })
         
-        # Sort by distance and limit results
         venues_with_distance.sort(key=lambda x: x['distance_meters'])
         return venues_with_distance[:limit]
     
-    def find_nearest_venues(
-        self, lat: float, lon: float, 
-        institution: str = None, 
-        limit: int = 5
-    ) -> List[Dict]:
-        """
-        Legacy method wrapper for find_nearest_venues_spatial.
-        Kept for backward compatibility.
-        
-        Args:
-            lat: Current latitude
-            lon: Current longitude
-            institution: Optional institution filter
-            limit: Maximum number of venues to return
-            
-        Returns:
-            List of venue dicts with distance information
-        """
+    def find_nearest_venues(self, lat: float, lon: float, institution: str = None, limit: int = 5) -> List[Dict]:
+        """Legacy wrapper for find_nearest_venues_spatial."""
         return self.find_nearest_venues_spatial(lat, lon, institution, limit)
     
     # ============================================
@@ -480,78 +350,30 @@ class LocationService:
     # ============================================
     
     def get_venue_coordinates(self, timetable_entry) -> Optional[Tuple[float, float]]:
-        """
-        Get GPS coordinates for a timetable entry's venue.
-        Uses DB-first geocoding with fallback.
-        
-        Priority:
-        1. Direct coordinates on the timetable entry
-        2. CampusVenue database lookup
-        3. Geocoding (DB-first with Nominatim fallback)
-        
-        Args:
-            timetable_entry: TimetableEntry model instance
-            
-        Returns:
-            Tuple of (latitude, longitude) or None
-        """
+        """Get GPS coordinates for a timetable entry's venue."""
         from apps.geoservice.models import CampusVenue
         
-        # Priority 1: Direct coordinates on the entry
-        if hasattr(timetable_entry, 'latitude') and timetable_entry.latitude:
-            if timetable_entry.longitude:
-                logger.debug(f"Using direct coordinates for venue: {timetable_entry.venue}")
-                return (float(timetable_entry.latitude), float(timetable_entry.longitude))
+        if hasattr(timetable_entry, 'latitude') and timetable_entry.latitude and timetable_entry.longitude:
+            return (float(timetable_entry.latitude), float(timetable_entry.longitude))
         
-        # Priority 2: CampusVenue database lookup
-        venue = CampusVenue.objects.filter(
-            name__iexact=timetable_entry.venue,
-            is_active=True
-        ).first()
+        venue = CampusVenue.objects.filter(name__iexact=timetable_entry.venue, is_active=True).first()
+        if venue and venue.latitude and venue.longitude:
+            return (float(venue.latitude), float(venue.longitude))
         
-        if venue and venue.coordinates:
-            logger.debug(f"Found venue in CampusVenue DB: {timetable_entry.venue}")
-            return venue.coordinates
-        
-        # Priority 3: Geocode (DB-first with Nominatim fallback)
+        address = timetable_entry.venue
         if hasattr(timetable_entry, 'class_group') and timetable_entry.class_group:
             address = f"{timetable_entry.venue}, {timetable_entry.class_group.institution}"
-        else:
-            address = timetable_entry.venue
-        
-        logger.debug(f"Geocoding venue address: {address}")
         return self.geocode_address_db_first(address)
     
     # ============================================
     # DIRECTIONS URL GENERATION
     # ============================================
     
-    def get_directions_url(
-        self,
-        origin_lat: float, origin_lon: float,
-        dest_lat: float, dest_lon: float,
-        travel_mode: str = 'walking'
-    ) -> str:
-        """
-        Generate a Google Maps directions URL.
-        
-        Args:
-            origin_lat: Origin latitude
-            origin_lon: Origin longitude
-            dest_lat: Destination latitude
-            dest_lon: Destination longitude
-            travel_mode: Travel mode (walking, driving, bicycling, transit)
-            
-        Returns:
-            Google Maps directions URL
-        """
+    def get_directions_url(self, origin_lat, origin_lon, dest_lat, dest_lon, travel_mode='walking') -> str:
+        """Generate a Google Maps directions URL."""
         return (
             f"https://www.google.com/maps/dir/?api=1"
             f"&origin={origin_lat},{origin_lon}"
             f"&destination={dest_lat},{dest_lon}"
             f"&travelmode={travel_mode}"
         )
-
-
-# Import timezone for cache updates
-from django.utils import timezone

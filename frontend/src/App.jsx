@@ -1,4 +1,4 @@
-// C:\Users\GATARA-BJTU\academe\frontend\src\App.jsx
+// frontend/src/App.jsx
 import { useState, Suspense, lazy, useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
@@ -9,7 +9,6 @@ import BottomNav from './components/layout/BottomNav';
 import FAB from './components/layout/FAB';
 import SkeletonLoader from './components/shared/SkeletonLoader';
 import ErrorBoundary from './components/shared/ErrorBoundary';
-import useChatStore from './stores/useChatStore';
 
 // ═══════════════════════════════════════════════════════════════
 // LAZY-LOADED PAGES
@@ -251,15 +250,9 @@ export default function App() {
   const { user, loading } = useAuth();
   const { isDark } = useTheme();
   const location = useLocation();
-  const setChatUserId = useChatStore((s) => s.setUserId);
 
   // ── Keyboard / visual viewport detection ──
   useKeyboardDetection();
-
-  // Keep chat store's userId in sync with auth user
-  useEffect(() => {
-    if (user?.id) setChatUserId(user.id);
-  }, [user, setChatUserId]);
 
   const isAuthPage = ['/login', '/signup', '/forgot-password', '/reset-password'].includes(location.pathname);
 

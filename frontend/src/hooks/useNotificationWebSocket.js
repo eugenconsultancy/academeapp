@@ -10,11 +10,10 @@ let activeListenerCount = 0;
 const listeners = new Map();
 let nextListenerId = 0;
 
-// FIX: Add seen notification ID cache for deduplication
+// Deduplication cache for notification IDs
 const seenNotificationIds = new Set();
 
 function notifyListeners(notification) {
-    // FIX: Deduplicate by ID to prevent duplicate UI updates
     if (notification && notification.id && seenNotificationIds.has(notification.id)) {
         console.log(`Deduplicating notification ${notification.id}`);
         return;
@@ -22,7 +21,6 @@ function notifyListeners(notification) {
 
     if (notification && notification.id) {
         seenNotificationIds.add(notification.id);
-        // Clean up memory after 5 seconds
         setTimeout(() => seenNotificationIds.delete(notification.id), 5000);
     }
 
@@ -62,16 +60,9 @@ function startHeartbeat(ws) {
 }
 
 function getWebSocketUrl() {
-    // Use environment variable for WebSocket URL, fallback to localhost:8000
-    const wsUrl = process.env.REACT_APP_WS_URL || 'localhost:8000';
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-
-    // If using proxy in development, use current host
-    if (process.env.NODE_ENV === 'development' && !process.env.REACT_APP_WS_URL) {
-        return `${protocol}://${window.location.host}/ws/notifications/`;
-    }
-
-    return `${protocol}://${wsUrl}/ws/notifications/`;
+    // Build WebSocket URL using environment variable or fallback
+    const wsBase = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+    return `${wsBase}/ws/notifications/`;
 }
 
 function connectWebSocket(accessToken) {
@@ -86,38 +77,29 @@ function connectWebSocket(accessToken) {
         return;
     }
 
-    // FIX: Clean up existing socket properly before creating new one
+    // Clean up existing socket properly before creating new one
     if (globalSocket) {
-        // Prevent the closing socket from triggering a reconnect
         globalSocket.onclose = null;
         globalSocket.close();
         globalSocket = null;
     }
 
-    const url = getWebSocketUrl();
+    // ✅ ALWAYS send token as query parameter (not subprotocol)
+    const url = `${getWebSocketUrl()}?token=${encodeURIComponent(accessToken)}`;
     console.log(`Connecting notification WebSocket to: ${url}`);
 
-    // Try with subprotocol first, fallback to URL parameter
-    let ws;
-    try {
-        ws = new WebSocket(url, ['token', accessToken]);
-    } catch (e) {
-        ws = new WebSocket(`${url}?token=${encodeURIComponent(accessToken)}`);
-    }
-
+    const ws = new WebSocket(url);
     globalSocket = ws;
 
     ws.onopen = () => {
         console.log('Notification WebSocket connected');
         startHeartbeat(ws);
 
-        // Reset reconnect attempts on successful connection
         if (globalReconnectTimeout) {
             clearTimeout(globalReconnectTimeout);
             globalReconnectTimeout = null;
         }
 
-        // Clear seen IDs cache on reconnect
         seenNotificationIds.clear();
     };
 
@@ -125,7 +107,6 @@ function connectWebSocket(accessToken) {
         try {
             const data = JSON.parse(event.data);
 
-            // Handle pong response
             if (data.type === 'pong') {
                 if (pongTimeout) {
                     clearTimeout(pongTimeout);
@@ -134,10 +115,8 @@ function connectWebSocket(accessToken) {
                 return;
             }
 
-            // Dispatch notification to listeners
             notifyListeners(data);
 
-            // Also dispatch a custom event for other components
             const eventBus = new CustomEvent('websocket_message', { detail: data });
             window.dispatchEvent(eventBus);
         } catch (e) {
@@ -150,7 +129,6 @@ function connectWebSocket(accessToken) {
         globalSocket = null;
         stopHeartbeat();
 
-        // Don't reconnect if no active listeners
         if (activeListenerCount === 0) {
             console.log('No active listeners, not reconnecting');
             return;
@@ -177,7 +155,6 @@ function connectWebSocket(accessToken) {
 
         if (globalReconnectTimeout) clearTimeout(globalReconnectTimeout);
 
-        // Exponential backoff with jitter
         const attempt = (ws._reconnectAttempt || 0) + 1;
         ws._reconnectAttempt = attempt;
         const baseDelay = Math.min(1000 * Math.pow(2, attempt - 1), 30000);
@@ -199,7 +176,6 @@ function connectWebSocket(accessToken) {
 function disconnectGlobalSocket() {
     console.log('Disconnecting global notification socket');
     if (globalSocket) {
-        // Prevent reconnect triggers
         globalSocket.onclose = null;
         stopHeartbeat();
         globalSocket.close();
@@ -209,11 +185,9 @@ function disconnectGlobalSocket() {
         clearTimeout(globalReconnectTimeout);
         globalReconnectTimeout = null;
     }
-    // Clear seen IDs cache
     seenNotificationIds.clear();
 }
 
-// Reconnect when tab becomes visible
 let visibilityHandler = null;
 let beforeUnloadHandler = null;
 
@@ -255,23 +229,19 @@ export default function useNotificationWebSocket(onNewNotification) {
     onNewNotificationRef.current = onNewNotification;
 
     useEffect(() => {
-        // Generate unique ID for this listener
         const listenerId = nextListenerId++;
         listenerIdRef.current = listenerId;
 
-        // Create handler that uses ref
         const handler = (notification) => {
             if (onNewNotificationRef.current) {
                 onNewNotificationRef.current(notification);
             }
         };
 
-        // Add to map
         listeners.set(listenerId, handler);
         activeListenerCount++;
         console.log(`Notification listener added (total: ${activeListenerCount})`);
 
-        // Connect WebSocket if this is the first listener
         if (activeListenerCount === 1) {
             console.log('First listener, connecting notification WebSocket');
             const token = localStorage.getItem('access_token');
@@ -279,21 +249,18 @@ export default function useNotificationWebSocket(onNewNotification) {
                 connectWebSocket(token);
             }
 
-            // Setup global handlers once
             const removeVisibility = setupVisibilityHandler();
             const removeBeforeUnload = setupBeforeUnloadHandler();
             cleanupHandlersRef.current = [removeVisibility, removeBeforeUnload];
         }
 
-        // Listen for token changes
         const handleStorageChange = (e) => {
             if (e.key === 'access_token' && e.newValue !== e.oldValue) {
                 console.log('Token changed, reconnecting notification socket');
-                // Close existing connection and reconnect with new token
                 if (globalSocket) {
                     const oldSocket = globalSocket;
                     globalSocket = null;
-                    oldSocket.onclose = null; // Prevent reconnect trigger
+                    oldSocket.onclose = null;
                     oldSocket.close();
                 }
                 if (e.newValue && activeListenerCount > 0) {
@@ -303,20 +270,16 @@ export default function useNotificationWebSocket(onNewNotification) {
         };
         window.addEventListener('storage', handleStorageChange);
 
-        // Cleanup
         return () => {
-            // Remove this listener
             listeners.delete(listenerId);
             activeListenerCount--;
             console.log(`Notification listener removed (total: ${activeListenerCount})`);
             window.removeEventListener('storage', handleStorageChange);
 
-            // If no more listeners, close global socket
             if (activeListenerCount === 0) {
                 console.log('No more listeners, disconnecting notification socket');
                 disconnectGlobalSocket();
 
-                // Clean up global handlers
                 cleanupHandlersRef.current.forEach(cleanup => {
                     if (cleanup && typeof cleanup === 'function') cleanup();
                 });
@@ -325,7 +288,7 @@ export default function useNotificationWebSocket(onNewNotification) {
                 beforeUnloadHandler = null;
             }
         };
-    }, []); // Empty dependency array - only run once per component mount
+    }, []);
 
     return {
         disconnect: disconnectGlobalSocket,

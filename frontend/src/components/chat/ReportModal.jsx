@@ -8,6 +8,7 @@ const REPORT_REASONS = [
     { value: 'spam', label: 'Spam' },
     { value: 'inappropriate_content', label: 'Inappropriate Content' },
     { value: 'impersonation', label: 'Impersonation' },
+    { value: 'violence', label: 'Violence or Threats' },
     { value: 'other', label: 'Other' },
 ];
 
@@ -17,6 +18,7 @@ const ReportModal = ({
     reportedUserId,
     reportedUserName,
     conversationId,
+    messageId,           // NEW: optional message ID for reporting a specific message
 }) => {
     const [reason, setReason] = useState('');
     const [description, setDescription] = useState('');
@@ -35,16 +37,18 @@ const ReportModal = ({
 
         setIsSubmitting(true);
         try {
-            await chatApi.reportUser(
-                reportedUserId,
+            // Use the correct API method with payload object
+            await chatApi.submitReport({
+                reported_user_id: reportedUserId,
+                conversation_id: conversationId,
+                message_id: messageId,
                 reason,
                 description,
-                conversationId
-            );
+            });
             setIsSubmitted(true);
             toast.success('Report submitted. Our team will review it.');
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Failed to submit report.');
+            toast.error(err.response?.data?.detail || err.response?.data?.message || 'Failed to submit report.');
         } finally {
             setIsSubmitting(false);
         }
@@ -58,23 +62,35 @@ const ReportModal = ({
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="report-modal-title"
+        >
             {/* Backdrop */}
             <div
                 className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
                 onClick={handleClose}
             />
 
-            {/* Modal */}
-            <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full p-6 transform transition-all">
+            {/* Modal - stop propagation so clicks inside don't close */}
+            <div
+                className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full p-6 transform transition-all"
+                onClick={(e) => e.stopPropagation()}
+            >
                 {/* Header */}
                 <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                        Report {reportedUserName}
+                    <h3
+                        id="report-modal-title"
+                        className="text-lg font-semibold text-gray-900 dark:text-white"
+                    >
+                        {messageId ? 'Report Message' : `Report ${reportedUserName || 'User'}`}
                     </h3>
                     <button
                         onClick={handleClose}
                         className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                        aria-label="Close"
                     >
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

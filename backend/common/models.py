@@ -7,7 +7,6 @@ class BaseModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
     
-    # Track who did what
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
         on_delete=models.SET_NULL, 
@@ -15,7 +14,6 @@ class BaseModel(models.Model):
         related_name="%(class)s_created"
     )
     
-    # Soft delete capability
     is_active = models.BooleanField(default=True, db_index=True)
     
     class Meta:

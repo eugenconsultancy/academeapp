@@ -1,15 +1,25 @@
+# apps/opportunities/api.py
+"""
+Opportunity API endpoints.
+Added Scholarship review submit, pay, and webhook endpoints.
+"""
+
 from typing import List, Optional
 from django.shortcuts import get_object_or_404
-from ninja import Router, Schema
+from ninja import Router, Schema, UploadedFile, File, Query
 from ninja.errors import HttpError
 from common.jwt_auth import JWTAuth
-from .models import Opportunity, Like, OpportunityReport
-from .services import OpportunityService
+from .models import Opportunity, Like, OpportunityReport, ScholarshipReview
+from .services import OpportunityService, ScholarshipService
+from .schema import (
+    OpportunityIn, OpportunityOut, ScholarshipSubmitIn, ScholarshipPayIn,
+    ScholarshipReviewOut
+)
 from datetime import timedelta
 from django.utils import timezone
-from .schema import OpportunityIn
 
 router = Router()
+
 
 class ReportIn(Schema):
     reason: str = "spam"
@@ -24,7 +34,7 @@ class OpportunityUpdate(Schema):
     expires_in_days: Optional[int] = None   # days from now, or keep existing
 
 # ------------------------------------------------------------
-# EXISTING ENDPOINTS   unchanged except date format)
+# EXISTING ENDPOINTS (unchanged except date format)
 # ------------------------------------------------------------
 @router.get("/", auth=JWTAuth())
 def list_opportunities(request, category: str = None):
@@ -88,7 +98,7 @@ def report_opportunity(request, opportunity_id: str, data: ReportIn):
     return {"message": "Report submitted successfully"}
 
 # ------------------------------------------------------------
-# NEW ENDPOINTS (all four CRUD operations for a single opportunity)
+# CRUD endpoints for a single opportunity
 # ------------------------------------------------------------
 @router.post("/", auth=JWTAuth())
 def create_opportunity(request, data: OpportunityIn):
@@ -162,3 +172,64 @@ def delete_opportunity(request, opportunity_id: str):
 
     opportunity.delete()
     return {"message": "Opportunity deleted successfully"}
+
+# ─── Scholarship Review Endpoints ────────────────────────────────────────────
+
+@router.post("/scholarship/submit/", auth=JWTAuth())
+def submit_scholarship_review(
+    request,
+    document: UploadedFile = File(...),
+    opportunity_id: str = Query(...),
+):
+    """
+    Upload a document for scholarship review.
+    Creates a review record with status 'pending'.
+    """
+    if not opportunity_id:
+        raise HttpError(400, "opportunity_id is required")
+    review = ScholarshipService.submit_review(request.auth, opportunity_id, document)
+    return {
+        "id": str(review.id),
+        "status": review.status,
+        "message": "Document uploaded. Please pay the review fee to proceed."
+    }
+
+@router.post("/scholarship/{review_id}/pay/", auth=JWTAuth())
+def initiate_review_payment(request, review_id: str, data: ScholarshipPayIn):
+    """
+    Initiate M‑Pesa STK push for the 100 KES review fee.
+    Returns the invoice ID if successful.
+    """
+    result = ScholarshipService.initiate_payment(
+        review_id, request.auth, data.phone_number
+    )
+    if result.get("status") == "SUCCESS":
+        return {
+            "message": "STK push sent. Check your phone.",
+            "invoice_id": result.get("invoice")
+        }
+    raise HttpError(400, result.get("error", "Payment initiation failed"))
+
+@router.post("/scholarship/webhook/", auth=None)
+def scholarship_payment_webhook(request):
+    """
+    Payment callback from IntaSend.
+    Expects a JSON body with 'invoice_id' and 'state' (Completed/Failed).
+    """
+    import json
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, AttributeError):
+        return {"error": "Invalid JSON body"}, 400
+
+    invoice_id = body.get("invoice_id") or body.get("invoice", {}).get("invoice_id")
+    if not invoice_id:
+        return {"error": "Missing invoice_id"}, 400
+
+    state = body.get("state", "")
+    if state.upper() in ("COMPLETE", "SUCCESS", "COMPLETED"):
+        review = ScholarshipService.handle_payment_callback(invoice_id)
+        if review:
+            # The signal will notify admins automatically
+            return {"message": "Payment confirmed", "review_id": str(review.id)}
+    return {"message": "Ignored"}, 200

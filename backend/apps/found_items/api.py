@@ -1,3 +1,4 @@
+# backend/apps/found_items/api.py
 import json
 import hashlib
 import logging
@@ -54,7 +55,7 @@ def _item_to_out(item: FoundItem) -> FoundItemOut:
 # ITEMS
 # ══════════════════════════════════════════════════════════════════
 
-@router.get("/items/", auth=JWTAuth(), response=List[FoundItemOut])
+@router.get("/", auth=JWTAuth(), response=List[FoundItemOut])
 def list_items(request, category: str = None, search: str = None):
     items = FoundItem.objects.filter(status=ItemStatus.ACTIVE.value)
     if category:
@@ -65,7 +66,7 @@ def list_items(request, category: str = None, search: str = None):
     items = items.order_by('-created_at')
     return [_item_to_out(i) for i in items]
 
-@router.post("/items/", auth=JWTAuth(), response={201: FoundItemOut})
+@router.post("/", auth=JWTAuth(), response={201: FoundItemOut})
 def create_item(request, data: FoundItemCreateIn = Form(...)):
     """Create a found item. If no image, set status='active' immediately."""
     security_answer_hashed = _hash_security_answer(data.security_answer) if data.security_answer else ""
@@ -107,12 +108,12 @@ def create_item(request, data: FoundItemCreateIn = Form(...)):
 
     return 201, _item_to_out(item)
 
-@router.get("/items/{item_id}/", auth=JWTAuth(), response=FoundItemOut)
+@router.get("/{item_id}/", auth=JWTAuth(), response=FoundItemOut)
 def get_item(request, item_id: UUID):
     item = get_object_or_404(FoundItem, id=item_id)
     return _item_to_out(item)
 
-@router.delete("/items/{item_id}/", auth=JWTAuth())
+@router.delete("/{item_id}/", auth=JWTAuth())
 def delete_item(request, item_id: UUID):
     item = get_object_or_404(FoundItem, id=item_id)
     if request.auth != item.posted_by and request.auth.role != 'admin':
@@ -140,7 +141,7 @@ def my_items(request):
 # OWNERSHIP VERIFICATION (now enforced in claim creation)
 # ══════════════════════════════════════════════════════════════════
 
-@router.post("/items/{item_id}/verify-ownership/", auth=JWTAuth(), response=VerifyOwnershipOut)
+@router.post("/{item_id}/verify-ownership/", auth=JWTAuth(), response=VerifyOwnershipOut)
 def verify_ownership(request, item_id: UUID):
     item = get_object_or_404(FoundItem, id=item_id)
     if not item.admission_number_on_item:
@@ -153,7 +154,7 @@ def verify_ownership(request, item_id: UUID):
 # CLAIM LIFECYCLE (with proper enum and ownership enforcement)
 # ══════════════════════════════════════════════════════════════════
 
-@router.get("/items/{item_id}/claim-status/", auth=JWTAuth(), response=ClaimStatusOut)
+@router.get("/{item_id}/claim-status/", auth=JWTAuth(), response=ClaimStatusOut)
 def get_item_claim_status(request, item_id: UUID):
     claim = Claim.objects.filter(item_id=item_id, claimant=request.auth).first()
     if claim:
@@ -179,7 +180,7 @@ def get_item_claim_status(request, item_id: UUID):
             "security_question": None,
         }
 
-@router.post("/items/{item_id}/claim/", auth=JWTAuth(), response={201: ClaimDetailOut})
+@router.post("/{item_id}/claim/", auth=JWTAuth(), response={201: ClaimDetailOut})
 def claim_item(request, item_id: UUID):
     item = get_object_or_404(FoundItem, id=item_id)
     if item.is_claimed:
@@ -295,13 +296,13 @@ def cancel_claim(request, claim_id: UUID):
 # TIPS & REPORT
 # ══════════════════════════════════════════════════════════════════
 
-@router.post("/items/{item_id}/tip/", auth=JWTAuth())
+@router.post("/{item_id}/tip/", auth=JWTAuth())
 def send_tip(request, item_id: UUID, data: TipIn):
     item = get_object_or_404(FoundItem, id=item_id)
     Tip.objects.create(item=item, sender=request.auth, message=data.message)
     return {"message": "Tip sent"}
 
-@router.post("/items/{item_id}/report/", auth=JWTAuth())
+@router.post("/{item_id}/report/", auth=JWTAuth())
 def report_item(request, item_id: UUID, data: dict = Body(...)):
     """Accept JSON payload: {'reason': str}"""
     item = get_object_or_404(FoundItem, id=item_id)

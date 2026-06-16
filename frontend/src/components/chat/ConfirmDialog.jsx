@@ -20,20 +20,35 @@ const ConfirmDialog = ({
         warning: 'bg-yellow-600 hover:bg-yellow-700 focus:ring-yellow-500',
     };
 
+    // Dynamic icon based on variant (optional improvement)
+    const iconColors = {
+        danger: 'text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900',
+        primary: 'text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900',
+        warning: 'text-yellow-600 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900',
+    };
+
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-dialog-title"
+        >
             {/* Backdrop */}
             <div
                 className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
                 onClick={onCancel}
             />
 
-            {/* Dialog */}
-            <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full p-6 transform transition-all">
+            {/* Dialog - stop propagation so clicks inside don't close */}
+            <div
+                className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full p-6 transform transition-all"
+                onClick={(e) => e.stopPropagation()}
+            >
                 {/* Icon */}
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900 mb-4">
+                <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full mb-4 ${iconColors[confirmVariant] || iconColors.danger}`}>
                     <svg
-                        className="h-6 w-6 text-red-600 dark:text-red-400"
+                        className="h-6 w-6"
                         fill="none"
                         viewBox="0 0 24 24"
                         strokeWidth="1.5"
@@ -48,7 +63,10 @@ const ConfirmDialog = ({
                 </div>
 
                 {/* Content */}
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white text-center mb-2">
+                <h3
+                    id="confirm-dialog-title"
+                    className="text-lg font-semibold text-gray-900 dark:text-white text-center mb-2"
+                >
                     {title}
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-6">
@@ -67,7 +85,7 @@ const ConfirmDialog = ({
                     <button
                         onClick={onConfirm}
                         disabled={isLoading}
-                        className={`flex-1 px-4 py-2.5 text-sm font-medium text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 transition-colors ${variantClasses[confirmVariant]}`}
+                        className={`flex-1 px-4 py-2.5 text-sm font-medium text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 transition-colors ${variantClasses[confirmVariant] || variantClasses.danger}`}
                     >
                         {isLoading ? (
                             <span className="flex items-center justify-center gap-2">

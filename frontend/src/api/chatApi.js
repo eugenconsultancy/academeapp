@@ -1,182 +1,336 @@
-// src/api/chatApi.js
-import apiClient from './client';
+// frontend/src/api/chatApi.js
+/**
+ * Chat API client for Academe.
+ * 
+ * The base URL is already /api (set in client.js), so all paths here
+ * start with /chat/...  → resulting in /api/chat/...
+ *
+ * Trailing slashes are included EXACTLY as the backend expects them.
+ * The backend defines some routes with a trailing slash and some
+ * without; this file must match each one precisely.
+ *
+ * Every method returns a safe fallback on error:
+ * - list endpoints → { data: [] }
+ * - single items   → { data: null }
+ * - mutating calls → null (caller should check)
+ * 
+ * Token refresh is handled globally by client.js; this module never
+ * touches tokens or localStorage.
+ */
+import client from './client'; // pre-configured axios instance
+import useChatStore from '@/stores/useChatStore';
 
-// Helper for logging API errors
-const logApiError = (endpoint, error, context = {}) => {
-    console.error(`API Error [${endpoint}]:`, {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        message: error.message,
-        ...context
-    });
-};
+// ─── Error Logger (never throws) ────────────────────────────────────────────
+
+function handleApiError(error, context = 'API request') {
+    const status = error.response?.status;
+    const detail = error.response?.data?.detail || error.response?.data?.error || error.message;
+
+    switch (status) {
+        case 429: {
+            const data = error.response?.data;
+            const limit = data?.limit;
+            useChatStore.getState()?.setRateLimit?.(limit || 60, 0);
+            console.warn(`[RateLimit] ${context}: ${detail}`);
+            break;
+        }
+        case 403:
+            console.warn(`[Forbidden] ${context}: ${detail}`);
+            break;
+        case 404:
+            console.warn(`[Not Found] ${context}: ${detail}`);
+            break;
+        case 401:
+            // 401 is handled globally by the interceptor; just log here
+            console.warn(`[Unauthorized] ${context}: ${detail}`);
+            break;
+        default:
+            console.error(`[Error ${status}] ${context}: ${detail}`);
+            break;
+    }
+    // NEVER re‑throw – caller receives a safe fallback
+}
+
+// ─── API Methods ─────────────────────────────────────────────────────────────
 
 const chatApi = {
-    // ─── Conversations ───
-    getConversations: (archived = false) =>
-        apiClient.get('chat/conversations', { params: { archived } })
-            .catch(error => {
-                logApiError('getConversations', error, { archived });
-                throw error;
-            }),
+    // ── Conversations ────────────────────────────────────────────────────
 
-    startConversation: (receiverId) =>
-        apiClient.post('chat/conversations/start', { receiver_id: receiverId })
-            .catch(error => {
-                logApiError('startConversation', error, { receiverId });
-                throw error;
-            }),
-
-    getMessages: (convId, before = null, limit = 50) => {
-        // Validate UUID format before sending
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (!uuidRegex.test(convId)) {
-            console.error(`Invalid conversation ID format: ${convId}`);
-            return Promise.reject(new Error(`Invalid conversation ID: ${convId}`));
+    async getConversations(filter = 'all', cursor = null) {
+        try {
+            const params = { filter, limit: 50 };
+            if (cursor) params.cursor = cursor;
+            return await client.get('/chat/conversations', { params });
+        } catch (error) {
+            handleApiError(error, 'getConversations');
+            return { data: [] }; // safe empty list
         }
-
-        return apiClient.get(`chat/conversations/${convId}/messages`, {
-            params: { before, limit },
-        }).catch(error => {
-            logApiError('getMessages', error, { convId, before, limit });
-            throw error;
-        });
     },
 
-    sendMessage: (convId, data, idempotencyKey = null) => {
-        const headers = {};
-        if (idempotencyKey) {
-            headers['Idempotency-Key'] = idempotencyKey;
-        }
-        return apiClient.post(`chat/conversations/${convId}/messages`, data, { headers })
-            .catch(error => {
-                logApiError('sendMessage', error, { convId, data, idempotencyKey });
-                throw error;
+    async createConversation(participantIds) {
+        try {
+            return await client.post('/chat/conversations', {
+                participant_ids: participantIds,
             });
+        } catch (error) {
+            handleApiError(error, 'createConversation');
+            return { data: null };
+        }
     },
 
-    markAsRead: (convId, messageIds = null) =>
-        apiClient.post(`chat/conversations/${convId}/mark-read`, {
-            message_ids: messageIds || [],
-        }).catch(error => {
-            logApiError('markAsRead', error, { convId, messageIds });
-            throw error;
-        }),
+    async togglePin(convId) {
+        try {
+            return await client.post(`/chat/conversations/${convId}/pin`);
+        } catch (error) {
+            handleApiError(error, 'togglePin');
+            return null;
+        }
+    },
 
-    // ─── Message Edit/Delete ───
-    editMessage: (convId, messageId, newContent) =>
-        apiClient.put(`chat/conversations/${convId}/messages/${messageId}`, { content: newContent })
-            .catch(error => {
-                logApiError('editMessage', error, { convId, messageId });
-                throw error;
-            }),
+    async toggleArchive(convId) {
+        try {
+            return await client.post(`/chat/conversations/${convId}/archive`);
+        } catch (error) {
+            handleApiError(error, 'toggleArchive');
+            return null;
+        }
+    },
 
-    deleteMessage: (convId, messageId, deleteForEveryone = true) =>
-        apiClient.delete(`chat/conversations/${convId}/messages/${messageId}`, {
-            params: { delete_for_everyone: deleteForEveryone }
-        }).catch(error => {
-            logApiError('deleteMessage', error, { convId, messageId, deleteForEveryone });
-            throw error;
-        }),
+    async toggleMute(convId) {
+        try {
+            return await client.post(`/chat/conversations/${convId}/mute`);
+        } catch (error) {
+            handleApiError(error, 'toggleMute');
+            return null;
+        }
+    },
 
-    // ─── Archive / Unarchive / Delete ───
-    archiveConversation: (convId) =>
-        apiClient.patch(`chat/conversations/${convId}/archive`)
-            .catch(error => {
-                logApiError('archiveConversation', error, { convId });
-                throw error;
-            }),
+    async leaveConversation(convId) {
+        try {
+            return await client.post(`/chat/conversations/${convId}/leave`);
+        } catch (error) {
+            handleApiError(error, 'leaveConversation');
+            return null;
+        }
+    },
 
-    unarchiveConversation: (convId) =>
-        apiClient.patch(`chat/conversations/${convId}/unarchive`)
-            .catch(error => {
-                logApiError('unarchiveConversation', error, { convId });
-                throw error;
-            }),
+    // ── Messages ─────────────────────────────────────────────────────────
 
-    deleteConversation: (convId) =>
-        apiClient.delete(`chat/conversations/${convId}`)
-            .catch(error => {
-                logApiError('deleteConversation', error, { convId });
-                throw error;
-            }),
+    async getMessages(convId, cursor = null) {
+        try {
+            const params = { limit: 50 };
+            if (cursor) params.cursor = cursor;
+            return await client.get(`/chat/conversations/${convId}/messages`, { params });
+        } catch (error) {
+            handleApiError(error, 'getMessages');
+            return { data: { items: [], next_cursor: null } };
+        }
+    },
 
-    // ─── Block / Unblock ───
-    blockUser: (userId) =>
-        apiClient.post('chat/block', { blocked_user_id: userId })
-            .catch(error => {
-                logApiError('blockUser', error, { userId });
-                throw error;
-            }),
+    async sendMessage(convId, payload) {
+        try {
+            const response = await client.post(
+                `/chat/conversations/${convId}/messages`,
+                payload,
+            );
 
-    unblockUser: (userId) =>
-        apiClient.delete(`chat/block/${userId}`)
-            .catch(error => {
-                logApiError('unblockUser', error, { userId });
-                throw error;
-            }),
+            // Update rate‑limit store when the server returns the info
+            if (response.data?.rate_limit) {
+                const { used, limit } = response.data.rate_limit;
+                useChatStore.getState()?.setRateLimit?.(limit, limit - used);
+            }
 
-    getBlockedUsers: () =>
-        apiClient.get('chat/blocked')
-            .catch(error => {
-                logApiError('getBlockedUsers', error);
-                throw error;
-            }),
+            return response;
+        } catch (error) {
+            if (error.response?.status === 429) {
+                const data = error.response.data;
+                useChatStore.getState()?.setRateLimit?.(data.limit || 60, 0);
+            }
+            handleApiError(error, 'sendMessage');
+            return { data: null }; // caller should treat as failed send
+        }
+    },
 
-    // ─── Mute / Unmute ───
-    muteConversation: (convId) =>
-        apiClient.post(`chat/conversations/${convId}/mute`)
-            .catch(error => {
-                logApiError('muteConversation', error, { convId });
-                throw error;
-            }),
+    async editMessage(messageId, content) {
+        try {
+            return await client.patch(`/chat/messages/${messageId}`, null, {
+                params: { content },
+            });
+        } catch (error) {
+            handleApiError(error, 'editMessage');
+            return null;
+        }
+    },
 
-    unmuteConversation: (convId) =>
-        apiClient.delete(`chat/conversations/${convId}/mute`)
-            .catch(error => {
-                logApiError('unmuteConversation', error, { convId });
-                throw error;
-            }),
+    async deleteMessage(messageId, mode = 'self') {
+        try {
+            return await client.delete(`/chat/messages/${messageId}`, {
+                params: { mode },
+            });
+        } catch (error) {
+            handleApiError(error, 'deleteMessage');
+            return null;
+        }
+    },
 
-    // ─── Pin / Unpin ───
-    pinConversation: (convId) =>
-        apiClient.post(`chat/conversations/${convId}/pin`)
-            .catch(error => {
-                logApiError('pinConversation', error, { convId });
-                throw error;
-            }),
+    async forwardMessage(messageId, targetConvIds) {
+        try {
+            return await client.post(`/chat/messages/${messageId}/forward`, {
+                target_conversation_ids: targetConvIds,
+            });
+        } catch (error) {
+            handleApiError(error, 'forwardMessage');
+            return null;
+        }
+    },
 
-    unpinConversation: (convId) =>
-        apiClient.delete(`chat/conversations/${convId}/pin`)
-            .catch(error => {
-                logApiError('unpinConversation', error, { convId });
-                throw error;
-            }),
+    async bulkSendMessages(convId, messages) {
+        try {
+            return await client.post(`/chat/conversations/${convId}/bulk-send`, {
+                messages,
+            });
+        } catch (error) {
+            handleApiError(error, 'bulkSendMessages');
+            return { data: [] }; // empty array indicating nothing synced
+        }
+    },
 
-    // ─── Report ───
-    reportUser: (reportedUserId, reason, description = '', conversationId = null) =>
-        apiClient.post('chat/report', {
-            reported_user_id: reportedUserId,
-            reason,
-            description,
-            conversation_id: conversationId,
-        }).catch(error => {
-            logApiError('reportUser', error, { reportedUserId, reason, conversationId });
-            throw error;
-        }),
+    // ── Blocking ─────────────────────────────────────────────────────────
 
-    // ─── File Upload ───
-    getPresignedUrl: (fileName, contentType, maxFileSize = 10 * 1024 * 1024) =>
-        apiClient.post('chat/presigned-url', {
-            file_name: fileName,
-            content_type: contentType,
-            max_file_size: maxFileSize,
-        }).catch(error => {
-            logApiError('getPresignedUrl', error, { fileName, contentType, maxFileSize });
-            throw error;
-        }),
+    async blockUser(userId) {
+        try {
+            return await client.post(`/chat/users/${userId}/block`);
+        } catch (error) {
+            handleApiError(error, 'blockUser');
+            return null;
+        }
+    },
+
+    async unblockUser(userId) {
+        try {
+            return await client.delete(`/chat/users/${userId}/unblock`);
+        } catch (error) {
+            handleApiError(error, 'unblockUser');
+            return null;
+        }
+    },
+
+    async listBlocked() {
+        try {
+            return await client.get('/chat/blocked');
+        } catch (error) {
+            handleApiError(error, 'listBlocked');
+            return { data: [] };
+        }
+    },
+
+    // ── Reporting ────────────────────────────────────────────────────────
+
+    async submitReport(payload) {
+        try {
+            return await client.post('/chat/reports', payload);
+        } catch (error) {
+            handleApiError(error, 'submitReport');
+            return null;
+        }
+    },
+
+    // ── Search ───────────────────────────────────────────────────────────
+
+    async searchMessages(q, conversationId = null) {
+        try {
+            const params = { q, limit: 20 };
+            if (conversationId) params.conversation_id = conversationId;
+            return await client.get('/chat/messages/search', { params });
+        } catch (error) {
+            handleApiError(error, 'searchMessages');
+            return { data: [] };
+        }
+    },
+
+    async searchUsers(q) {
+        try {
+            // ✅ FIXED: trailing slash added to match backend route "/users/search/"
+            return await client.get('/chat/users/search/', {
+                params: { q, limit: 10 },
+            });
+        } catch (error) {
+            handleApiError(error, 'searchUsers');
+            return { data: [] };
+        }
+    },
+
+    // ── Rate Limit ───────────────────────────────────────────────────────
+
+    async getRateLimit() {
+        try {
+            const response = await client.get('/chat/rate-limit');
+            if (response.data) {
+                useChatStore.getState()?.setRateLimit?.(
+                    response.data.limit,
+                    response.data.remaining,
+                );
+            }
+            return response;
+        } catch (error) {
+            handleApiError(error, 'getRateLimit');
+            // Return a safe fallback that won't block the UI
+            return { data: { used: 0, limit: 60, remaining: 60, reset_at: null } };
+        }
+    },
+
+    // ── Draft ────────────────────────────────────────────────────────────
+
+    async saveDraft(convId, draft) {
+        try {
+            return await client.patch(`/chat/conversations/${convId}/draft`, { draft });
+        } catch (error) {
+            // Non‑critical – just warn, never crash
+            console.warn('Failed to save draft:', error.message);
+            return null;
+        }
+    },
+
+    // ── File Upload (Presigned URL) ──────────────────────────────────────
+
+    async uploadFile(file) {
+        try {
+            // Step 1: Get presigned POST URL and fields
+            const { data } = await client.post('/chat/upload/presigned-url', {
+                file_name: file.name,
+                content_type: file.type || 'application/octet-stream',
+            });
+
+            // Step 2: Upload directly to S3 (no auth headers)
+            const formData = new FormData();
+            if (data.fields) {
+                Object.entries(data.fields).forEach(([key, value]) => {
+                    formData.append(key, value);
+                });
+            }
+            formData.append('file', file);
+
+            const uploadResponse = await fetch(data.url, {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!uploadResponse.ok) {
+                const errorText = await uploadResponse.text();
+                throw new Error(`S3 upload failed: ${uploadResponse.status} ${errorText}`);
+            }
+
+            return {
+                file_url: data.file_url,
+                file_name: file.name,
+                file_size: file.size,
+                file_mime_type: file.type || 'application/octet-stream',
+            };
+        } catch (error) {
+            handleApiError(error, 'uploadFile');
+            return null; // upload failed
+        }
+    },
 };
 
-export { chatApi };
 export default chatApi;

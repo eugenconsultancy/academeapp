@@ -1,3 +1,4 @@
+// frontend/src/utils/storage.js
 import { openDB } from 'idb';
 
 const DB_NAME = 'AcademeOfflineDB';
@@ -53,9 +54,6 @@ export async function getDB() {
             if (!db.objectStoreNames.contains('preferences')) {
                 db.createObjectStore('preferences', { keyPath: 'key' });
             }
-            // if (!db.objectStoreNames.contains('preferences')) {
-            //     db.createObjectStore('preferences', {keyPath: 'key' });
-            // }
             if (!db.objectStoreNames.contains('biometrics')) {
                 db.createObjectStore('biometrics', { keyPath: 'id' });
             }
@@ -241,6 +239,13 @@ export const offlineStorage = {
         }
     },
 
+    // ─────────────────────────────────────────────────────────────
+    // FIX: processSyncQueue no longer manually checks for token.
+    // The API client (with its refresh interceptor) handles auth.
+    // If the interceptor detects a missing/invalid token and the
+    // refresh fails, it will redirect to /login, which naturally
+    // stops further sync processing.
+    // ─────────────────────────────────────────────────────────────
     async processSyncQueue(apiInstance = null) {
         if (_syncLock) {
             console.warn('⚠️ Sync already in progress, skipping duplicate call');
@@ -252,12 +257,9 @@ export const offlineStorage = {
             return { synced: 0, failed: 0 };
         }
 
-        // Check if user is logged in (has a valid access token)
-        const accessToken = localStorage.getItem('access_token');
-        if (!accessToken) {
-            console.warn('🔒 No access token, cannot sync. User must login first.');
-            return { synced: 0, failed: 0 };
-        }
+        // Removed the manual check for access_token – the request will go through
+        // the client interceptors, which will refresh the token if possible.
+        // If the user is truly logged out, the interceptor will redirect to /login.
 
         _syncLock = true;
         console.log('🔒 Sync lock acquired');

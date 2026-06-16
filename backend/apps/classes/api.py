@@ -1,3 +1,4 @@
+# backend/apps/classes/api.py
 from typing import List, Optional
 from uuid import UUID
 from django.shortcuts import get_object_or_404

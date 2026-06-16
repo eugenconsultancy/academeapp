@@ -1,3 +1,11 @@
+Full Name	Phone Number	Role	Password
+Alice Wanjiku	+254702496101	student	test1234
+Brian Otieno	+254702496102	student_leader	test1234
+Grace Chepkoech	+254702496107	class_rep	test1234
+
+
+
+
 Here's a detailed outline of each dependency, organized by category:
 
 ---
@@ -638,3 +646,18 @@ CHAPTERS:
 
 
  im having an issue in the mobile view for my application where when a user want to input keyboad entries, the keyboard occupies the while screen with a white background, making the login/entry form to move out of the viewable view of the user. so whch s=file to check for the issue?
+
+
+
+
+
+
+
+
+
+
+
+
+ users have ability to signup for new accounts to access specififci features like blog commenting, sharing, and liking post. also users with acciunts to have the ability to 
+
+ 

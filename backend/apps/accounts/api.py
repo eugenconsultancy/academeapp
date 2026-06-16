@@ -1,19 +1,22 @@
+# backend/apps/accounts/api.py
+
 from typing import List
 from django.shortcuts import get_object_or_404
 from django.conf import settings
 from django.utils import timezone
+from django.contrib.auth import authenticate
 from ninja import Router, Query, File, Schema
 from ninja.files import UploadedFile
 
 from common.auth import PhoneOTPAuth
-from common.jwt_auth import JWTAuth, create_token_pair
+from common.jwt_auth import JWTAuthBearer, create_token_pair, JWTAuth
 from .models import User, Badge, DataExport, UserSession, StudentRole
 from .schema import (
-    SignupIn, OTPRequestIn, OTPVerifyIn, ProfileUpdateIn
+    SignupIn, OTPRequestIn, OTPVerifyIn, ProfileUpdateIn,
+    ResetPasswordIn, BiometricEnrollIn, BiometricLoginIn,
+    TokenOut,                           # ← added
 )
-from .schema import ResetPasswordIn
 from .permissions import IsAdmin
-from .schema import BiometricEnrollIn, BiometricLoginIn
 from .services import AccountService, TwoFactorService
 
 # Import AuditLog from governance app (safe fallback)
@@ -38,14 +41,24 @@ except ImportError:
 
 router = Router()
 
-# Inline schema for role update
+# ── Inline Schemas ──────────────────────────────────────────────────────────
 class RoleUpdateIn(Schema):
     role: str
 
-# Inline schema for 2FA verify-login
 class TwoFactorVerifyLoginIn(Schema):
     temp_token: str
     code: str
+
+class TwoFactorVerifySetupIn(Schema):
+    code: str
+
+class TwoFactorDisableIn(Schema):
+    code: str
+
+class ChangePasswordIn(Schema):
+    old_password: str
+    new_password: str
+
 
 # ============================================
 # AUTHENTICATION
@@ -147,6 +160,27 @@ def reset_password(request, data: ResetPasswordIn):
     )
 
     return {"message": "Password reset successful. Please log in with your new password."}
+
+
+@router.post("/change-password/", auth=JWTAuth())
+def change_password(request, data: ChangePasswordIn):
+    """Change password for authenticated user."""
+    user = request.auth
+    # Verify old password
+    if not authenticate(phone_number=user.phone_number, password=data.old_password):
+        return {"error": "Current password is incorrect"}
+
+    user.set_password(data.new_password)
+    user.save()
+
+    # Revoke all sessions except current (optional)
+    current_token = request.headers.get('Authorization', '').replace('Bearer ', '')
+    UserSession.objects.filter(user=user, is_active=True).exclude(refresh_token=current_token).update(
+        is_active=False,
+        revoked_at=timezone.now()
+    )
+
+    return {"message": "Password changed successfully"}
 
 
 # ============================================
@@ -474,12 +508,12 @@ def revoke_all_sessions(request):
     }
 
 
-@router.post("/refresh-token/", auth=None)
+# ✅ FIXED: refresh_token endpoint now has an explicit response schema
+@router.post("/refresh-token/", auth=None, response={200: TokenOut})
 def refresh_token(request):
     import json
     import jwt
     from django.conf import settings
-    from common.jwt_auth import decode_token
 
     try:
         body = json.loads(request.body)
@@ -516,26 +550,25 @@ def refresh_token(request):
         return {"error": f"Token refresh failed: {str(e)}"}, 500
 
 
+# ============================================
+# BIOMETRIC
+# ============================================
+
 @router.post("/biometric/enroll/", auth=JWTAuth())
 def enroll_biometric(request, data: BiometricEnrollIn):
     user = request.auth
-
     success, message = AccountService.enroll_face_cloud(user, data.image_data)
-
     if not success:
         return {"error": message}
-
     return {"message": "Biometric data enrolled successfully."}
 
 @router.post("/biometric/login/", auth=None)
 def biometric_login(request, data: BiometricLoginIn):
     user = User.objects.filter(phone_number=data.phone_number).first()
-
     if not user:
         return {"error": "User not found."}
 
     is_match, message = AccountService.verify_face_cloud(user, data.image_data)
-
     if not is_match:
         return {"error": message}
 
@@ -554,13 +587,22 @@ def biometric_login(request, data: BiometricLoginIn):
         }
     }
 
+@router.post("/biometric/disable/", auth=JWTAuth())
+def disable_biometric(request):
+    """Disable biometric authentication for current user."""
+    user = request.auth
+    user.biometric_enabled = False
+    user.face_data = ''   # clear stored face data
+    user.save(update_fields=['biometric_enabled', 'face_data'])
+    return {"message": "Biometric authentication disabled"}
+
+
 # ============================================
 # TWO-FACTOR AUTHENTICATION (FULL TOTP)
 # ============================================
 
 @router.get("/2fa/setup/", auth=JWTAuth())
 def two_factor_setup(request):
-    """Generate QR code and secret for TOTP setup."""
     user = request.auth
     secret, qr_code = TwoFactorService.generate_qr_code(user)
     from django.core.cache import cache
@@ -568,17 +610,13 @@ def two_factor_setup(request):
     return {"qr_code": qr_code, "secret": secret}
 
 @router.post("/2fa/verify-setup/", auth=JWTAuth())
-def verify_two_factor_setup(request, data: Schema):
-    from ninja import Schema as NinjaSchema
-    class VerifySetupIn(NinjaSchema):
-        code: str
-    verify_data = VerifySetupIn(**data.dict())
+def verify_two_factor_setup(request, data: TwoFactorVerifySetupIn):
     user = request.auth
     from django.core.cache import cache
     secret = cache.get(f"2fa_secret_{user.id}")
     if not secret:
         return {"error": "Setup session expired, please restart"}
-    if not TwoFactorService.verify_totp_code(secret, verify_data.code):
+    if not TwoFactorService.verify_totp_code(secret, data.code):
         return {"error": "Invalid verification code"}
     user.two_factor_enabled = True
     user.save(update_fields=['two_factor_enabled'])
@@ -587,13 +625,9 @@ def verify_two_factor_setup(request, data: Schema):
     return {"message": "2FA enabled", "backup_codes": backup_codes}
 
 @router.post("/2fa/disable/", auth=JWTAuth())
-def disable_two_factor(request, data: Schema):
-    from ninja import Schema as NinjaSchema
-    class DisableIn(NinjaSchema):
-        code: str
-    disable_data = DisableIn(**data.dict())
+def disable_two_factor(request, data: TwoFactorDisableIn):
     user = request.auth
-    if not TwoFactorService.verify_totp(user, disable_data.code):
+    if not TwoFactorService.verify_totp(user, data.code):
         return {"error": "Invalid 2FA code"}
     user.two_factor_enabled = False
     user.save(update_fields=['two_factor_enabled'])
