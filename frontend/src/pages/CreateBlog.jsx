@@ -1,3 +1,4 @@
+// frontend/src/pages/CreateBlog.jsx
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -5,8 +6,8 @@ import { blogApi } from '../api/blogApi';
 import { useAuth } from '../contexts/AuthContext';
 import Card from '../components/ui/Card';
 import toast from 'react-hot-toast';
-import ReactQuill from 'react-quill';                         // ← new import
-import 'react-quill/dist/quill.snow.css';                     // ← Quill theme
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 import {
   FiArrowLeft, FiSave, FiEye, FiSend, FiX, FiPlus,
   FiHome, FiBookOpen, FiChevronRight, FiImage,
@@ -26,12 +27,11 @@ export default function CreateBlog() {
     is_featured: false,
     is_published: false,
   });
-  const [content, setContent] = useState('');   // ⬅️ separate state for HTML content
+  const [content, setContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [tags, setTags] = useState([]);
   const [tagInput, setTagInput] = useState('');
   const [previewMode, setPreviewMode] = useState(false);
-  const [showMarkdownHelp, setShowMarkdownHelp] = useState(false);
   const [coverPreview, setCoverPreview] = useState('');
   const [hasChanges, setHasChanges] = useState(false);
 
@@ -40,11 +40,14 @@ export default function CreateBlog() {
     queryFn: blogApi.listCategories,
   });
 
-  if (user?.role !== 'admin') {
-    navigate('/blog');
-    return null;
-  }
+  // ✅ FIX: Redirect in useEffect, NOT during render
+  useEffect(() => {
+    if (user && user.role !== 'admin') {
+      navigate('/blog');
+    }
+  }, [user, navigate]);
 
+  // Warn on unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (e) => {
       if (hasChanges) {
@@ -56,6 +59,7 @@ export default function CreateBlog() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasChanges]);
 
+  // Cover image preview
   useEffect(() => {
     if (formData.cover_image && formData.cover_image.match(/^https?:\/\/.+\.(jpg|jpeg|png|gif|webp)/i)) {
       setCoverPreview(formData.cover_image);
@@ -124,7 +128,7 @@ export default function CreateBlog() {
     try {
       await blogApi.createPost({
         ...formData,
-        content: content,            // send HTML string
+        content: content,
       });
       setHasChanges(false);
       toast.success('Blog post created successfully!');
@@ -158,6 +162,11 @@ export default function CreateBlog() {
     }
   };
 
+  // Guard: don't render if user isn't admin (will redirect via useEffect)
+  if (!user || user.role !== 'admin') {
+    return null;
+  }
+
   return (
     <>
       <style>{`
@@ -180,7 +189,6 @@ export default function CreateBlog() {
         .cb-input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.08); }
         .dark .cb-input { background: rgba(15,23,42,0.9); border-color: #334155; color: #f8fafc; }
 
-        /* ─── Editor wrapper ─── */
         .cb-editor-wrapper { margin-bottom: 40px; }
         .cb-editor-wrapper .ql-toolbar { border-top-left-radius: 12px; border-top-right-radius: 12px; border-color: #e2e8f0; }
         .cb-editor-wrapper .ql-container { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-color: #e2e8f0; min-height: 300px; font-family: 'Outfit', sans-serif; font-size: 0.95rem; }
@@ -218,7 +226,6 @@ export default function CreateBlog() {
       `}</style>
 
       <div className="cb-root">
-        {/* Breadcrumb */}
         <nav className="cb-breadcrumb">
           <Link to="/"><FiHome size={13} /> Home</Link>
           <FiChevronRight size={12} />
@@ -227,7 +234,6 @@ export default function CreateBlog() {
           <span>New Post</span>
         </nav>
 
-        {/* Header */}
         <div className="cb-header">
           <div>
             <h1>Create Blog Post</h1>
@@ -240,7 +246,6 @@ export default function CreateBlog() {
           </button>
         </div>
 
-        {/* Meta info */}
         <div className="cb-meta-row">
           <span><FiType size={13} /> {wordCount} words</span>
           <span><FiClock size={13} /> ~{readingTime} min read</span>
@@ -251,13 +256,11 @@ export default function CreateBlog() {
 
         <form onSubmit={handleSubmit}>
           <div className="cb-card">
-            {/* Title */}
             <div className="cb-field">
               <label className="cb-label">Post Title *</label>
               <input type="text" name="title" value={formData.title} onChange={handleChange} placeholder="e.g., How to Survive Microbiology 301" className="cb-input" style={{ fontSize: '1.1rem', fontWeight: 700 }} required />
             </div>
 
-            {/* Category */}
             <div className="cb-field">
               <label className="cb-label">Category</label>
               <select name="category_id" value={formData.category_id} onChange={handleChange} className="cb-input">
@@ -266,20 +269,17 @@ export default function CreateBlog() {
               </select>
             </div>
 
-            {/* Cover Image */}
             <div className="cb-field">
               <label className="cb-label">Cover Image URL</label>
               <input type="url" name="cover_image" value={formData.cover_image} onChange={handleChange} placeholder="https://example.com/image.jpg" className="cb-input" />
               {coverPreview && <img src={coverPreview} alt="Cover preview" className="cb-cover-preview" onError={() => setCoverPreview('')} />}
             </div>
 
-            {/* Excerpt */}
             <div className="cb-field">
               <label className="cb-label">Excerpt (short summary)</label>
               <textarea name="excerpt" value={formData.excerpt} onChange={handleChange} rows={2} placeholder="A brief summary of your post..." className="cb-input" style={{ resize: 'none' }} />
             </div>
 
-            {/* Content – Rich Text Editor */}
             <div className="cb-field">
               <label className="cb-label">Content *</label>
               {previewMode ? (
@@ -298,7 +298,6 @@ export default function CreateBlog() {
               )}
             </div>
 
-            {/* Tags */}
             <div className="cb-field">
               <label className="cb-label">Tags</label>
               <div style={{ display: 'flex', gap: 8 }}>
@@ -317,7 +316,6 @@ export default function CreateBlog() {
               )}
             </div>
 
-            {/* Options */}
             <div style={{ display: 'flex', gap: 20, paddingTop: 16, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
               <label className="cb-check-row">
                 <input type="checkbox" name="is_featured" checked={formData.is_featured} onChange={handleChange} />
@@ -330,11 +328,8 @@ export default function CreateBlog() {
             </div>
           </div>
 
-          {/* Action Buttons */}
           <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
-            <button type="button" onClick={() => navigate('/blog')} className="cb-btn cb-btn-outline" style={{ flex: 1, justifyContent: 'center' }}>
-              Cancel
-            </button>
+            <button type="button" onClick={() => navigate('/blog')} className="cb-btn cb-btn-outline" style={{ flex: 1, justifyContent: 'center' }}>Cancel</button>
             <button type="button" onClick={handleSaveDraft} disabled={loading} className="cb-btn cb-btn-outline" style={{ flex: 1, justifyContent: 'center' }}>
               <FiSave size={15} /> Save Draft
             </button>

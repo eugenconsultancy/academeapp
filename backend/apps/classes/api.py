@@ -65,10 +65,15 @@ def mark_attendance(request, data: AttendanceMarkIn):
     return {"message": "Attendance marked", "id": str(record.id)}
 
 
+# ✅ FIXED: now accepts optional week_start query parameter
 @router.get("/weekly-summary/", auth=JWTAuth())
-def get_weekly_summary(request):
-    """Get attendance summary for the current week."""
-    summary = AttendanceService.get_weekly_summary(request.auth)
+def get_weekly_summary(request, week_start: str = None):
+    """
+    Get attendance summary for a specific week.
+    If week_start is not provided, defaults to the current week.
+    week_start format: YYYY-MM-DD (any day of the target week is accepted).
+    """
+    summary = AttendanceService.get_weekly_summary(request.auth, week_start)
     return summary
 
 
@@ -279,7 +284,6 @@ def list_attendance(request, filters: AttendanceFilterParams = Query(...)):
 @router.get("/attendance/class-summary/", auth=JWTAuth(), response=List[ClassAttendanceSummaryOut])
 def class_attendance_summary(request, class_id: str, term_id: str):
     """Return per‑student attendance summary for a class and term."""
-    # Optional: add permission check (admin or class rep of the class)
     summary = AttendanceService.class_attendance_summary(class_id, term_id)
     return summary
 

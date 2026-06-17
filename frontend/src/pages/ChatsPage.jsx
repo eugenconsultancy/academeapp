@@ -1,4 +1,15 @@
 // frontend/src/pages/ChatsPage.jsx
+// Fixes applied:
+//   • visualViewport for list height (mobile keyboard)
+//   • VariableSizeList instead of FixedSizeList (mixed item sizes)
+//   • dvh root container
+//   • Functional updater for pagination (stale-closure fix)
+//   • Debounce cleanup on unmount
+//   • safe-area padding on modal
+//   • 80dvh modal max-height
+//   • overscroll-behavior: contain on modal body
+//   • Inline CSS extracted to constant (same pattern, keeps file self-contained for portability)
+
 import React, {
   useEffect, useState, useCallback, useMemo, useRef,
 } from 'react';
@@ -13,7 +24,7 @@ const FILTERS = ['all', 'unread', 'read', 'archived', 'blocked'];
 // ─── CSS ─────────────────────────────────────────────────────────────────
 const CSS = `
   .cp-root {
-    height: 100%;
+    height: 100dvh;          /* dvh: survives keyboard open/close */
     display: flex;
     flex-direction: column;
     font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
@@ -136,7 +147,6 @@ const CSS = `
     padding: 16px 16px 0;
   }
 
-  /* Greeting row */
   .cp-greeting {
     font-size: 12px;
     font-weight: 500;
@@ -145,7 +155,6 @@ const CSS = `
     letter-spacing: 0.2px;
   }
 
-  /* Title row */
   .cp-title-row {
     display: flex;
     align-items: center;
@@ -183,7 +192,7 @@ const CSS = `
   .cp-new-btn:hover  { opacity: 0.9; transform: scale(1.06); }
   .cp-new-btn:active { transform: scale(0.93); }
 
-  /* Search */
+  /* ── Search ── */
   .cp-search-wrap {
     position: relative;
     margin-bottom: 14px;
@@ -432,11 +441,14 @@ const CSS = `
     border-radius: 24px 24px 0 0;
     width: 100%;
     max-width: 480px;
-    max-height: 80vh;
+    /* dvh keeps modal inside visible area when keyboard opens */
+    max-height: 80dvh;
     display: flex;
     flex-direction: column;
     box-shadow: 0 -8px 40px var(--shadow);
     animation: cp-slide-up 0.2s cubic-bezier(0.34, 1.3, 0.64, 1);
+    /* safe-area: home indicator on notched devices */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
   @keyframes cp-slide-up {
     from { transform: translateY(40px); opacity: 0; }
@@ -447,6 +459,7 @@ const CSS = `
     border-radius: 2px;
     background: var(--border);
     margin: 12px auto 0;
+    flex-shrink: 0;
   }
   .cp-modal-header {
     padding: 14px 18px;
@@ -454,6 +467,7 @@ const CSS = `
     align-items: center;
     justify-content: space-between;
     border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
   }
   .cp-modal-title  { font-size: 16px; font-weight: 800; color: var(--text); }
   .cp-modal-close  {
@@ -469,7 +483,13 @@ const CSS = `
     transition: background 0.15s;
   }
   .cp-modal-close:hover { background: var(--border); color: var(--text); }
-  .cp-modal-body { padding: 14px 16px; flex: 1; overflow-y: auto; }
+  .cp-modal-body {
+    padding: 14px 16px;
+    flex: 1;
+    overflow-y: auto;
+    /* prevent outer scroll jumping when keyboard opens on search input */
+    overscroll-behavior: contain;
+  }
   .cp-modal-search {
     width: 100%;
     padding: 11px 14px;
@@ -512,9 +532,7 @@ const CSS = `
   .cp-user-detail { font-size: 12px; color: var(--text3); margin-top: 1px; }
 
   /* ── Unread elevated card ── */
-  .cp-conv-unread {
-    background: var(--unread-bg);
-  }
+  .cp-conv-unread { background: var(--unread-bg); }
 `;
 
 // ─── Greeting helper ──────────────────────────────────────────────────────
@@ -536,13 +554,37 @@ const SkeletonRow = () => (
   </div>
 );
 
-const SectionLabel = ({ icon, text }) => (
+const SectionLabel = ({ text }) => (
   <div className="cp-section-label">
-    {icon && <span>{icon}</span>}
     <span>{text}</span>
     <div className="cp-section-label-line" />
   </div>
 );
+
+// ─── Item sizes ───────────────────────────────────────────────────────────
+const ITEM_SIZE = 74;
+const SECTION_SIZE = 36;
+
+// ─── Virtual Row ─────────────────────────────────────────────────────────
+// Defined outside the parent to be stable — receives all data via `data` prop
+const VRow = React.memo(({ index, style, data }) => {
+  const { flatList, presence, onSelect } = data;
+  const item = flatList[index];
+  if (!item) return null;
+  if (item.type === 'section') {
+    return <div style={style}><SectionLabel text={item.label} /></div>;
+  }
+  return (
+    <div style={style}>
+      <ChatListItem
+        conv={item.conv}
+        presence={presence}
+        onClick={() => onSelect(item.conv.id)}
+        className={item.conv.unread_count > 0 ? 'cp-conv-unread' : ''}
+      />
+    </div>
+  );
+});
 
 // ─── ChatsPage ────────────────────────────────────────────────────────────
 const ChatsPage = () => {
@@ -561,6 +603,37 @@ const ChatsPage = () => {
   const navigate = useNavigate();
   const [ListComponent, setListComponent] = useState(null);
 
+  // ── visualViewport height tracking (keyboard-aware) ──────────────────
+  const [viewportHeight, setViewportHeight] = useState(
+    () => (typeof window !== 'undefined'
+      ? (window.visualViewport?.height ?? window.innerHeight)
+      : 600)
+  );
+
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => setViewportHeight(vv.height);
+    vv.addEventListener('resize', update);
+    return () => vv.removeEventListener('resize', update);
+  }, []);
+
+  // ── Header height ref (avoids hardcoding 188px) ───────────────────────
+  const headerRef = useRef(null);
+  const [headerH, setHeaderH] = useState(188);
+
+  useEffect(() => {
+    if (!headerRef.current) return;
+    const ro = new ResizeObserver(entries => {
+      const h = entries[0]?.contentRect?.height;
+      if (h) setHeaderH(Math.round(h));
+    });
+    ro.observe(headerRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  const listHeight = viewportHeight - headerH;
+
   // New chat modal
   const [showNewChat, setShowNewChat] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -569,10 +642,11 @@ const ChatsPage = () => {
 
   const convCursor = cursors?.['conversations'] ?? null;
 
-  // Dynamic import
+  // ── Dynamic import: VariableSizeList (supports mixed item heights) ────
   useEffect(() => {
     import('react-window').then(mod => {
-      const List = mod.FixedSizeList || mod.default?.FixedSizeList;
+      // BUGFIX: was FixedSizeList — must use VariableSizeList for mixed heights
+      const List = mod.VariableSizeList ?? mod.default?.VariableSizeList;
       if (List) setListComponent(() => List);
     }).catch(() => { });
   }, []);
@@ -599,16 +673,17 @@ const ChatsPage = () => {
     try {
       const res = await chatApi.getConversations(filter, cursor);
       const items = res.data?.results ?? res.data ?? [];
-      const nextCursor = res.data?.next_cursor ?? null;
+      const next = res.data?.next_cursor ?? null;
 
       if (cursor && !isRefresh) {
-        setConversations([...conversations, ...items]);
+        // BUGFIX: functional updater prevents stale-closure data loss
+        setConversations(prev => [...prev, ...items]);
       } else {
         setConversations(items);
       }
 
       if (useChatStore.getState().setCursor) {
-        useChatStore.getState().setCursor('conversations', nextCursor);
+        useChatStore.getState().setCursor('conversations', next);
       }
     } catch {
       setError('Could not load conversations.');
@@ -617,33 +692,36 @@ const ChatsPage = () => {
       setLoadingMore(false);
       setRefreshing(false);
     }
-  }, [filter, setConversations, waitForToken, conversations]);
+  }, [filter, setConversations, waitForToken]);
 
   useEffect(() => {
     fetchConversations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
 
-  // Subscribe to real-time updates
-  useEffect(() => {
-    const unsub = useChatStore.subscribe(s => s.conversations, () => { });
-    return unsub;
-  }, []);
-
+  // ── Debounced search with cleanup ─────────────────────────────────────
   const debouncedSearch = useMemo(() => debounce(q => setSearch(q), 280), []);
+
+  useEffect(() => {
+    return () => {
+      // BUGFIX: cancel pending debounce on unmount to avoid setState on unmounted component
+      if (typeof debouncedSearch.cancel === 'function') debouncedSearch.cancel();
+    };
+  }, [debouncedSearch]);
+
   const handleSearchChange = e => {
     setSearchInput(e.target.value);
     debouncedSearch(e.target.value);
   };
   const clearSearch = () => { setSearchInput(''); setSearch(''); };
 
-  // Counts
+  // ── Counts ────────────────────────────────────────────────────────────
   const unreadCount = useMemo(
     () => conversations.filter(c => (c.unread_count || 0) > 0).length,
     [conversations]
   );
 
-  // Sort, filter, section
+  // ── Sort, filter, section ─────────────────────────────────────────────
   const { pinned, recent } = useMemo(() => {
     let list = [...conversations].sort((a, b) => {
       if (a.is_pinned && !b.is_pinned) return -1;
@@ -672,8 +750,53 @@ const ChatsPage = () => {
     navigate(`/chat/${convId}`);
   }, [setActiveConversation, navigate]);
 
-  // New chat: search users
-  const searchUsersForNewChat = useMemo(
+  // ── Flat list with section headers (for VariableSizeList) ─────────────
+  const flatList = useMemo(() => {
+    const items = [];
+    if (pinned.length > 0) {
+      items.push({ type: 'section', label: '📌 Pinned', key: 'sec-pinned' });
+      pinned.forEach(c => items.push({ type: 'conv', conv: c, key: c.id }));
+    }
+    if (recent.length > 0) {
+      if (pinned.length > 0) {
+        items.push({ type: 'section', label: '💬 Recent', key: 'sec-recent' });
+      }
+      recent.forEach(c => items.push({ type: 'conv', conv: c, key: c.id }));
+    }
+    return items;
+  }, [pinned, recent]);
+
+  const getItemSize = useCallback(
+    index => (flatList[index]?.type === 'section' ? SECTION_SIZE : ITEM_SIZE),
+    [flatList]
+  );
+
+  // Stable itemData object — prevents VRow from re-rendering on every parent render
+  const itemData = useMemo(
+    () => ({ flatList, presence, onSelect: handleSelect }),
+    [flatList, presence, handleSelect]
+  );
+
+  // ── Fallback (non-virtualised) list ───────────────────────────────────
+  const renderFallbackList = () => (
+    <div style={{ height: listHeight, overflowY: 'auto' }}>
+      {flatList.map(item => {
+        if (item.type === 'section') return <SectionLabel key={item.key} text={item.label} />;
+        return (
+          <ChatListItem
+            key={item.conv.id}
+            conv={item.conv}
+            presence={presence}
+            onClick={() => handleSelect(item.conv.id)}
+            className={item.conv.unread_count > 0 ? 'cp-conv-unread' : ''}
+          />
+        );
+      })}
+    </div>
+  );
+
+  // ── New chat: search users ─────────────────────────────────────────────
+  const searchUsersDebounced = useMemo(
     () => debounce(async query => {
       if (!query.trim()) { setUserSearchResults([]); return; }
       setSearchingUsers(true);
@@ -690,8 +813,8 @@ const ChatsPage = () => {
   );
 
   useEffect(() => {
-    if (showNewChat) searchUsersForNewChat(userSearchQuery);
-  }, [userSearchQuery, showNewChat, searchUsersForNewChat]);
+    if (showNewChat) searchUsersDebounced(userSearchQuery);
+  }, [userSearchQuery, showNewChat, searchUsersDebounced]);
 
   const handleStartChat = async userId => {
     try {
@@ -708,69 +831,8 @@ const ChatsPage = () => {
     }
   };
 
-  // Virtual list rendering
-  const listHeight = typeof window !== 'undefined' ? window.innerHeight - 188 : 600;
-
-  const flatList = useMemo(() => {
-    const items = [];
-    if (pinned.length > 0) {
-      items.push({ type: 'section', label: '📌 Pinned', key: 'sec-pinned' });
-      pinned.forEach(c => items.push({ type: 'conv', conv: c, key: c.id }));
-    }
-    if (recent.length > 0) {
-      if (pinned.length > 0) {
-        items.push({ type: 'section', label: '💬 Recent', key: 'sec-recent' });
-      }
-      recent.forEach(c => items.push({ type: 'conv', conv: c, key: c.id }));
-    }
-    return items;
-  }, [pinned, recent]);
-
-  const ITEM_SIZE = 74;
-  const SECTION_SIZE = 36;
-
-  const getItemSizeForList = useCallback(index => {
-    return flatList[index]?.type === 'section' ? SECTION_SIZE : ITEM_SIZE;
-  }, [flatList]);
-
-  const renderFallbackList = () => (
-    <div style={{ height: listHeight, overflowY: 'auto' }}>
-      {flatList.map(item => {
-        if (item.type === 'section') {
-          return <SectionLabel key={item.key} text={item.label} />;
-        }
-        return (
-          <ChatListItem
-            key={item.conv.id}
-            conv={item.conv}
-            presence={presence}
-            onClick={() => handleSelect(item.conv.id)}
-            className={item.conv.unread_count > 0 ? 'cp-conv-unread' : ''}
-          />
-        );
-      })}
-    </div>
-  );
-
-  const VRow = useCallback(({ index, style }) => {
-    const item = flatList[index];
-    if (!item) return null;
-    if (item.type === 'section') {
-      return <div style={style}><SectionLabel text={item.label} /></div>;
-    }
-    return (
-      <div style={{ ...style, paddingLeft: 0, paddingRight: 0 }}>
-        <ChatListItem
-          conv={item.conv}
-          presence={presence}
-          onClick={() => handleSelect(item.conv.id)}
-          className={item.conv.unread_count > 0 ? 'cp-conv-unread' : ''}
-        />
-      </div>
-    );
-  }, [flatList, presence, handleSelect]);
-
-  const chip = (f) => {
+  // ── Chip renderer ─────────────────────────────────────────────────────
+  const chip = f => {
     const label = f.charAt(0).toUpperCase() + f.slice(1);
     const count = f === 'unread' ? unreadCount : null;
     return (
@@ -787,20 +849,21 @@ const ChatsPage = () => {
     );
   };
 
+  // ─────────────────────────────────────────────────────────────────────
   return (
     <div className="cp-root">
       <style>{CSS}</style>
       <div className="cp-bg" />
 
-      {/* Offline */}
+      {/* Offline banner */}
       {!isOnline && (
         <div className="cp-offline-banner">
           ⚡ You're offline — conversations may be outdated
         </div>
       )}
 
-      {/* Header */}
-      <div className="cp-header">
+      {/* Header — measured by ResizeObserver for dynamic listHeight */}
+      <div className="cp-header" ref={headerRef}>
         <div className="cp-greeting">{getGreeting()}</div>
         <div className="cp-title-row">
           <div className="cp-title-left">
@@ -900,9 +963,10 @@ const ChatsPage = () => {
               <ListComponent
                 height={listHeight}
                 itemCount={flatList.length}
-                itemSize={index => flatList[index]?.type === 'section' ? SECTION_SIZE : ITEM_SIZE}
+                itemSize={getItemSize}
                 width="100%"
                 itemKey={index => flatList[index]?.key ?? index}
+                itemData={itemData}
               >
                 {VRow}
               </ListComponent>

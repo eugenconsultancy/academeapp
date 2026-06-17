@@ -2,15 +2,17 @@
 const CACHE_NAME = 'academe-v2';
 const OFFLINE_URL = '/offline.html';
 
-// Import IndexedDB support for service worker
-importScripts('https://cdn.jsdelivr.net/npm/idb@7/build/umd.js');
+// Use local idb (already a project dependency) so the SW works fully offline
+importScripts('/idb.min.js');
 
 const STATIC_ASSETS = [
     '/',
     '/index.html',
+    '/offline.html',     // MUST be cached for offline fallback
     '/manifest.json',
 ];
 
+// ── Install ─────────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
@@ -18,6 +20,7 @@ self.addEventListener('install', (event) => {
     self.skipWaiting();
 });
 
+// ── Activate ────────────────────────────────────────────────────
 self.addEventListener('activate', (event) => {
     event.waitUntil(
         caches.keys().then((cacheNames) => {
@@ -31,6 +34,7 @@ self.addEventListener('activate', (event) => {
     self.clients.claim();
 });
 
+// ── Fetch ───────────────────────────────────────────────────────
 self.addEventListener('fetch', (event) => {
     // 1. Skip API calls and Biometric verification routes
     if (event.request.url.includes('/api/')) {
@@ -50,7 +54,7 @@ self.addEventListener('fetch', (event) => {
     );
 });
 
-// ── BACKGROUND SYNC ──────────────────────────────────────────
+// ── Background Sync ────────────────────────────────────────────
 self.addEventListener('sync', (event) => {
     if (event.tag === 'sync-attendance') {
         event.waitUntil(syncOfflineAttendance());
@@ -58,7 +62,6 @@ self.addEventListener('sync', (event) => {
 });
 
 async function syncOfflineAttendance() {
-    // Use the idb library imported via importScripts
     const db = await idb.openDB('AcademeOfflineDB', 3);
     const offlineData = await db.getAll('offlineAttendance');
 
@@ -83,10 +86,8 @@ async function syncOfflineAttendance() {
     }
 }
 
-// Service workers cannot access localStorage. 
-// You should store your token in IndexedDB for the SW to read it.
 async function getAccessToken() {
     const db = await idb.openDB('AcademeOfflineDB', 3);
-    const token = await db.get('settings', 'access_token');
-    return token;
+    const record = await db.get('settings', 'access_token');
+    return record?.value ?? '';
 }

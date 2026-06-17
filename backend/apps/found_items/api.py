@@ -108,6 +108,13 @@ def create_item(request, data: FoundItemCreateIn = Form(...)):
 
     return 201, _item_to_out(item)
 
+# ✅ FIXED: Moved my-items BEFORE {item_id} to prevent route conflict
+@router.get("/my-items/", auth=JWTAuth(), response=List[FoundItemOut])
+def my_items(request):
+    items = FoundItem.objects.filter(posted_by=request.auth).order_by('-created_at')
+    return [_item_to_out(i) for i in items]
+
+# Parameterized routes come AFTER specific routes
 @router.get("/{item_id}/", auth=JWTAuth(), response=FoundItemOut)
 def get_item(request, item_id: UUID):
     item = get_object_or_404(FoundItem, id=item_id)
@@ -131,11 +138,6 @@ def delete_item(request, item_id: UUID):
             pass
     item.delete()
     return {"message": "Deleted"}
-
-@router.get("/my-items/", auth=JWTAuth(), response=List[FoundItemOut])
-def my_items(request):
-    items = FoundItem.objects.filter(posted_by=request.auth).order_by('-created_at')
-    return [_item_to_out(i) for i in items]
 
 # ══════════════════════════════════════════════════════════════════
 # OWNERSHIP VERIFICATION (now enforced in claim creation)

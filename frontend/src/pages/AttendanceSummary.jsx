@@ -1,3 +1,4 @@
+// frontend/src/pages/AttendanceSummary.jsx
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -14,7 +15,6 @@ import {
 
 /**
  * Return a local YYYY-MM-DD string for the given date (defaults to today).
- * Avoids toISOString() so we stay in the user's local timezone.
  */
 function toLocalDateString(date = new Date()) {
     const y = date.getFullYear();
@@ -51,11 +51,12 @@ function formatDate(date) {
 
 /**
  * Safely parse a date string and return a locale‑formatted weekday abbreviation.
+ * Uses parseLocalDate for reliable local-date creation.
  * Returns "???" if the date string is invalid.
  */
 function safeWeekday(dateStr) {
     if (!dateStr) return '???';
-    const d = new Date(dateStr + 'T12:00:00');
+    const d = parseLocalDate(dateStr);
     if (isNaN(d.getTime())) return '???';
     return d.toLocaleDateString('en-US', { weekday: 'short' });
 }
@@ -64,9 +65,8 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export default function AttendanceSummary() {
     const [currentWeekStart, setCurrentWeekStart] = useState(() => {
-        // Get the Monday of the current local week
         const today = new Date();
-        const dayOfWeek = today.getDay(); // Sunday = 0
+        const dayOfWeek = today.getDay();
         const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
         const monday = new Date(today);
         monday.setDate(today.getDate() + mondayOffset);
@@ -110,7 +110,6 @@ export default function AttendanceSummary() {
 
     const attendanceRate = summary?.percentage || 0;
 
-    // Sort daily breakdown data by date key for consistent rendering
     const sortedDailyBreakdown = useMemo(() => {
         if (!summary?.daily_breakdown) return [];
         return Object.entries(summary.daily_breakdown)
@@ -291,9 +290,11 @@ export default function AttendanceSummary() {
                                 <div className="as-goal-label" style={{ left: '75%' }}>75% Goal</div>
                             </div>
                             <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 16, textAlign: 'center' }}>
-                                {attendanceRate >= 75 ? '🎯 Great job! You\'re above the attendance goal.' :
-                                    attendanceRate >= 50 ? '📚 Keep going! You\'re getting close to the goal.' :
-                                        '⚠️ You\'re below the recommended attendance rate. Try to attend more classes.'}
+                                {attendanceRate >= 75
+                                    ? "🎯 Great job! You're above the attendance goal."
+                                    : attendanceRate >= 50
+                                        ? "📚 Keep going! You're getting close to the goal."
+                                        : "⚠️ You're below the recommended attendance rate. Try to attend more classes."}
                             </p>
                         </div>
 
@@ -308,7 +309,7 @@ export default function AttendanceSummary() {
                                     const pct = total > 0 ? (marked / total) * 100 : 0;
                                     const DayIcon = getDayIcon(marked, total);
                                     const color = getDayColor(marked, total);
-                                    const weekday = safeWeekday(date);  // safe date parsing
+                                    const weekday = safeWeekday(date);
                                     return (
                                         <div key={date} className="as-day-row">
                                             <span className="as-day-label">{weekday}</span>

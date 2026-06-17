@@ -1,6 +1,8 @@
-// C:\Users\GATARA-BJTU\academe\frontend\src\components\layout\AppLayout.jsx
-
+// frontend/src/components/layout/AppLayout.jsx
 import { useEffect, useRef } from 'react';
+import OfflineIndicator from '../shared/OfflineIndicator';
+import BottomNav from './BottomNav';
+import FAB from './FAB';
 
 export default function AppLayout({ children }) {
   const watermarkRef = useRef(null);
@@ -26,9 +28,14 @@ export default function AppLayout({ children }) {
         position: 'relative',
         minHeight: 'calc(var(--visual-vh, 1vh) * 100)',
         overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
       }}
     >
-      {/* Enhanced Watermark Layer – hides when keyboard is open */}
+      {/* 1. Global Offline/Sync status indicator – fixed at the very top */}
+      <OfflineIndicator position="top" />
+
+      {/* 2. Watermark background – sits behind everything */}
       <div className="watermark-overlay" ref={watermarkRef} aria-hidden="true">
         <div className="watermark-grid" />
         <span className="watermark-text watermark-text-main">ACADEME</span>
@@ -36,10 +43,16 @@ export default function AppLayout({ children }) {
         <div className="watermark-dots" />
       </div>
 
-      {/* Main Page Content */}
-      <main style={{ position: 'relative', zIndex: 1 }}>
+      {/* 3. Main Content – pushes down to avoid OfflineIndicator overlay */}
+      <main style={{ position: 'relative', zIndex: 1, flex: 1, paddingTop: '40px' }}>
         {children}
       </main>
+
+      {/* 4. Persistent Bottom Navigation – only visible on mobile */}
+      <BottomNav />
+
+      {/* 5. Floating Action Button – highest z‑index so it stays accessible */}
+      <FAB />
 
       <style>{`
         /* ══════════════════════════════════════════════════════
@@ -63,7 +76,7 @@ export default function AppLayout({ children }) {
           transition: opacity 0.3s ease, visibility 0.3s ease;
         }
 
-        /* ── Keyboard-aware hiding ───────────────────────── */
+        /* ── Keyboard‑aware hiding ───────────────────────── */
         @media (max-height: 450px) {
           .watermark-overlay {
             opacity: 0;
@@ -111,7 +124,7 @@ export default function AppLayout({ children }) {
         }
 
         /* ═══════════════════════════════════════════════════
-           WATERMARK TEXT — now uses font variable from context
+           WATERMARK TEXT
            ═══════════════════════════════════════════════ */
         .watermark-text {
           position: absolute;

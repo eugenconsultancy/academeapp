@@ -1,3 +1,4 @@
+// frontend/src/contexts/FontContext.jsx
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 /**
@@ -61,10 +62,12 @@ export const FONT_REGISTRY = {
         description: 'Your device default font',
         category: 'system',
     },
+    // OpenDyslexic is NOT on Google Fonts — mark it as local
     openDyslexic: {
         label: 'OpenDyslexic',
         family: "'OpenDyslexic', sans-serif",
-        google: 'https://fonts.googleapis.com/css2?family=OpenDyslexic:wght@400;700&display=swap',
+        google: null,
+        isLocal: true,
         preview: 'Aa',
         description: 'Dyslexia-friendly',
         category: 'accessibility',
@@ -99,6 +102,7 @@ function injectFont(key) {
 
     const entry = FONT_REGISTRY[key];
     if (!entry || !entry.google) {
+        // Local font — already available via @font-face in CSS
         loadedFonts.add(key);
         return;
     }
@@ -113,25 +117,13 @@ function injectFont(key) {
     link.onload = () => {
         loadedFonts.add(key);
         loadingFonts.delete(key);
-        // Dispatch event for components to react
-        window.dispatchEvent(
-            new CustomEvent('font_loaded', { detail: { font: key } })
-        );
+        window.dispatchEvent(new CustomEvent('font_loaded', { detail: { font: key } }));
     };
 
     link.onerror = () => {
         loadingFonts.delete(key);
         console.warn(`Failed to load font: ${key}`);
-        // Fallback to system font
-        if (key !== 'system') {
-            document.documentElement.style.setProperty(
-                '--font-body',
-                FONT_REGISTRY.system.family
-            );
-        }
-        window.dispatchEvent(
-            new CustomEvent('font_load_error', { detail: { font: key } })
-        );
+        window.dispatchEvent(new CustomEvent('font_load_error', { detail: { font: key } }));
     };
 
     document.head.appendChild(link);
@@ -142,12 +134,11 @@ function applyFont(key) {
     const entry = FONT_REGISTRY[key];
     const family = entry?.family ?? FONT_REGISTRY.sora.family;
 
-    // Set CSS custom properties
+    // Use data attribute instead of direct style manipulation
+    document.documentElement.dataset.font = key;
     document.documentElement.style.setProperty('--font-body', family);
     document.documentElement.style.setProperty('--font-heading', family);
     document.documentElement.style.setProperty('--font-mono', "'JetBrains Mono', 'Fira Code', monospace");
-
-    // Also write to body directly
     document.body.style.fontFamily = family;
 }
 
@@ -178,134 +169,70 @@ function applyBoldText(enabled) {
 const FontContext = createContext(null);
 
 export function FontProvider({ children }) {
-    // Font family
     const [currentFont, setCurrentFont] = useState(() => {
-        try {
-            return localStorage.getItem('academe-font') || 'sora';
-        } catch {
-            return 'sora';
-        }
+        try { return localStorage.getItem('academe-font') || 'sora'; } catch { return 'sora'; }
     });
-
-    // Font size
     const [currentFontSize, setCurrentFontSize] = useState(() => {
-        try {
-            return localStorage.getItem('academe-font-size') || 'normal';
-        } catch {
-            return 'normal';
-        }
+        try { return localStorage.getItem('academe-font-size') || 'normal'; } catch { return 'normal'; }
     });
-
-    // Line height
     const [currentLineHeight, setCurrentLineHeight] = useState(() => {
-        try {
-            return localStorage.getItem('academe-line-height') || 'normal';
-        } catch {
-            return 'normal';
-        }
+        try { return localStorage.getItem('academe-line-height') || 'normal'; } catch { return 'normal'; }
     });
-
-    // Bold text
     const [boldText, setBoldText] = useState(() => {
-        try {
-            return localStorage.getItem('academe-bold-text') === 'true';
-        } catch {
-            return false;
-        }
+        try { return localStorage.getItem('academe-bold-text') === 'true'; } catch { return false; }
     });
-
-    // Loading state
     const [isFontLoading, setIsFontLoading] = useState(false);
 
-    // Apply font on mount + whenever it changes
     useEffect(() => {
         applyFont(currentFont);
-        try {
-            localStorage.setItem('academe-font', currentFont);
-        } catch {
-            // Ignore
-        }
+        try { localStorage.setItem('academe-font', currentFont); } catch { /* ignore */ }
     }, [currentFont]);
 
-    // Apply font size
     useEffect(() => {
         applyFontSize(currentFontSize);
-        try {
-            localStorage.setItem('academe-font-size', currentFontSize);
-        } catch {
-            // Ignore
-        }
+        try { localStorage.setItem('academe-font-size', currentFontSize); } catch { /* ignore */ }
     }, [currentFontSize]);
 
-    // Apply line height
     useEffect(() => {
         applyLineHeight(currentLineHeight);
-        try {
-            localStorage.setItem('academe-line-height', currentLineHeight);
-        } catch {
-            // Ignore
-        }
+        try { localStorage.setItem('academe-line-height', currentLineHeight); } catch { /* ignore */ }
     }, [currentLineHeight]);
 
-    // Apply bold text
     useEffect(() => {
         applyBoldText(boldText);
-        try {
-            localStorage.setItem('academe-bold-text', String(boldText));
-        } catch {
-            // Ignore
-        }
+        try { localStorage.setItem('academe-bold-text', String(boldText)); } catch { /* ignore */ }
     }, [boldText]);
 
-    // Preload common fonts on mount
     useEffect(() => {
         injectFont('inter');
         injectFont('sora');
         injectFont('system');
     }, []);
 
-    // Listen for font load events
     useEffect(() => {
         const handleFontLoad = () => setIsFontLoading(false);
         const handleFontError = () => setIsFontLoading(false);
-
         window.addEventListener('font_loaded', handleFontLoad);
         window.addEventListener('font_load_error', handleFontError);
-
         return () => {
             window.removeEventListener('font_loaded', handleFontLoad);
             window.removeEventListener('font_load_error', handleFontError);
         };
     }, []);
 
-    // Change font family
     const changeFont = useCallback((key) => {
-        if (FONT_REGISTRY[key]) {
-            setIsFontLoading(true);
-            setCurrentFont(key);
-        }
+        if (FONT_REGISTRY[key]) { setIsFontLoading(true); setCurrentFont(key); }
     }, []);
 
-    // Change font size
     const changeFontSize = useCallback((preset) => {
-        if (FONT_SIZE_PRESETS[preset]) {
-            setCurrentFontSize(preset);
-        }
+        if (FONT_SIZE_PRESETS[preset]) setCurrentFontSize(preset);
     }, []);
 
-    // Change line height
     const changeLineHeight = useCallback((preset) => {
-        if (LINE_HEIGHT_PRESETS[preset]) {
-            setCurrentLineHeight(preset);
-        }
+        if (LINE_HEIGHT_PRESETS[preset]) setCurrentLineHeight(preset);
     }, []);
 
-    // Toggle bold text
-    const toggleBoldText = useCallback(() => {
-        setBoldText((prev) => !prev);
-    }, []);
-
-    // Reset all to defaults
+    const toggleBoldText = useCallback(() => setBoldText(prev => !prev), []);
     const resetToDefaults = useCallback(() => {
         setCurrentFont('sora');
         setCurrentFontSize('normal');
@@ -316,7 +243,6 @@ export function FontProvider({ children }) {
     return (
         <FontContext.Provider
             value={{
-                // Current state
                 currentFont,
                 currentFontData: FONT_REGISTRY[currentFont],
                 currentFontSize,
@@ -325,16 +251,12 @@ export function FontProvider({ children }) {
                 currentLineHeightData: LINE_HEIGHT_PRESETS[currentLineHeight],
                 boldText,
                 isFontLoading,
-
-                // Available options
                 fontKeys: Object.keys(FONT_REGISTRY),
                 fontRegistry: FONT_REGISTRY,
                 fontSizeKeys: Object.keys(FONT_SIZE_PRESETS),
                 fontSizeRegistry: FONT_SIZE_PRESETS,
                 lineHeightKeys: Object.keys(LINE_HEIGHT_PRESETS),
                 lineHeightRegistry: LINE_HEIGHT_PRESETS,
-
-                // Actions
                 changeFont,
                 changeFontSize,
                 changeLineHeight,

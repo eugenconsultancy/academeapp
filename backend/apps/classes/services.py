@@ -1,3 +1,4 @@
+# backend/apps/classes/services.py
 from datetime import datetime, timedelta
 from django.utils import timezone
 from django.db.models import Count, Q
@@ -39,17 +40,62 @@ class AttendanceService:
         return record, None
 
     @staticmethod
-    def get_weekly_summary(student):
+    def get_weekly_summary(student, week_start_str=None):
+        """
+        Get attendance summary for a specific week or the current week.
+        
+        Args:
+            student: The authenticated user
+            week_start_str: Optional YYYY-MM-DD string. If provided, calculates
+                           the Monday of that week. If None, uses the current week.
+        
+        Returns:
+            dict with week_start, week_end, total_classes, marked_count,
+            percentage, and daily_breakdown.
+        """
         today = timezone.localtime().date()
-        week_start = today - timedelta(days=today.weekday())
+
+        # Determine the Monday of the target week
+        if week_start_str:
+            try:
+                # Parse the YYYY-MM-DD string
+                parsed_date = datetime.strptime(week_start_str, '%Y-%m-%d').date()
+                # Calculate the Monday of the week containing that date
+                week_start = parsed_date - timedelta(days=parsed_date.weekday())
+            except (ValueError, TypeError):
+                # If parsing fails, default to current week
+                week_start = today - timedelta(days=today.weekday())
+        else:
+            # No week_start provided — use current week
+            week_start = today - timedelta(days=today.weekday())
+
         week_end = week_start + timedelta(days=6)
 
+        # Get all active timetable entries for the student's classes
         class_groups = ClassGroup.objects.filter(students=student)
-        total = TimetableEntry.objects.filter(class_group__in=class_groups, is_active=True).count()
-        records = AttendanceRecord.objects.filter(student=student, date__gte=week_start, date__lte=week_end)
+        total = TimetableEntry.objects.filter(
+            class_group__in=class_groups, is_active=True
+        ).count()
 
-        days_map = {0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday"}
+        # Get attendance records within the week range
+        records = AttendanceRecord.objects.filter(
+            student=student,
+            date__gte=week_start,
+            date__lte=week_end
+        )
+
+        # Build daily breakdown keyed by weekday name
+        days_map = {
+            0: "Monday",
+            1: "Tuesday",
+            2: "Wednesday",
+            3: "Thursday",
+            4: "Friday",
+            5: "Saturday",
+            6: "Sunday",
+        }
         breakdown = {day: 0 for day in days_map.values()}
+
         for r in records:
             day_name = days_map.get(r.timetable_entry.day_of_week)
             if day_name:
@@ -60,8 +106,10 @@ class AttendanceService:
             "week_end": str(week_end),
             "total_classes": total,
             "marked_count": records.count(),
-            "percentage": round((records.count() / total * 100) if total > 0 else 0, 1),
-            "daily_breakdown": breakdown
+            "percentage": round(
+                (records.count() / total * 100) if total > 0 else 0, 1
+            ),
+            "daily_breakdown": breakdown,
         }
 
     # ── NEW METHODS ────────────────────────────────────────────────────────
@@ -130,13 +178,15 @@ class AttendanceService:
 
         summary = []
         for r in records:
-            rate = round((r['attended'] / total_classes * 100) if total_classes else 0, 1)
+            rate = round(
+                (r['attended'] / total_classes * 100) if total_classes else 0, 1
+            )
             summary.append({
                 'student_id': r['student_id'],
                 'student_name': r['student__full_name'],
                 'total_classes': total_classes,
                 'attended': r['attended'],
-                'rate': rate
+                'rate': rate,
             })
         return summary
 
@@ -185,8 +235,12 @@ class TimetableService:
                 student=user, timetable_entry=entry, date=today_date
             ).exists()
 
-            class_end = timezone.make_aware(datetime.combine(today_date, entry.end_time))
-            class_start = timezone.make_aware(datetime.combine(today_date, entry.start_time))
+            class_end = timezone.make_aware(
+                datetime.combine(today_date, entry.end_time)
+            )
+            class_start = timezone.make_aware(
+                datetime.combine(today_date, entry.start_time)
+            )
 
             remaining_time = 0
             if now < class_end:

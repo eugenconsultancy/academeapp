@@ -102,7 +102,7 @@
     "electron-is-dev": "^2.0.0",
     "emoji-picker-react": "^4.19.1",
     "firebase": "^12.13.0",
-    "idb": "^8.0.0",
+    "idb": "^8.0.3",
     "immer": "^11.1.8",
     "jwt-decode": "^4.0.0",
     "leaflet": "^1.9.4",

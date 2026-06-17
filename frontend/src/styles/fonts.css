@@ -3,7 +3,9 @@
    ══════════════════════════════════════════════════════════
    Display : Bricolage Grotesque (700/800)
    Body    : DM Sans (400/500/600/700)
+   Alt     : Sora (300/400/500/600/700)
    Mono    : JetBrains Mono (400/500/600)
+   Access  : OpenDyslexic (400/700) — locally hosted
    Backup  : IBM Plex Sans (fallback for third-party libs)
 ══════════════════════════════════════════════════════════ */
 
@@ -17,8 +19,32 @@
 /* Primary Body Font */
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap');
 
+/* Alternative Body Font — Sora */
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap');
+
 /* Monospace Font for Code */
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* ══════════════════════════════════════
+   LOCAL FONT: OpenDyslexic (accessibility)
+   Not available on Google Fonts — self-hosted
+   ══════════════════════════════════════ */
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: url('/fonts/OpenDyslexic-Regular.woff2') format('woff2'),
+       url('/fonts/OpenDyslexic-Regular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: url('/fonts/OpenDyslexic-Bold.woff2') format('woff2'),
+       url('/fonts/OpenDyslexic-Bold.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
 
 /* 
    FONT LOADING STRATEGY:
@@ -40,7 +66,9 @@
   /* ── Font families (primary stack) ── */
   --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
   --font-body:    'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-sora:    'Sora', sans-serif;
   --font-mono:    'JetBrains Mono', ui-monospace, monospace;
+  --font-dyslexic: 'OpenDyslexic', sans-serif;
   
   /* ── Backup fonts (if third-party libraries fail to load IBM Plex) ── */
   --font-backup-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
@@ -75,7 +103,7 @@
   /* ── Font Weights ── */
   --fw-regular:    400;  /* book / normal weight      */
   --fw-medium:     500;  /* medium weight             */
-  --fw-semibold:   600;  /* semi-bold / demi-bold    */
+  --fw-semibold:   600;  /* semi-bold / demi-bold     */
   --fw-bold:       700;  /* bold weight               */
   --fw-extrabold:  800;  /* extra-bold / heavy weight */
 
@@ -90,13 +118,28 @@
 }
 
 /* ══════════════════════════════════════
+   FONT DATA-ATTRIBUTE RULES
+   (maps FontContext's dataset.font to CSS)
+   ══════════════════════════════════════ */
+:root[data-font='sora']           { --font-body: var(--font-sora); }
+:root[data-font='inter']          { --font-body: 'Inter', sans-serif; }
+:root[data-font='poppins']        { --font-body: 'Poppins', sans-serif; }
+:root[data-font='dmSans']         { --font-body: 'DM Sans', sans-serif; }
+:root[data-font='plusJakarta']    { --font-body: 'Plus Jakarta Sans', sans-serif; }
+:root[data-font='spaceGrotesk']   { --font-body: 'Space Grotesk', sans-serif; }
+:root[data-font='system']         { --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+:root[data-font='openDyslexic']   { --font-body: var(--font-dyslexic); }
+
+/* ══════════════════════════════════════
    FONT UTILITY CLASSES
    ══════════════════════════════════════ */
 
 /* Font Family */
 .font-display { font-family: var(--font-display); }
 .font-body    { font-family: var(--font-body); }
+.font-sora    { font-family: var(--font-sora); }
 .font-mono    { font-family: var(--font-mono); }
+.font-dyslexic { font-family: var(--font-dyslexic); }
 
 /* Backward Compatibility – Map old class names to current fonts */
 .font-inter    { font-family: var(--font-body); }
@@ -256,8 +299,8 @@
 
 @media (prefers-contrast: more) {
   :root {
-    --fw-regular:    500;  /* Bump regular weight for better contrast */
-    --fw-semibold:   700;
+    --fw-regular:   500;  /* Bump regular weight for better contrast */
+    --fw-semibold:  700;
   }
 
   .heading-hero,

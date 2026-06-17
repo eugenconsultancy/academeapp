@@ -5,8 +5,7 @@ import { useAuth } from './contexts/AuthContext';
 import { useTheme } from './contexts/ThemeContext';
 import Navbar from './components/layout/Navbar';
 import Sidebar from './components/layout/Sidebar';
-import BottomNav from './components/layout/BottomNav';
-import FAB from './components/layout/FAB';
+import AppLayout from './components/layout/AppLayout';
 import SkeletonLoader from './components/shared/SkeletonLoader';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 
@@ -77,9 +76,6 @@ const ChatDetail = lazy(() => import('./pages/ChatDetail'));
 // ═══════════════════════════════════════════════════════════════
 const MOBILE_BREAKPOINT = 768;
 const SIDEBAR_BREAKPOINT = 1024;
-
-// Keyboard is considered "open" when visual viewport shrinks by more than 150px.
-// This threshold avoids false positives from browser chrome resizing.
 const KEYBOARD_THRESHOLD = 150;
 
 const ROUTE_TITLES = {
@@ -173,12 +169,8 @@ function ProtectedRoute({ children, allowedRoles = [] }) {
 
 // ═══════════════════════════════════════════════════════════════
 // KEYBOARD DETECTION HOOK
-// Uses the Visual Viewport API as primary, falls back to window resize.
-// Sets a CSS custom property --visual-vh on <html> so layouts can use
-// calc(var(--visual-vh, 1vh) * 100) instead of 100vh.
 // ═══════════════════════════════════════════════════════════════
 function useKeyboardDetection() {
-  // Store the "stable" layout height so we can diff against it.
   const stableHeightRef = useRef(
     typeof window !== 'undefined' ? window.innerHeight : 0
   );
@@ -186,47 +178,34 @@ function useKeyboardDetection() {
   useEffect(() => {
     const root = document.documentElement;
 
-    // Helper: update the CSS custom property and toggle class
     const update = (visualHeight) => {
-      // --visual-vh: 1% of the *current* visual viewport height.
-      // Use this instead of `vh` units in CSS.
       root.style.setProperty('--visual-vh', `${visualHeight * 0.01}px`);
-
       const diff = stableHeightRef.current - visualHeight;
       const keyboardOpen = diff > KEYBOARD_THRESHOLD;
       document.body.classList.toggle('keyboard-open', keyboardOpen);
     };
 
-    // ── Visual Viewport API (preferred — fires only for keyboard, not scroll) ──
     if (window.visualViewport) {
       const onVVResize = () => {
-        // Only update the stable height when the keyboard is NOT open
-        // (i.e. for example : layout viewport and visual viewport match)
         const vvHeight = window.visualViewport.height;
         const diff = stableHeightRef.current - vvHeight;
         if (diff <= KEYBOARD_THRESHOLD) {
-          // keyboard not open → update stable reference
           stableHeightRef.current = window.innerHeight;
         }
         update(vvHeight);
       };
-
       window.visualViewport.addEventListener('resize', onVVResize);
-      // Initialise immediately
       update(window.visualViewport.height);
-
       return () => window.visualViewport.removeEventListener('resize', onVVResize);
     }
 
-    // ── Fallback: window resize (less precise but still helpful) ──
     const onWindowResize = () => {
       const h = window.innerHeight;
       if (h > stableHeightRef.current - KEYBOARD_THRESHOLD) {
-        stableHeightRef.current = h; // viewport expanded, reset stable
+        stableHeightRef.current = h;
       }
       update(h);
     };
-
     window.addEventListener('resize', onWindowResize);
     update(window.innerHeight);
     return () => window.removeEventListener('resize', onWindowResize);
@@ -282,7 +261,7 @@ export default function App() {
 
   useEffect(() => { setMobileSidebarOpen(false); }, [location.pathname]);
 
-  // ── Navigation drawer scroll lock (prevents layout jump) ──
+  // ── Navigation drawer scroll lock ──
   useEffect(() => {
     if (mobileSidebarOpen) {
       const scrollY = window.scrollY;
@@ -337,10 +316,6 @@ export default function App() {
     <div className="app transition-colors duration-300 bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
       <ScrollToTop />
 
-      <div className="watermark-overlay" aria-hidden="true">
-        <span className="watermark-text">ACADEME</span>
-      </div>
-
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:bg-indigo-600 focus:text-white focus:rounded-lg focus:shadow-lg"
@@ -374,178 +349,153 @@ export default function App() {
         </>
       )}
 
-      {/*
-        KEY FIX: main uses min-h expressed via --visual-vh so it always
-        tracks the *visible* viewport, not the full layout viewport behind the
-        keyboard.  pb-safe ensures the bottom nav / FAB area is not obscured by
-        system UI on notched devices.
-      */}
-      <main
-        id="main-content"
-        className={`overflow-x-hidden transition-[padding] duration-300 ${showChrome
-          ? [
-            'pt-16',
-            'pb-20 md:pb-8',
-            sidebarCollapsed ? 'md:pl-[66px]' : 'md:pl-[238px]',
-          ].join(' ')
-          : ''
-          }`}
-        style={{ minHeight: 'calc(var(--visual-vh, 1vh) * 100)' }}
-      >
-        <ErrorBoundary>
-          <Suspense
-            fallback={
-              <div className="flex items-center justify-center" style={{ minHeight: 'calc(var(--visual-vh, 1vh) * 60)' }}>
-                <SkeletonLoader type="page" brandName="" loadingText="Loading page..." />
-              </div>
-            }
+      {/* ── AppLayout wraps all routes when chrome is visible ── */}
+      {showChrome ? (
+        <AppLayout>
+          <main
+            id="main-content"
+            className={`overflow-x-hidden transition-[padding] duration-300 ${sidebarCollapsed ? 'md:pl-[66px]' : 'md:pl-[238px]'}`}
+            style={{ minHeight: 'calc(var(--visual-vh, 1vh) * 100)' }}
           >
-            <div key={location.pathname} className="animate-fadeIn">
-              <Routes location={location}>
-                {/* ============================================================ */}
-                {/* AUTHENTICATION ROUTES */}
-                {/* ============================================================ */}
-                <Route path="/login" element={!user ? <LoginPage /> : <Navigate to={location.state?.from || '/'} replace />} />
-                <Route path="/signup" element={!user ? <SignupPage /> : <Navigate to="/" replace />} />
-                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-                <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <ErrorBoundary>
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center" style={{ minHeight: 'calc(var(--visual-vh, 1vh) * 60)' }}>
+                    <SkeletonLoader type="page" brandName="" loadingText="Loading page..." />
+                  </div>
+                }
+              >
+                <div key={location.pathname} className="animate-fadeIn">
+                  <Routes location={location}>
+                    {/* AUTHENTICATION ROUTES */}
+                    <Route path="/login" element={!user ? <LoginPage /> : <Navigate to={location.state?.from || '/'} replace />} />
+                    <Route path="/signup" element={!user ? <SignupPage /> : <Navigate to="/" replace />} />
+                    <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                    <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-                {/* ============================================================ */}
-                {/* HOME */}
-                {/* ============================================================ */}
-                <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
+                    {/* HOME */}
+                    <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
 
-                {/* ============================================================ */}
-                {/* ANNOUNCEMENTS */}
-                {/* ============================================================ */}
-                <Route path="/announcements" element={<ProtectedRoute><AnnouncementsPage /></ProtectedRoute>} />
-                <Route path="/announcements/:id" element={<ProtectedRoute><AnnouncementDetailPage /></ProtectedRoute>} />
-                <Route path="/announcements/requests" element={<ProtectedRoute><AnnouncementRequestsPage /></ProtectedRoute>} />
-                <Route path="/announcements/requests/new" element={<ProtectedRoute><CreateAnnouncementRequestPage /></ProtectedRoute>} />
+                    {/* ANNOUNCEMENTS */}
+                    <Route path="/announcements" element={<ProtectedRoute><AnnouncementsPage /></ProtectedRoute>} />
+                    <Route path="/announcements/:id" element={<ProtectedRoute><AnnouncementDetailPage /></ProtectedRoute>} />
+                    <Route path="/announcements/requests" element={<ProtectedRoute><AnnouncementRequestsPage /></ProtectedRoute>} />
+                    <Route path="/announcements/requests/new" element={<ProtectedRoute><CreateAnnouncementRequestPage /></ProtectedRoute>} />
 
-                {/* ============================================================ */}
-                {/* OPPORTUNITIES */}
-                {/* ============================================================ */}
-                <Route path="/opportunities" element={<ProtectedRoute><OpportunitiesPage /></ProtectedRoute>} />
-                <Route path="/opportunities/new" element={<ProtectedRoute><CreateOpportunityPage /></ProtectedRoute>} />
-                <Route path="/opportunities/:id" element={<ProtectedRoute><OpportunityDetailPage /></ProtectedRoute>} />
-                <Route path="/opportunities/:id/edit" element={<ProtectedRoute><EditOpportunityPage /></ProtectedRoute>} />
+                    {/* OPPORTUNITIES */}
+                    <Route path="/opportunities" element={<ProtectedRoute><OpportunitiesPage /></ProtectedRoute>} />
+                    <Route path="/opportunities/new" element={<ProtectedRoute><CreateOpportunityPage /></ProtectedRoute>} />
+                    <Route path="/opportunities/:id" element={<ProtectedRoute><OpportunityDetailPage /></ProtectedRoute>} />
+                    <Route path="/opportunities/:id/edit" element={<ProtectedRoute><EditOpportunityPage /></ProtectedRoute>} />
 
-                {/* ============================================================ */}
-                {/* FOUND ITEMS */}
-                {/* ============================================================ */}
-                <Route path="/found-items" element={<ProtectedRoute><FoundItemsPage /></ProtectedRoute>} />
-                <Route path="/found-items/post" element={<ProtectedRoute><PostFoundItem /></ProtectedRoute>} />
-                <Route path="/found-items/my-listings" element={<ProtectedRoute><MyFoundItemsPage /></ProtectedRoute>} />
-                <Route path="/found-items/:id" element={<ProtectedRoute><FoundItemDetailPage /></ProtectedRoute>} />
-                <Route path="/found-items/:id/claim" element={<ProtectedRoute><ClaimDetail /></ProtectedRoute>} />
-                <Route path="/claims" element={<ProtectedRoute><ClaimListPage /></ProtectedRoute>} />
-                <Route path="/claims/:claimId" element={<ProtectedRoute><ClaimDetail /></ProtectedRoute>} />
+                    {/* FOUND ITEMS */}
+                    <Route path="/found-items" element={<ProtectedRoute><FoundItemsPage /></ProtectedRoute>} />
+                    <Route path="/found-items/post" element={<ProtectedRoute><PostFoundItem /></ProtectedRoute>} />
+                    <Route path="/found-items/my-listings" element={<ProtectedRoute><MyFoundItemsPage /></ProtectedRoute>} />
+                    <Route path="/found-items/:id" element={<ProtectedRoute><FoundItemDetailPage /></ProtectedRoute>} />
+                    <Route path="/found-items/:id/claim" element={<ProtectedRoute><ClaimDetail /></ProtectedRoute>} />
+                    <Route path="/claims" element={<ProtectedRoute><ClaimListPage /></ProtectedRoute>} />
+                    <Route path="/claims/:claimId" element={<ProtectedRoute><ClaimDetail /></ProtectedRoute>} />
 
-                {/* ============================================================ */}
-                {/* CLASSES */}
-                {/* ============================================================ */}
-                <Route path="/classes" element={<ProtectedRoute><ClassesPage /></ProtectedRoute>} />
-                <Route path="/classes/attendance" element={<ProtectedRoute><AttendanceSummary /></ProtectedRoute>} />
-                <Route path="/classes/attendance/:entryId" element={<ProtectedRoute><AttendanceDetail /></ProtectedRoute>} />
-                <Route path="/classes/manage" element={<ProtectedRoute allowedRoles={['class_rep', 'admin']}><ManageTimetablePage /></ProtectedRoute>} />
+                    {/* CLASSES */}
+                    <Route path="/classes" element={<ProtectedRoute><ClassesPage /></ProtectedRoute>} />
+                    <Route path="/classes/attendance" element={<ProtectedRoute><AttendanceSummary /></ProtectedRoute>} />
+                    <Route path="/classes/attendance/:entryId" element={<ProtectedRoute><AttendanceDetail /></ProtectedRoute>} />
+                    <Route path="/classes/manage" element={<ProtectedRoute allowedRoles={['class_rep', 'admin']}><ManageTimetablePage /></ProtectedRoute>} />
 
-                {/* ============================================================ */}
-                {/* LOCATION / MAP */}
-                {/* ============================================================ */}
-                <Route path="/nearby-classes" element={<ProtectedRoute><NearbyClassesPage /></ProtectedRoute>} />
-                <Route path="/campus-map" element={<ProtectedRoute><CampusMapPage /></ProtectedRoute>} />
-                <Route path="/venues/:venueId" element={<ProtectedRoute><VenueDetailPage /></ProtectedRoute>} />
+                    {/* LOCATION / MAP */}
+                    <Route path="/nearby-classes" element={<ProtectedRoute><NearbyClassesPage /></ProtectedRoute>} />
+                    <Route path="/campus-map" element={<ProtectedRoute><CampusMapPage /></ProtectedRoute>} />
+                    <Route path="/venues/:venueId" element={<ProtectedRoute><VenueDetailPage /></ProtectedRoute>} />
 
-                {/* ============================================================ */}
-                {/* BLOG */}
-                {/* ============================================================ */}
-                <Route path="/blog" element={<ProtectedRoute><BlogPage /></ProtectedRoute>} />
-                <Route path="/blog/create" element={<ProtectedRoute><CreateBlog /></ProtectedRoute>} />
-                <Route path="/blog/my-posts" element={<ProtectedRoute><MyBlogPostsPage /></ProtectedRoute>} />
-                <Route path="/blog/:slug" element={<ProtectedRoute><BlogDetail /></ProtectedRoute>} />
-                <Route path="/blog/:slug/edit" element={<ProtectedRoute><EditBlogPage /></ProtectedRoute>} />
+                    {/* BLOG */}
+                    <Route path="/blog" element={<ProtectedRoute><BlogPage /></ProtectedRoute>} />
+                    <Route path="/blog/create" element={<ProtectedRoute><CreateBlog /></ProtectedRoute>} />
+                    <Route path="/blog/my-posts" element={<ProtectedRoute><MyBlogPostsPage /></ProtectedRoute>} />
+                    <Route path="/blog/:slug" element={<ProtectedRoute><BlogDetail /></ProtectedRoute>} />
+                    <Route path="/blog/:slug/edit" element={<ProtectedRoute><EditBlogPage /></ProtectedRoute>} />
 
-                {/* ============================================================ */}
-                {/* PROFILE & ACCOUNT (COMPLETE) */}
-                {/* ============================================================ */}
-                <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-                <Route path="/profile/edit" element={<ProtectedRoute><ProfileEditPage /></ProtectedRoute>} />
-                <Route path="/profile/change-password" element={<ProtectedRoute><ChangePasswordPage /></ProtectedRoute>} />
-                <Route path="/profile/data-export" element={<ProtectedRoute><DataExportPage /></ProtectedRoute>} />
-                <Route path="/profile/delete-account" element={<ProtectedRoute><DeleteAccountConfirmation /></ProtectedRoute>} />
-                <Route path="/profile/biometrics" element={<ProtectedRoute><BiometricEnrollmentPage /></ProtectedRoute>} />
-                <Route path="/profile/2fa" element={<ProtectedRoute><TwoFactorSetupPage /></ProtectedRoute>} />
-                <Route path="/two-factor-setup" element={<Navigate to="/profile/2fa" replace />} />
-                <Route path="/sessions" element={<ProtectedRoute><SessionsPage /></ProtectedRoute>} />
+                    {/* PROFILE & ACCOUNT */}
+                    <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+                    <Route path="/profile/edit" element={<ProtectedRoute><ProfileEditPage /></ProtectedRoute>} />
+                    <Route path="/profile/change-password" element={<ProtectedRoute><ChangePasswordPage /></ProtectedRoute>} />
+                    <Route path="/profile/data-export" element={<ProtectedRoute><DataExportPage /></ProtectedRoute>} />
+                    <Route path="/profile/delete-account" element={<ProtectedRoute><DeleteAccountConfirmation /></ProtectedRoute>} />
+                    <Route path="/profile/biometrics" element={<ProtectedRoute><BiometricEnrollmentPage /></ProtectedRoute>} />
+                    <Route path="/profile/2fa" element={<ProtectedRoute><TwoFactorSetupPage /></ProtectedRoute>} />
+                    <Route path="/two-factor-setup" element={<Navigate to="/profile/2fa" replace />} />
+                    <Route path="/sessions" element={<ProtectedRoute><SessionsPage /></ProtectedRoute>} />
 
-                {/* ============================================================ */}
-                {/* NOTIFICATIONS */}
-                {/* ============================================================ */}
-                <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
-                <Route path="/notifications/preferences" element={<ProtectedRoute><NotificationPreferencesPage /></ProtectedRoute>} />
+                    {/* NOTIFICATIONS */}
+                    <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+                    <Route path="/notifications/preferences" element={<ProtectedRoute><NotificationPreferencesPage /></ProtectedRoute>} />
 
-                {/* ============================================================ */}
-                {/* SEARCH */}
-                {/* ============================================================ */}
-                <Route path="/search" element={<ProtectedRoute><SearchResultsPage /></ProtectedRoute>} />
+                    {/* SEARCH */}
+                    <Route path="/search" element={<ProtectedRoute><SearchResultsPage /></ProtectedRoute>} />
 
-                {/* ============================================================ */}
-                {/* RESOURCES */}
-                {/* ============================================================ */}
-                <Route path="/resources/upload" element={<ProtectedRoute><ResourceUploadPage /></ProtectedRoute>} />
+                    {/* RESOURCES */}
+                    <Route path="/resources/upload" element={<ProtectedRoute><ResourceUploadPage /></ProtectedRoute>} />
 
-                {/* ============================================================ */}
-                {/* STATIC PAGES */}
-                {/* ============================================================ */}
-                <Route path="/contact" element={<ProtectedRoute><ContactPage /></ProtectedRoute>} />
-                <Route path="/about" element={<ProtectedRoute><AboutPage /></ProtectedRoute>} />
-                <Route path="/privacy" element={<ProtectedRoute><PrivacyPage /></ProtectedRoute>} />
+                    {/* STATIC PAGES */}
+                    <Route path="/contact" element={<ProtectedRoute><ContactPage /></ProtectedRoute>} />
+                    <Route path="/about" element={<ProtectedRoute><AboutPage /></ProtectedRoute>} />
+                    <Route path="/privacy" element={<ProtectedRoute><PrivacyPage /></ProtectedRoute>} />
 
-                {/* ============================================================ */}
-                {/* ADMIN */}
-                {/* ============================================================ */}
-                <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
-                <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={['admin']}><AdminAuditLogsPage /></ProtectedRoute>} />
-                <Route path="/admin/roles" element={<ProtectedRoute allowedRoles={['admin']}><AdminRolesPage /></ProtectedRoute>} />
-                <Route path="/admin/reports" element={<ProtectedRoute allowedRoles={['admin']}><AdminReportsPage /></ProtectedRoute>} />
-                <Route path="/admin/stats" element={<ProtectedRoute allowedRoles={['admin']}><GovernanceStats /></ProtectedRoute>} />
+                    {/* ADMIN */}
+                    <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
+                    <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={['admin']}><AdminAuditLogsPage /></ProtectedRoute>} />
+                    <Route path="/admin/roles" element={<ProtectedRoute allowedRoles={['admin']}><AdminRolesPage /></ProtectedRoute>} />
+                    <Route path="/admin/reports" element={<ProtectedRoute allowedRoles={['admin']}><AdminReportsPage /></ProtectedRoute>} />
+                    <Route path="/admin/stats" element={<ProtectedRoute allowedRoles={['admin']}><GovernanceStats /></ProtectedRoute>} />
 
-                {/* ============================================================ */}
-                {/* GOVERNANCE */}
-                {/* ============================================================ */}
-                <Route path="/governance" element={<ProtectedRoute allowedRoles={['student_leader', 'faculty_rep']}><GovernanceDashboard /></ProtectedRoute>} />
-                <Route path="/governance/stats" element={<ProtectedRoute allowedRoles={['student_leader', 'faculty_rep']}><GovernanceStats /></ProtectedRoute>} />
+                    {/* GOVERNANCE */}
+                    <Route path="/governance" element={<ProtectedRoute allowedRoles={['student_leader', 'faculty_rep']}><GovernanceDashboard /></ProtectedRoute>} />
+                    <Route path="/governance/stats" element={<ProtectedRoute allowedRoles={['student_leader', 'faculty_rep']}><GovernanceStats /></ProtectedRoute>} />
 
-                {/* ============================================================ */}
-                {/* SUPPORT TICKETS (COMPLETE) */}
-                {/* ============================================================ */}
-                <Route path="/my-tickets" element={<ProtectedRoute><MyTicketsPage /></ProtectedRoute>} />
-                <Route path="/my-tickets/:id" element={<ProtectedRoute><TicketDetailPage /></ProtectedRoute>} />
-                <Route path="/admin/tickets" element={<ProtectedRoute allowedRoles={['admin']}><AdminTicketsPage /></ProtectedRoute>} />
+                    {/* SUPPORT TICKETS */}
+                    <Route path="/my-tickets" element={<ProtectedRoute><MyTicketsPage /></ProtectedRoute>} />
+                    <Route path="/my-tickets/:id" element={<ProtectedRoute><TicketDetailPage /></ProtectedRoute>} />
+                    <Route path="/admin/tickets" element={<ProtectedRoute allowedRoles={['admin']}><AdminTicketsPage /></ProtectedRoute>} />
 
-                {/* ============================================================ */}
-                {/* CHAT */}
-                {/* ============================================================ */}
-                <Route path="/chat" element={<Navigate to="/chats" replace />} />
-                <Route path="/chats" element={<ProtectedRoute><ChatsPage /></ProtectedRoute>} />
-                <Route path="/chat/:conversationId" element={<ProtectedRoute><ChatDetail /></ProtectedRoute>} />
+                    {/* CHAT */}
+                    <Route path="/chat" element={<Navigate to="/chats" replace />} />
+                    <Route path="/chats" element={<ProtectedRoute><ChatsPage /></ProtectedRoute>} />
+                    <Route path="/chat/:conversationId" element={<ProtectedRoute><ChatDetail /></ProtectedRoute>} />
 
-                {/* ============================================================ */}
-                {/* 404 NOT FOUND */}
-                {/* ============================================================ */}
-                <Route path="*" element={<NotFoundPage />} />
-              </Routes>
-            </div>
-          </Suspense>
-        </ErrorBoundary>
-      </main>
-
-      {showChrome && (
-        <>
-          <BottomNav />
-          <FAB />
-        </>
+                    {/* 404 */}
+                    <Route path="*" element={<NotFoundPage />} />
+                  </Routes>
+                </div>
+              </Suspense>
+            </ErrorBoundary>
+          </main>
+        </AppLayout>
+      ) : (
+        /* Auth pages without chrome */
+        <main
+          id="main-content"
+          style={{ minHeight: 'calc(var(--visual-vh, 1vh) * 100)' }}
+        >
+          <ErrorBoundary>
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center" style={{ minHeight: 'calc(var(--visual-vh, 1vh) * 60)' }}>
+                  <SkeletonLoader type="page" brandName="" loadingText="Loading page..." />
+                </div>
+              }
+            >
+              <div key={location.pathname} className="animate-fadeIn">
+                <Routes location={location}>
+                  <Route path="/login" element={!user ? <LoginPage /> : <Navigate to={location.state?.from || '/'} replace />} />
+                  <Route path="/signup" element={!user ? <SignupPage /> : <Navigate to="/" replace />} />
+                  <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                  <Route path="/reset-password" element={<ResetPasswordPage />} />
+                  <Route path="*" element={<Navigate to="/login" replace />} />
+                </Routes>
+              </div>
+            </Suspense>
+          </ErrorBoundary>
+        </main>
       )}
 
       <style>{`
@@ -567,32 +517,6 @@ export default function App() {
           width: 100% !important;
         }
 
-        /* ============================================
-           WATERMARK — hides when keyboard is open.
-           Uses visibility+opacity (no reflow) and
-           also a media query for when visualViewport
-           isn't available.
-           ============================================ */
-        .watermark-overlay {
-          position: fixed;
-          inset: 0;
-          z-index: 0;
-          pointer-events: none;
-          user-select: none;
-          overflow: hidden;
-          transition: opacity 0.3s ease, visibility 0.3s ease;
-        }
-        @media (max-height: 450px) {
-          .watermark-overlay {
-            opacity: 0 !important;
-            visibility: hidden !important;
-          }
-        }
-        body.keyboard-open .watermark-overlay {
-          opacity: 0 !important;
-          visibility: hidden !important;
-        }
-
         /* Hide bottom chrome when keyboard open */
         body.keyboard-open .bn-nav,
         body.keyboard-open .fixed-bottom {
@@ -600,24 +524,6 @@ export default function App() {
           opacity: 0 !important;
           pointer-events: none !important;
           transition: opacity 0.1s ease-out, visibility 0.1s ease-out;
-        }
-
-        .watermark-text {
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%) rotate(-15deg);
-          font-family: 'Bricolage Grotesque', 'Outfit', system-ui, sans-serif;
-          font-weight: 900;
-          font-size: clamp(6rem, 15vw, 12rem);
-          letter-spacing: -0.05em;
-          text-transform: uppercase;
-          color: rgba(79, 107, 255, 0.04);
-          white-space: nowrap;
-          pointer-events: none;
-        }
-        .dark .watermark-text {
-          color: rgba(129, 140, 248, 0.05);
         }
 
         /* ============================================
@@ -658,7 +564,7 @@ export default function App() {
         }
 
         /* ============================================
-           SAFE AREA INSETS (notched devices)
+           SAFE AREA INSETS
            ============================================ */
         .pb-safe { padding-bottom: env(safe-area-inset-bottom, 1rem); }
         .pt-safe { padding-top:    env(safe-area-inset-top,    1rem); }

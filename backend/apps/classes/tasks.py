@@ -1,3 +1,4 @@
+# backend/apps/classes/tasks.py
 from celery import shared_task
 from django.utils import timezone
 from .models import TimetableEntry, ClassGroup
@@ -16,7 +17,6 @@ def send_daily_reminders():
     from accounts.models import User
 
     students = User.objects.filter(is_active=True)
-    notifier = NotificationService()
 
     for student in students:
         class_groups = ClassGroup.objects.filter(students=student)
@@ -29,11 +29,15 @@ def send_daily_reminders():
         message = TimetableService.format_reminder_message(student, entries)
 
         try:
-            notifier.send_push_notification(
-                student,
-                "Today's Timetable",
-                message,
-                {'type': 'daily_reminder'}
+            # ✅ NotificationService methods are static — call them on the class
+            NotificationService.create_and_push(
+                user=student,
+                title="Today's Timetable",
+                message=message,
+                notification_type="daily_reminder",
+                data={'type': 'daily_reminder'},
             )
         except Exception as e:
-            logger.error(f"Failed to dispatch daily notification to user {student.id}: {e}")
+            logger.error(
+                f"Failed to dispatch daily notification to user {student.id}: {e}"
+            )
