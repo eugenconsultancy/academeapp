@@ -1,49 +1,55 @@
 // frontend/src/components/chat/MessageComposer.jsx
+//
+// Fixes:
+//  • Inline style block added to ensure the composer row is a horizontal flex container
+//  • Input box now stretches to fill available space (flex: 1)
+//  • Elements are vertically centred and well aligned
+//  • Pill‑shaped input uses cd‑composer‑input class, no duplicate border‑radius
+//  • Send button: cd‑send‑btn, gradient, scale on active, disabled state
+//  • Attachment chips: cd‑attachment‑preview / cd‑attachment‑chip, dismissable
+//  • Rate limit counter with low‑remaining warning
+//  • Auto‑resize still intact
+//
 import React, { useState, useRef, useEffect } from 'react';
 import EmojiPicker from '@/components/chat/EmojiPicker';
-import { FiSend, FiPaperclip } from 'react-icons/fi';
+import { FiSend, FiPaperclip, FiMic } from 'react-icons/fi';
 
 const MessageComposer = ({ onSend, onTyping, disabled, rateLimit, replyingTo, conversationId }) => {
     const [text, setText] = useState('');
     const [attachments, setAttachments] = useState([]);
     const textareaRef = useRef(null);
-    const typingTimeoutRef = useRef(null);
+    const typingTimeout = useRef(null);
 
-    // Auto-resize textarea
+    // ── Auto‑resize ──
     const autoResize = () => {
         const el = textareaRef.current;
-        if (el) {
-            el.style.height = 'auto';
-            el.style.height = Math.min(el.scrollHeight, 150) + 'px';
-        }
+        if (!el) return;
+        el.style.height = 'auto';
+        el.style.height = Math.min(el.scrollHeight, 152) + 'px';
     };
+    useEffect(autoResize, [text]);
 
-    useEffect(() => {
-        autoResize();
-    }, [text]);
-
-    // Typing indicator
-    const handleTyping = (val) => {
+    // ── Typing indicator ──
+    const handleTyping = () => {
         onTyping?.(true);
-        clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(() => onTyping?.(false), 2000);
+        clearTimeout(typingTimeout.current);
+        typingTimeout.current = setTimeout(() => onTyping?.(false), 2000);
     };
+    useEffect(() => () => clearTimeout(typingTimeout.current), []);
 
-    const handleChange = (e) => {
+    const handleChange = e => {
         setText(e.target.value);
         handleTyping();
     };
 
-    const handleKeyDown = (e) => {
+    const handleKeyDown = e => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleSend();
         }
     };
 
-    const handleEmojiSelect = (emoji) => {
-        setText((prev) => prev + emoji.native);
-    };
+    const handleEmojiSelect = emoji => setText(p => p + (emoji.native || emoji));
 
     const handleSend = () => {
         if (disabled) return;
@@ -52,84 +58,119 @@ const MessageComposer = ({ onSend, onTyping, disabled, rateLimit, replyingTo, co
         onSend(trimmed, attachments);
         setText('');
         setAttachments([]);
-        // Reset textarea height
-        if (textareaRef.current) {
-            textareaRef.current.style.height = 'auto';
-        }
+        if (textareaRef.current) textareaRef.current.style.height = 'auto';
     };
 
-    const handleAttach = (e) => {
+    const handleAttach = e => {
         const files = Array.from(e.target.files);
-        if (files.length === 0) return;
-        // In a real app you would upload the file and get a URL, then add to attachments.
-        // For now we just show a file name and assume the parent handles upload.
-        const newAttachments = files.map((f) => ({
+        if (!files.length) return;
+        const next = files.map(f => ({
             name: f.name,
             type: f.type.startsWith('image/') ? 'IMAGE' : 'FILE',
-            file: f, // temporary; upload should be handled separately
+            file: f,
         }));
-        setAttachments((prev) => [...prev, ...newAttachments]);
-        e.target.value = ''; // reset
+        setAttachments(p => [...p, ...next]);
+        e.target.value = '';
     };
 
+    const removeAttachment = idx => setAttachments(p => p.filter((_, i) => i !== idx));
+
     const remaining = rateLimit ? rateLimit.remaining : 60;
+    const limit = rateLimit?.limit || 60;
+    const fillPct = Math.max(0, Math.min(100, (remaining / limit) * 100));
+    const isLow = remaining <= 5 && remaining > 0;
+    const canSend = !disabled && (text.trim().length > 0 || attachments.length > 0);
 
     return (
-        <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 flex flex-col">
-            {/* Attachments preview */}
+        <div className="cd-composer">
+            {/* ── Inline style to make the row a full‑width flex container ── */}
+            <style>{`
+                .cd-composer-row {
+                    display: flex;
+                    align-items: center;
+                    width: 100%;
+                    gap: 8px;
+                }
+            `}</style>
+
+            {/* ── Attachment preview chips ── */}
             {attachments.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-2">
-                    {attachments.map((att, idx) => (
-                        <div key={idx} className="relative bg-gray-100 dark:bg-gray-700 rounded px-2 py-1 text-xs flex items-center gap-1">
-                            {att.type === 'IMAGE' ? '🖼️' : '📄'} {att.name}
+                <div className="cd-attachment-preview">
+                    {attachments.map((att, i) => (
+                        <div key={i} className="cd-attachment-chip">
+                            <span className="cd-attachment-icon">
+                                {att.type === 'IMAGE' ? '🖼' : '📄'}
+                            </span>
+                            <span className="cd-attachment-name">{att.name}</span>
                             <button
-                                onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== idx))}
-                                className="text-gray-500 hover:text-red-500 ml-1"
+                                className="cd-attachment-remove"
+                                onClick={() => removeAttachment(i)}
+                                aria-label="Remove attachment"
                             >
-                                &times;
+                                ×
                             </button>
                         </div>
                     ))}
                 </div>
             )}
 
-            <div className="flex items-end gap-2">
+            {/* ── Main row: emoji · attach · input · send ── */}
+            <div className="cd-composer-row">
                 {/* Emoji picker */}
-                <EmojiPicker onSelect={handleEmojiSelect} theme={localStorage.getItem('theme') || 'light'} />
+                <button className="cd-composer-icon-btn" aria-label="Emoji picker" type="button">
+                    <EmojiPicker onSelect={handleEmojiSelect} theme={localStorage.getItem('theme') || 'light'} />
+                </button>
 
                 {/* File attach */}
-                <label className="cursor-pointer p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
-                    <FiPaperclip className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-                    <input type="file" multiple className="hidden" onChange={handleAttach} />
-                </label>
+                <button className="cd-composer-icon-btn" aria-label="Attach file" type="button">
+                    <label className="cd-composer-file-label">
+                        <FiPaperclip size={18} />
+                        <input type="file" multiple style={{ display: 'none' }} onChange={handleAttach} />
+                    </label>
+                </button>
 
-                {/* Textarea */}
-                <div className="flex-1 relative">
-                    <textarea
-                        ref={textareaRef}
-                        value={text}
-                        onChange={handleChange}
-                        onKeyDown={handleKeyDown}
-                        placeholder={disabled ? 'Message limit reached' : 'Type a message…'}
-                        disabled={disabled}
-                        rows={1}
-                        className="w-full resize-none rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-4 py-2 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                    />
-                </div>
+                {/* Pill‑shaped textarea (now expands because of flex:1 from CSS) */}
+                <textarea
+                    ref={textareaRef}
+                    value={text}
+                    onChange={handleChange}
+                    onKeyDown={handleKeyDown}
+                    placeholder={disabled ? 'Message limit reached' : 'Type a message…'}
+                    disabled={disabled}
+                    rows={1}
+                    className="cd-composer-input"
+                />
 
                 {/* Send button */}
                 <button
+                    className="cd-send-btn"
                     onClick={handleSend}
-                    disabled={disabled || (!text.trim() && attachments.length === 0)}
-                    className="p-2 rounded-full bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    disabled={!canSend}
+                    aria-label="Send message"
                 >
-                    <FiSend className="w-5 h-5" />
+                    <FiSend size={17} />
                 </button>
             </div>
 
-            {/* Rate limit counter */}
-            <div className="text-right mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {remaining} / {rateLimit?.limit || 60} messages remaining today
+            {/* ── Rate limit bar (with low‑limit warning) ── */}
+            <div className="cd-rate-notice">
+                <div className="cd-rate-info">
+                    {isLow && (
+                        <span className="cd-rate-warning">Only {remaining} left today</span>
+                    )}
+                    {!isLow && remaining > 0 && (
+                        <span className="cd-rate-text">{remaining}/{limit} today</span>
+                    )}
+                    {remaining === 0 && (
+                        <span className="cd-rate-text rate-exhausted">Daily limit reached</span>
+                    )}
+                </div>
+                <div className="cd-rate-bar">
+                    <div
+                        className="cd-rate-fill"
+                        style={{ width: `${fillPct}%` }}
+                    />
+                </div>
             </div>
         </div>
     );

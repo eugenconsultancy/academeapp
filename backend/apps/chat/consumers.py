@@ -1,7 +1,6 @@
 # backend/apps/chat/consumers.py
 """
 WebSocket consumer for real‑time chat.
-Refined version:
 - Block checks with database (Redis optional)
 - Group read receipts (MessageReadReceipt)
 - Push notification trigger when recipient offline
@@ -16,7 +15,7 @@ Refined version:
 import json
 import uuid
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
@@ -25,7 +24,6 @@ from django.utils import timezone
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 
-# Redis may not be available in development
 try:
     from django_redis import get_redis_connection
 except ImportError:
@@ -41,10 +39,9 @@ from .notifications import send_push_notification
 logger = logging.getLogger('apps.chat')
 
 
-# ─── Sync helpers (Redis when available, DB fallback otherwise) ─────────────
+# ─── Sync helpers ────────────────────────────────────────────────────────────
 
 def _redis():
-    """Return raw Redis connection, or None if Redis is not available."""
     if not get_redis_connection:
         return None
     try:
@@ -65,6 +62,11 @@ def _get_daily_key(user_id) -> str:
     return f"daily_msg:{user_id}:{timezone.now().date().isoformat()}"
 
 
+def _get_midnight_utc() -> datetime:
+    now = timezone.now()
+    return (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 def _check_daily_limit_sync(user_id) -> tuple:
     r = _redis()
     if r:
@@ -76,7 +78,8 @@ def _check_daily_limit_sync(user_id) -> tuple:
         count = Message.objects.filter(sender_id=user_id, created_at__date=today).count()
     limit = getattr(settings, 'CHAT_RATE_LIMIT_MESSAGES_PER_DAY', 60)
     blocked = count >= limit
-    return blocked, count, limit
+    reset_at = _get_midnight_utc()
+    return blocked, count, limit, reset_at
 
 
 def _increment_daily_limit_sync(user_id) -> int:
@@ -84,11 +87,8 @@ def _increment_daily_limit_sync(user_id) -> int:
     if r:
         key = _get_daily_key(user_id)
         if not r.exists(key):
-            now = timezone.now()
-            midnight = (now + timezone.timedelta(days=1)).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
-            ttl = int((midnight - now).total_seconds())
+            midnight = _get_midnight_utc()
+            ttl = int((midnight - timezone.now()).total_seconds())
             r.setex(key, max(ttl, 1), 1)
             return 1
         return r.incr(key)
@@ -279,7 +279,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     }, cls=DjangoJSONEncoder))
                     return
 
-        blocked, count, limit = await sync_to_async(_check_daily_limit_sync)(self.user.id)
+        blocked, count, limit, reset_at = await sync_to_async(_check_daily_limit_sync)(self.user.id)
         if blocked:
             await self.send(text_data=json.dumps({
                 'type': 'error',
@@ -287,6 +287,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'detail': f'Daily message limit ({limit}) reached.',
                 'remaining': 0,
                 'limit': limit,
+                'reset_at': reset_at.isoformat(),
             }, cls=DjangoJSONEncoder))
             return
 
@@ -301,6 +302,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await self.send(text_data=json.dumps({
                     'type': 'message.sent',
                     'message': serialized,
+                    'rate_limit': {
+                        'used': count,
+                        'limit': limit,
+                        'remaining': max(0, limit - count),
+                        'reset_at': reset_at.isoformat(),
+                    }
                 }, cls=DjangoJSONEncoder))
                 return
 
@@ -335,6 +342,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'used': new_count,
                 'limit': limit,
                 'remaining': max(0, limit - new_count),
+                'reset_at': reset_at.isoformat(),
             }
         }, cls=DjangoJSONEncoder))
 
@@ -540,7 +548,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'mode': 'self',
             }, cls=DjangoJSONEncoder))
 
-    # ── Sync history (for missed messages during disconnect) ──────────────────
+    # ── Sync history ──────────────────────────────────────────────────────────
 
     async def handle_sync_history(self, data):
         last_message_at = data.get('last_message_at')
@@ -590,7 +598,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             }
         )
 
-    # ── Event dispatchers (called by channel layer) ───────────────────────────
+    # ── Event dispatchers ────────────────────────────────────────────────────
 
     async def chat_message(self, event):
         await self.send(text_data=json.dumps({
@@ -647,9 +655,5 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def serialize_message(self, msg: Message) -> dict:
-        """Return a plain dict that is JSON‑safe (all UUIDs converted to strings)."""
-        # model_dump returns a dict; with mode='json' it would auto‑convert,
-        # but to be safe we use DjangoJSONEncoder and convert manually if needed.
         raw = MessageOut.from_message(msg).model_dump()
-        # Ensure any remaining UUIDs are strings (belt and braces)
         return json.loads(json.dumps(raw, cls=DjangoJSONEncoder))

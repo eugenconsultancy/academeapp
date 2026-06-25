@@ -107,7 +107,6 @@ const useChatStore = create((set, get) => ({
             return { conversations: sortConversations(updated) };
         }),
 
-    // ── NEW: createConversation action ─────────────────────────────────────
     createConversation: async (participantIds) => {
         try {
             const response = await chatApi.createConversation(participantIds);
@@ -235,7 +234,7 @@ const useChatStore = create((set, get) => ({
             unreadCounts: { ...state.unreadCounts, [convId]: count },
         })),
 
-    // ── Rate limit (no localStorage) ────────────────────────────────────────
+    // ── Rate limit management ────────────────────────────────────────────────
     setRateLimit: (used, limit = 60, reset_at = null) => {
         const remaining = Math.max(0, limit - used);
         set({ rateLimit: { used, limit, remaining, reset_at } });
@@ -248,6 +247,30 @@ const useChatStore = create((set, get) => ({
             set({ rateLimit: { used, limit, remaining, reset_at } });
         } catch (e) {
             // keep current
+        }
+    },
+
+    decrementRateLimit: () => {
+        set((state) => {
+            const { used, limit, remaining } = state.rateLimit;
+            if (remaining <= 0) return state; // no decrement if exhausted
+            return {
+                rateLimit: {
+                    ...state.rateLimit,
+                    used: used + 1,
+                    remaining: remaining - 1,
+                },
+            };
+        });
+    },
+
+    syncRateLimitFromServer: async () => {
+        try {
+            const res = await chatApi.getRateLimit();
+            const { used, limit, remaining, reset_at } = res.data;
+            set({ rateLimit: { used, limit, remaining, reset_at } });
+        } catch {
+            // silently ignore
         }
     },
 
@@ -338,10 +361,89 @@ const useChatStore = create((set, get) => ({
             typingUsers: { ...state.typingUsers, [userId]: typing },
         })),
 
+    // ── Conversation lifecycle ──────────────────────────────────────────────
+    toggleMuteLocal: (convId) => {
+        set((state) => ({
+            conversations: state.conversations.map((c) =>
+                c.id === convId ? { ...c, is_muted: !c.is_muted } : c
+            ),
+        }));
+    },
+
+    removeConversation: (convId) => {
+        set((state) => ({
+            conversations: state.conversations.filter((c) => c.id !== convId),
+        }));
+    },
+
+    updateConversation: (convId, updates) => {
+        set((state) => ({
+            conversations: state.conversations.map((c) =>
+                c.id === convId ? { ...c, ...updates } : c
+            ),
+        }));
+    },
+
     // ── Utility ───────────────────────────────────────────────────────────────
     getCurrentUserId: () => {
         return useUserStore.getState().user?.id;
     },
+
+    // ── Optimistic send message (new action) ────────────────────────────────
+    sendMessage: async (convId, payload) => {
+        const state = get();
+        const userId = state.getCurrentUserId();
+        if (!userId) return null;
+
+        // Optimistic decrement
+        get().decrementRateLimit();
+
+        // Construct temporary message
+        const tempMsg = {
+            id: `temp-${uuidv4()}`,
+            conversation_id: convId,
+            sender_id: userId,
+            content: payload.content || '',
+            msg_type: payload.msg_type || 'TEXT',
+            status: 'pending',
+            is_edited: false,
+            created_at: new Date().toISOString(),
+            client_msg_id: payload.client_msg_id,
+            reply_to_id: payload.reply_to_id || null,
+        };
+
+        // Update messages optimistically
+        get().upsertMessage(convId, tempMsg);
+
+        try {
+            const res = await chatApi.sendMessage(convId, payload);
+            const serverMsg = res.data?.message || res.data;
+            if (serverMsg) {
+                get().upsertMessage(convId, serverMsg);
+                return serverMsg;
+            }
+            // Fallback: mark as sent?
+            get().updateMessageStatus(convId, tempMsg.id, 'sent');
+            return tempMsg;
+        } catch (err) {
+            // Restore rate limit on failure?
+            get().syncRateLimitFromServer(); // refresh from server
+            throw err;
+        }
+    },
 }));
+
+// ─── Helper: Derive display name from conversation ──────────────────────────
+export function getConversationDisplayName(conv) {
+    if (conv.other_participant?.full_name) return conv.other_participant.full_name;
+    if (conv.group_name) return conv.group_name;
+    // Fallback to participant names
+    if (conv.participants && conv.participants.length) {
+        // Assumes participants contain names, but fallback to 'Chat'
+        const names = conv.participants.map(p => p.full_name || p.username || p).filter(Boolean);
+        if (names.length) return names.join(', ');
+    }
+    return 'Chat';
+}
 
 export default useChatStore;

@@ -1,3 +1,5 @@
+# backend/apps/accounts/models.py
+
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from common.models import BaseModel
@@ -18,7 +20,7 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
         extra_fields.setdefault('role', UserRole.ADMIN)
-        extra_fields.setdefault('is_system_user', True)   # superuser is system user
+        extra_fields.setdefault('is_system_user', True)
         return self.create_user(phone_number, password, **extra_fields)
 
 class User(AbstractBaseUser, PermissionsMixin, BaseModel):
@@ -33,7 +35,7 @@ class User(AbstractBaseUser, PermissionsMixin, BaseModel):
     
     # Biometric Authentication (Cloud-Ready)
     biometric_enabled = models.BooleanField(default=False)
-    face_data = models.TextField(blank=True)   # base64 image, size ~200KB, acceptable for demo
+    face_data = models.TextField(blank=True)
     
     # Role & Permissions
     role = models.CharField(
@@ -47,8 +49,8 @@ class User(AbstractBaseUser, PermissionsMixin, BaseModel):
     
     # Two-Factor Authentication (TOTP)
     two_factor_enabled = models.BooleanField(default=False)
-    totp_secret = models.CharField(max_length=32, blank=True, null=True)  # TOTP secret key
-    backup_codes = models.JSONField(default=list, blank=True)  # list of hashed backup codes
+    totp_secret = models.CharField(max_length=32, blank=True, null=True)
+    backup_codes = models.JSONField(default=list, blank=True)
     
     # Tracking & Notifications
     fcm_token = models.CharField(max_length=255, blank=True)
@@ -56,6 +58,16 @@ class User(AbstractBaseUser, PermissionsMixin, BaseModel):
     last_visited_opportunities = models.DateTimeField(null=True, blank=True)
     login_count = models.IntegerField(default=0)
     total_likes_given = models.IntegerField(default=0)
+    
+    # NEW: persistent online status (fallback for reporting)
+    is_online = models.BooleanField(default=False)
+
+    # NEW: avatar color for placeholder avatars
+    avatar_color = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text="Color for the avatar placeholder (e.g., #6C63FF)"
+    )
     
     objects = UserManager()
     
@@ -69,11 +81,9 @@ class User(AbstractBaseUser, PermissionsMixin, BaseModel):
             models.Index(fields=['role', 'is_active']),
         ]
     
-    @property
-    def is_online(self):
-        from django.core.cache import cache
-        return cache.get(f'user_online_{self.id}') is not None
-    
+    # NOTE: The old @property is_online has been removed.
+    # Use PresenceService from apps.chat.services for online checks.
+
     @property
     def effective_role(self):
         active_role = self.student_roles.filter(

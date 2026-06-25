@@ -148,8 +148,9 @@
   --t-normal: 0.25s ease;
   --t-slow:   0.4s ease;
 
-  /* ── Viewport helper (updated by JS in main.jsx + App.jsx) ── */
-  --visual-vh: 1vh;
+  /* ── Global layout tokens ── */
+  --navbar-height: 64px;          /* single source of truth for navbar height */
+  --visual-vh: 1vh;               /* updated by JS via main.jsx + App.jsx */
 }
 
 /* ══════════════════════════════════════
@@ -212,10 +213,8 @@
     scroll-behavior: smooth;
     -webkit-text-size-adjust: 100%;
     transform: none;
-    overflow-x: hidden !important;
-    max-width: 100% !important;
-    width: 100% !important;
     height: 100dvh;
+    /* overflow-x removed – only body prevents horizontal scroll */
   }
 
   body {
@@ -234,24 +233,23 @@
     background-attachment: fixed;
     transition: background-color var(--t-normal), color var(--t-normal);
     text-rendering: optimizeLegibility;
-    overflow-x: hidden !important;
-    max-width: 100% !important;
-    width: 100% !important;
+    overflow-x: hidden;             /* non‑important, single horizontal lock */
+    max-width: 100%;
+    width: 100%;
   }
 
   #root, .app {
     min-height: 100dvh;
     width: 100%;
-    overflow-x: hidden !important;
     position: relative;
+    /* overflow-x removed – no unnecessary restriction */
   }
 
   main {
     flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden !important;
-    min-height: calc(var(--visual-vh, 1dvh) * 100);
-    width: 100% !important;
+    overflow: hidden;              /* no body‑level scroll, pages control internally */
+    min-height: 0;                 /* allow flex to control height */
+    width: 100%;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -548,11 +546,12 @@
 
 /* ══════════════════════════════════════
    MOBILE / KEYBOARD / OVERFLOW FIXES
+   (single rule on body, no !important)
 ══════════════════════════════════════ */
-html, body, #root, .app, .cp-wrap, .hp-root {
-  overflow-x: hidden !important;
-  max-width: 100% !important;
-  width: 100% !important;
+body {
+  overflow-x: hidden;
+  max-width: 100%;
+  width: 100%;
 }
 
 .min-h-screen {

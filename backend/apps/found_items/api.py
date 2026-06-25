@@ -52,7 +52,7 @@ def _item_to_out(item: FoundItem) -> FoundItemOut:
     }
 
 # ══════════════════════════════════════════════════════════════════
-# ITEMS
+# ITEMS (specific routes first, then parameterized)
 # ══════════════════════════════════════════════════════════════════
 
 @router.get("/", auth=JWTAuth(), response=List[FoundItemOut])
@@ -108,99 +108,31 @@ def create_item(request, data: FoundItemCreateIn = Form(...)):
 
     return 201, _item_to_out(item)
 
-# ✅ FIXED: Moved my-items BEFORE {item_id} to prevent route conflict
+# ══════════════════════════════════════════════════════════════════
+# MY ITEMS (must be before {item_id} parameterized routes)
+# ══════════════════════════════════════════════════════════════════
 @router.get("/my-items/", auth=JWTAuth(), response=List[FoundItemOut])
 def my_items(request):
     items = FoundItem.objects.filter(posted_by=request.auth).order_by('-created_at')
     return [_item_to_out(i) for i in items]
 
-# Parameterized routes come AFTER specific routes
-@router.get("/{item_id}/", auth=JWTAuth(), response=FoundItemOut)
-def get_item(request, item_id: UUID):
-    item = get_object_or_404(FoundItem, id=item_id)
-    return _item_to_out(item)
-
-@router.delete("/{item_id}/", auth=JWTAuth())
-def delete_item(request, item_id: UUID):
-    item = get_object_or_404(FoundItem, id=item_id)
-    if request.auth != item.posted_by and request.auth.role != 'admin':
-        raise HttpError(403, "Not allowed")
-    # Delete associated images from storage
-    from common.storage import DualBucketStorage
-    storage = DualBucketStorage()
-    if item.original_image_url:
-        storage.delete_raw_image(item.original_image_url.split('/')[-1])
-    if item.blurred_image_url:
-        # blurred image is in public bucket, but we can also delete it
-        try:
-            storage.s3.delete_object(Bucket=storage.public_bucket, Key=item.blurred_image_url.split('/')[-1])
-        except:
-            pass
-    item.delete()
-    return {"message": "Deleted"}
-
 # ══════════════════════════════════════════════════════════════════
-# OWNERSHIP VERIFICATION (now enforced in claim creation)
+# CLAIMS (must be before {item_id} to prevent /claims/ being caught)
 # ══════════════════════════════════════════════════════════════════
 
-@router.post("/{item_id}/verify-ownership/", auth=JWTAuth(), response=VerifyOwnershipOut)
-def verify_ownership(request, item_id: UUID):
-    item = get_object_or_404(FoundItem, id=item_id)
-    if not item.admission_number_on_item:
-        return {"verified": False, "error": "No admission number recorded on this item", "admission_match": False}
-    if request.auth.admission_number.lower() != item.admission_number_on_item.lower():
-        return {"verified": False, "error": "Admission number does not match.", "admission_match": False}
-    return {"verified": True, "admission_match": True, "error": None}
-
-# ══════════════════════════════════════════════════════════════════
-# CLAIM LIFECYCLE (with proper enum and ownership enforcement)
-# ══════════════════════════════════════════════════════════════════
-
-@router.get("/{item_id}/claim-status/", auth=JWTAuth(), response=ClaimStatusOut)
-def get_item_claim_status(request, item_id: UUID):
-    claim = Claim.objects.filter(item_id=item_id, claimant=request.auth).first()
-    if claim:
-        return ClaimService.get_claim_status(claim)
-    item = get_object_or_404(FoundItem, id=item_id)
-    # If item requires admission number match, the next step is ownership_verify
-    if item.admission_number_on_item:
-        return {
-            "claim_id": "",
-            "status": "none",
-            "next_step": "ownership_verify",
-            "requires_security": False,
-            "requires_payment": False,
-            "security_question": None,
-        }
-    else:
-        return {
-            "claim_id": "",
-            "status": "none",
-            "next_step": "claim",
-            "requires_security": False,
-            "requires_payment": False,
-            "security_question": None,
-        }
-
-@router.post("/{item_id}/claim/", auth=JWTAuth(), response={201: ClaimDetailOut})
-def claim_item(request, item_id: UUID):
-    item = get_object_or_404(FoundItem, id=item_id)
-    if item.is_claimed:
-        raise HttpError(400, "Item already claimed")
-    # Enforce ownership verification if admission number on item
-    if item.admission_number_on_item:
-        if request.auth.admission_number.lower() != item.admission_number_on_item.lower():
-            raise HttpError(403, "Ownership not verified. Your admission number does not match.")
-    existing = Claim.objects.filter(item=item, claimant=request.auth).first()
-    if existing and existing.status not in (ClaimStatus.CANCELLED.value, ClaimStatus.REJECTED.value):
-        # Resume existing claim
-        return ClaimService.get_claim_detail(existing)
-    if existing:
-        existing.delete()  # allow re-claim after cancellation/rejection
-    claim = Claim.objects.create(item=item, claimant=request.auth, status=ClaimStatus.PENDING.value)
-    # If ownership verification already passed, we can immediately move to security or evidence
-    # But the frontend will handle next steps via claim-status.
-    return ClaimService.get_claim_detail(claim)
+@router.get("/claims/", auth=JWTAuth(), response=List[ClaimOut])
+def list_user_claims(request):
+    claims = Claim.objects.filter(claimant=request.auth).select_related('item').order_by('-created_at')
+    return [{
+        "id": str(c.id),
+        "item_id": str(c.item.id),
+        "item_title": c.item.title,
+        "item_category": c.item.category,
+        "status": c.status,
+        "payment_received": c.payment_received,
+        "created_at": str(c.created_at),
+        "confirmed_at": str(c.confirmed_at) if c.confirmed_at else None,
+    } for c in claims]
 
 @router.get("/claims/{claim_id}/", auth=JWTAuth(), response=ClaimDetailOut)
 def get_claim_detail(request, claim_id: UUID):
@@ -295,9 +227,91 @@ def cancel_claim(request, claim_id: UUID):
     return {"message": "Claim cancelled", "status": claim.status}
 
 # ══════════════════════════════════════════════════════════════════
+# PARAMETERIZED ITEM ROUTES (must come after all specific paths)
+# ══════════════════════════════════════════════════════════════════
+@router.get("/{item_id}/", auth=JWTAuth(), response=FoundItemOut)
+def get_item(request, item_id: UUID):
+    item = get_object_or_404(FoundItem, id=item_id)
+    return _item_to_out(item)
+
+@router.delete("/{item_id}/", auth=JWTAuth())
+def delete_item(request, item_id: UUID):
+    item = get_object_or_404(FoundItem, id=item_id)
+    if request.auth != item.posted_by and request.auth.role != 'admin':
+        raise HttpError(403, "Not allowed")
+    # Delete associated images from storage
+    from common.storage import DualBucketStorage
+    storage = DualBucketStorage()
+    if item.original_image_url:
+        storage.delete_raw_image(item.original_image_url.split('/')[-1])
+    if item.blurred_image_url:
+        # blurred image is in public bucket, but we can also delete it
+        try:
+            storage.s3.delete_object(Bucket=storage.public_bucket, Key=item.blurred_image_url.split('/')[-1])
+        except:
+            pass
+    item.delete()
+    return {"message": "Deleted"}
+
+# ══════════════════════════════════════════════════════════════════
+# OWNERSHIP VERIFICATION
+# ══════════════════════════════════════════════════════════════════
+@router.post("/{item_id}/verify-ownership/", auth=JWTAuth(), response=VerifyOwnershipOut)
+def verify_ownership(request, item_id: UUID):
+    item = get_object_or_404(FoundItem, id=item_id)
+    if not item.admission_number_on_item:
+        return {"verified": False, "error": "No admission number recorded on this item", "admission_match": False}
+    if request.auth.admission_number.lower() != item.admission_number_on_item.lower():
+        return {"verified": False, "error": "Admission number does not match.", "admission_match": False}
+    return {"verified": True, "admission_match": True, "error": None}
+
+# ══════════════════════════════════════════════════════════════════
+# CLAIM STATUS / INITIATE (per item)
+# ══════════════════════════════════════════════════════════════════
+@router.get("/{item_id}/claim-status/", auth=JWTAuth(), response=ClaimStatusOut)
+def get_item_claim_status(request, item_id: UUID):
+    claim = Claim.objects.filter(item_id=item_id, claimant=request.auth).first()
+    if claim:
+        return ClaimService.get_claim_status(claim)
+    item = get_object_or_404(FoundItem, id=item_id)
+    if item.admission_number_on_item:
+        return {
+            "claim_id": "",
+            "status": "none",
+            "next_step": "ownership_verify",
+            "requires_security": False,
+            "requires_payment": False,
+            "security_question": None,
+        }
+    else:
+        return {
+            "claim_id": "",
+            "status": "none",
+            "next_step": "claim",
+            "requires_security": False,
+            "requires_payment": False,
+            "security_question": None,
+        }
+
+@router.post("/{item_id}/claim/", auth=JWTAuth(), response={201: ClaimDetailOut})
+def claim_item(request, item_id: UUID):
+    item = get_object_or_404(FoundItem, id=item_id)
+    if item.is_claimed:
+        raise HttpError(400, "Item already claimed")
+    if item.admission_number_on_item:
+        if request.auth.admission_number.lower() != item.admission_number_on_item.lower():
+            raise HttpError(403, "Ownership not verified. Your admission number does not match.")
+    existing = Claim.objects.filter(item=item, claimant=request.auth).first()
+    if existing and existing.status not in (ClaimStatus.CANCELLED.value, ClaimStatus.REJECTED.value):
+        return ClaimService.get_claim_detail(existing)
+    if existing:
+        existing.delete()
+    claim = Claim.objects.create(item=item, claimant=request.auth, status=ClaimStatus.PENDING.value)
+    return ClaimService.get_claim_detail(claim)
+
+# ══════════════════════════════════════════════════════════════════
 # TIPS & REPORT
 # ══════════════════════════════════════════════════════════════════
-
 @router.post("/{item_id}/tip/", auth=JWTAuth())
 def send_tip(request, item_id: UUID, data: TipIn):
     item = get_object_or_404(FoundItem, id=item_id)
@@ -320,27 +334,8 @@ def report_item(request, item_id: UUID, data: dict = Body(...)):
     return {"message": "Reported"}
 
 # ══════════════════════════════════════════════════════════════════
-# USER CLAIMS LIST
+# ADMIN ENDPOINTS
 # ══════════════════════════════════════════════════════════════════
-
-@router.get("/claims/", auth=JWTAuth(), response=List[ClaimOut])
-def list_user_claims(request):
-    claims = Claim.objects.filter(claimant=request.auth).select_related('item').order_by('-created_at')
-    return [{
-        "id": str(c.id),
-        "item_id": str(c.item.id),
-        "item_title": c.item.title,
-        "item_category": c.item.category,
-        "status": c.status,
-        "payment_received": c.payment_received,
-        "created_at": str(c.created_at),
-        "confirmed_at": str(c.confirmed_at) if c.confirmed_at else None,
-    } for c in claims]
-
-# ══════════════════════════════════════════════════════════════════
-# ADMIN ENDPOINTS (added approve/reject)
-# ══════════════════════════════════════════════════════════════════
-
 @router.get("/admin/items/", auth=JWTAuth())
 def admin_items(request):
     if request.auth.role != 'admin':
@@ -364,7 +359,6 @@ def admin_approve_claim(request, claim_id: UUID):
         raise HttpError(400, "Claim already processed")
     claim.status = ClaimStatus.APPROVED.value
     claim.save()
-    # Optionally trigger payment or next step
     return {"message": "Claim approved"}
 
 @router.post("/admin/claims/{claim_id}/reject/", auth=JWTAuth())
@@ -377,9 +371,8 @@ def admin_reject_claim(request, claim_id: UUID):
     return {"message": "Claim rejected"}
 
 # ══════════════════════════════════════════════════════════════════
-# PAYMENT WEBHOOK (improved matching)
+# PAYMENT WEBHOOK
 # ══════════════════════════════════════════════════════════════════
-
 @router.post("/payment-callback/", auth=None)
 def intasend_webhook_callback(request):
     try:
@@ -402,7 +395,6 @@ def intasend_webhook_callback(request):
     )
 
     if state == 'COMPLETE':
-        # Find transaction by invoice_id (stored during payment initiation)
         transaction = PaymentTransaction.objects.filter(invoice_id=invoice_id).first()
         if transaction:
             claim = transaction.claim

@@ -293,7 +293,11 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleToggleSidebar, isMobile]);
 
-  useEffect(() => { document.documentElement.classList.toggle('dark', isDark); }, [isDark]);
+  // ── Theme: apply class and data-attribute on <html> ──
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDark);
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  }, [isDark]);
 
   useEffect(() => {
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -349,142 +353,133 @@ export default function App() {
         </>
       )}
 
-      {/* ── AppLayout wraps all routes when chrome is visible ── */}
+      {/* ── Main content area – AppLayout provides the single <main> element ── */}
       {showChrome ? (
         <AppLayout>
-          <main
-            id="main-content"
-            className={`overflow-x-hidden transition-[padding] duration-300 ${sidebarCollapsed ? 'md:pl-[66px]' : 'md:pl-[238px]'}`}
-            style={{ minHeight: 'calc(var(--visual-vh, 1vh) * 100)' }}
-          >
-            <ErrorBoundary>
-              <Suspense
-                fallback={
-                  <div className="flex items-center justify-center" style={{ minHeight: 'calc(var(--visual-vh, 1vh) * 60)' }}>
-                    <SkeletonLoader type="page" brandName="" loadingText="Loading page..." />
-                  </div>
-                }
-              >
-                <div key={location.pathname} className="animate-fadeIn">
-                  <Routes location={location}>
-                    {/* AUTHENTICATION ROUTES */}
-                    <Route path="/login" element={!user ? <LoginPage /> : <Navigate to={location.state?.from || '/'} replace />} />
-                    <Route path="/signup" element={!user ? <SignupPage /> : <Navigate to="/" replace />} />
-                    <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-                    <Route path="/reset-password" element={<ResetPasswordPage />} />
-
-                    {/* HOME */}
-                    <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
-
-                    {/* ANNOUNCEMENTS */}
-                    <Route path="/announcements" element={<ProtectedRoute><AnnouncementsPage /></ProtectedRoute>} />
-                    <Route path="/announcements/:id" element={<ProtectedRoute><AnnouncementDetailPage /></ProtectedRoute>} />
-                    <Route path="/announcements/requests" element={<ProtectedRoute><AnnouncementRequestsPage /></ProtectedRoute>} />
-                    <Route path="/announcements/requests/new" element={<ProtectedRoute><CreateAnnouncementRequestPage /></ProtectedRoute>} />
-
-                    {/* OPPORTUNITIES */}
-                    <Route path="/opportunities" element={<ProtectedRoute><OpportunitiesPage /></ProtectedRoute>} />
-                    <Route path="/opportunities/new" element={<ProtectedRoute><CreateOpportunityPage /></ProtectedRoute>} />
-                    <Route path="/opportunities/:id" element={<ProtectedRoute><OpportunityDetailPage /></ProtectedRoute>} />
-                    <Route path="/opportunities/:id/edit" element={<ProtectedRoute><EditOpportunityPage /></ProtectedRoute>} />
-
-                    {/* FOUND ITEMS */}
-                    <Route path="/found-items" element={<ProtectedRoute><FoundItemsPage /></ProtectedRoute>} />
-                    <Route path="/found-items/post" element={<ProtectedRoute><PostFoundItem /></ProtectedRoute>} />
-                    <Route path="/found-items/my-listings" element={<ProtectedRoute><MyFoundItemsPage /></ProtectedRoute>} />
-                    <Route path="/found-items/:id" element={<ProtectedRoute><FoundItemDetailPage /></ProtectedRoute>} />
-                    <Route path="/found-items/:id/claim" element={<ProtectedRoute><ClaimDetail /></ProtectedRoute>} />
-                    <Route path="/claims" element={<ProtectedRoute><ClaimListPage /></ProtectedRoute>} />
-                    <Route path="/claims/:claimId" element={<ProtectedRoute><ClaimDetail /></ProtectedRoute>} />
-
-                    {/* CLASSES */}
-                    <Route path="/classes" element={<ProtectedRoute><ClassesPage /></ProtectedRoute>} />
-                    <Route path="/classes/attendance" element={<ProtectedRoute><AttendanceSummary /></ProtectedRoute>} />
-                    <Route path="/classes/attendance/:entryId" element={<ProtectedRoute><AttendanceDetail /></ProtectedRoute>} />
-                    <Route path="/classes/manage" element={<ProtectedRoute allowedRoles={['class_rep', 'admin']}><ManageTimetablePage /></ProtectedRoute>} />
-
-                    {/* LOCATION / MAP */}
-                    <Route path="/nearby-classes" element={<ProtectedRoute><NearbyClassesPage /></ProtectedRoute>} />
-                    <Route path="/campus-map" element={<ProtectedRoute><CampusMapPage /></ProtectedRoute>} />
-                    <Route path="/venues/:venueId" element={<ProtectedRoute><VenueDetailPage /></ProtectedRoute>} />
-
-                    {/* BLOG */}
-                    <Route path="/blog" element={<ProtectedRoute><BlogPage /></ProtectedRoute>} />
-                    <Route path="/blog/create" element={<ProtectedRoute><CreateBlog /></ProtectedRoute>} />
-                    <Route path="/blog/my-posts" element={<ProtectedRoute><MyBlogPostsPage /></ProtectedRoute>} />
-                    <Route path="/blog/:slug" element={<ProtectedRoute><BlogDetail /></ProtectedRoute>} />
-                    <Route path="/blog/:slug/edit" element={<ProtectedRoute><EditBlogPage /></ProtectedRoute>} />
-
-                    {/* PROFILE & ACCOUNT */}
-                    <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-                    <Route path="/profile/edit" element={<ProtectedRoute><ProfileEditPage /></ProtectedRoute>} />
-                    <Route path="/profile/change-password" element={<ProtectedRoute><ChangePasswordPage /></ProtectedRoute>} />
-                    <Route path="/profile/data-export" element={<ProtectedRoute><DataExportPage /></ProtectedRoute>} />
-                    <Route path="/profile/delete-account" element={<ProtectedRoute><DeleteAccountConfirmation /></ProtectedRoute>} />
-                    <Route path="/profile/biometrics" element={<ProtectedRoute><BiometricEnrollmentPage /></ProtectedRoute>} />
-                    <Route path="/profile/2fa" element={<ProtectedRoute><TwoFactorSetupPage /></ProtectedRoute>} />
-                    <Route path="/two-factor-setup" element={<Navigate to="/profile/2fa" replace />} />
-                    <Route path="/sessions" element={<ProtectedRoute><SessionsPage /></ProtectedRoute>} />
-
-                    {/* NOTIFICATIONS */}
-                    <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
-                    <Route path="/notifications/preferences" element={<ProtectedRoute><NotificationPreferencesPage /></ProtectedRoute>} />
-
-                    {/* SEARCH */}
-                    <Route path="/search" element={<ProtectedRoute><SearchResultsPage /></ProtectedRoute>} />
-
-                    {/* RESOURCES */}
-                    <Route path="/resources/upload" element={<ProtectedRoute><ResourceUploadPage /></ProtectedRoute>} />
-
-                    {/* STATIC PAGES */}
-                    <Route path="/contact" element={<ProtectedRoute><ContactPage /></ProtectedRoute>} />
-                    <Route path="/about" element={<ProtectedRoute><AboutPage /></ProtectedRoute>} />
-                    <Route path="/privacy" element={<ProtectedRoute><PrivacyPage /></ProtectedRoute>} />
-
-                    {/* ADMIN */}
-                    <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
-                    <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={['admin']}><AdminAuditLogsPage /></ProtectedRoute>} />
-                    <Route path="/admin/roles" element={<ProtectedRoute allowedRoles={['admin']}><AdminRolesPage /></ProtectedRoute>} />
-                    <Route path="/admin/reports" element={<ProtectedRoute allowedRoles={['admin']}><AdminReportsPage /></ProtectedRoute>} />
-                    <Route path="/admin/stats" element={<ProtectedRoute allowedRoles={['admin']}><GovernanceStats /></ProtectedRoute>} />
-
-                    {/* GOVERNANCE */}
-                    <Route path="/governance" element={<ProtectedRoute allowedRoles={['student_leader', 'faculty_rep']}><GovernanceDashboard /></ProtectedRoute>} />
-                    <Route path="/governance/stats" element={<ProtectedRoute allowedRoles={['student_leader', 'faculty_rep']}><GovernanceStats /></ProtectedRoute>} />
-
-                    {/* SUPPORT TICKETS */}
-                    <Route path="/my-tickets" element={<ProtectedRoute><MyTicketsPage /></ProtectedRoute>} />
-                    <Route path="/my-tickets/:id" element={<ProtectedRoute><TicketDetailPage /></ProtectedRoute>} />
-                    <Route path="/admin/tickets" element={<ProtectedRoute allowedRoles={['admin']}><AdminTicketsPage /></ProtectedRoute>} />
-
-                    {/* CHAT */}
-                    <Route path="/chat" element={<Navigate to="/chats" replace />} />
-                    <Route path="/chats" element={<ProtectedRoute><ChatsPage /></ProtectedRoute>} />
-                    <Route path="/chat/:conversationId" element={<ProtectedRoute><ChatDetail /></ProtectedRoute>} />
-
-                    {/* 404 */}
-                    <Route path="*" element={<NotFoundPage />} />
-                  </Routes>
-                </div>
-              </Suspense>
-            </ErrorBoundary>
-          </main>
-        </AppLayout>
-      ) : (
-        /* Auth pages without chrome */
-        <main
-          id="main-content"
-          style={{ minHeight: 'calc(var(--visual-vh, 1vh) * 100)' }}
-        >
           <ErrorBoundary>
             <Suspense
               fallback={
-                <div className="flex items-center justify-center" style={{ minHeight: 'calc(var(--visual-vh, 1vh) * 60)' }}>
+                <div className="flex items-center justify-center" style={{ height: '100%' }}>
                   <SkeletonLoader type="page" brandName="" loadingText="Loading page..." />
                 </div>
               }
             >
-              <div key={location.pathname} className="animate-fadeIn">
+              <div key={location.pathname} className="animate-fadeIn flex-1 flex flex-col min-h-0">
+                <Routes location={location}>
+                  {/* AUTHENTICATION ROUTES */}
+                  <Route path="/login" element={!user ? <LoginPage /> : <Navigate to={location.state?.from || '/'} replace />} />
+                  <Route path="/signup" element={!user ? <SignupPage /> : <Navigate to="/" replace />} />
+                  <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                  <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+                  {/* HOME */}
+                  <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
+
+                  {/* ANNOUNCEMENTS */}
+                  <Route path="/announcements" element={<ProtectedRoute><AnnouncementsPage /></ProtectedRoute>} />
+                  <Route path="/announcements/:id" element={<ProtectedRoute><AnnouncementDetailPage /></ProtectedRoute>} />
+                  <Route path="/announcements/requests" element={<ProtectedRoute><AnnouncementRequestsPage /></ProtectedRoute>} />
+                  <Route path="/announcements/requests/new" element={<ProtectedRoute><CreateAnnouncementRequestPage /></ProtectedRoute>} />
+
+                  {/* OPPORTUNITIES */}
+                  <Route path="/opportunities" element={<ProtectedRoute><OpportunitiesPage /></ProtectedRoute>} />
+                  <Route path="/opportunities/new" element={<ProtectedRoute><CreateOpportunityPage /></ProtectedRoute>} />
+                  <Route path="/opportunities/:id" element={<ProtectedRoute><OpportunityDetailPage /></ProtectedRoute>} />
+                  <Route path="/opportunities/:id/edit" element={<ProtectedRoute><EditOpportunityPage /></ProtectedRoute>} />
+
+                  {/* FOUND ITEMS */}
+                  <Route path="/found-items" element={<ProtectedRoute><FoundItemsPage /></ProtectedRoute>} />
+                  <Route path="/found-items/post" element={<ProtectedRoute><PostFoundItem /></ProtectedRoute>} />
+                  <Route path="/found-items/my-listings" element={<ProtectedRoute><MyFoundItemsPage /></ProtectedRoute>} />
+                  <Route path="/found-items/:id" element={<ProtectedRoute><FoundItemDetailPage /></ProtectedRoute>} />
+                  <Route path="/found-items/:id/claim" element={<ProtectedRoute><ClaimDetail /></ProtectedRoute>} />
+                  <Route path="/claims" element={<ProtectedRoute><ClaimListPage /></ProtectedRoute>} />
+                  <Route path="/claims/:claimId" element={<ProtectedRoute><ClaimDetail /></ProtectedRoute>} />
+
+                  {/* CLASSES */}
+                  <Route path="/classes" element={<ProtectedRoute><ClassesPage /></ProtectedRoute>} />
+                  <Route path="/classes/attendance" element={<ProtectedRoute><AttendanceSummary /></ProtectedRoute>} />
+                  <Route path="/classes/attendance/:entryId" element={<ProtectedRoute><AttendanceDetail /></ProtectedRoute>} />
+                  <Route path="/classes/manage" element={<ProtectedRoute allowedRoles={['class_rep', 'admin']}><ManageTimetablePage /></ProtectedRoute>} />
+
+                  {/* LOCATION / MAP */}
+                  <Route path="/nearby-classes" element={<ProtectedRoute><NearbyClassesPage /></ProtectedRoute>} />
+                  <Route path="/campus-map" element={<ProtectedRoute><CampusMapPage /></ProtectedRoute>} />
+                  <Route path="/venues/:venueId" element={<ProtectedRoute><VenueDetailPage /></ProtectedRoute>} />
+
+                  {/* BLOG */}
+                  <Route path="/blog" element={<ProtectedRoute><BlogPage /></ProtectedRoute>} />
+                  <Route path="/blog/create" element={<ProtectedRoute><CreateBlog /></ProtectedRoute>} />
+                  <Route path="/blog/my-posts" element={<ProtectedRoute><MyBlogPostsPage /></ProtectedRoute>} />
+                  <Route path="/blog/:slug" element={<ProtectedRoute><BlogDetail /></ProtectedRoute>} />
+                  <Route path="/blog/:slug/edit" element={<ProtectedRoute><EditBlogPage /></ProtectedRoute>} />
+
+                  {/* PROFILE & ACCOUNT */}
+                  <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+                  <Route path="/profile/edit" element={<ProtectedRoute><ProfileEditPage /></ProtectedRoute>} />
+                  <Route path="/profile/change-password" element={<ProtectedRoute><ChangePasswordPage /></ProtectedRoute>} />
+                  <Route path="/profile/data-export" element={<ProtectedRoute><DataExportPage /></ProtectedRoute>} />
+                  <Route path="/profile/delete-account" element={<ProtectedRoute><DeleteAccountConfirmation /></ProtectedRoute>} />
+                  <Route path="/profile/biometrics" element={<ProtectedRoute><BiometricEnrollmentPage /></ProtectedRoute>} />
+                  <Route path="/profile/2fa" element={<ProtectedRoute><TwoFactorSetupPage /></ProtectedRoute>} />
+                  <Route path="/two-factor-setup" element={<Navigate to="/profile/2fa" replace />} />
+                  <Route path="/sessions" element={<ProtectedRoute><SessionsPage /></ProtectedRoute>} />
+
+                  {/* NOTIFICATIONS */}
+                  <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+                  <Route path="/notifications/preferences" element={<ProtectedRoute><NotificationPreferencesPage /></ProtectedRoute>} />
+
+                  {/* SEARCH */}
+                  <Route path="/search" element={<ProtectedRoute><SearchResultsPage /></ProtectedRoute>} />
+
+                  {/* RESOURCES */}
+                  <Route path="/resources/upload" element={<ProtectedRoute><ResourceUploadPage /></ProtectedRoute>} />
+
+                  {/* STATIC PAGES */}
+                  <Route path="/contact" element={<ProtectedRoute><ContactPage /></ProtectedRoute>} />
+                  <Route path="/about" element={<ProtectedRoute><AboutPage /></ProtectedRoute>} />
+                  <Route path="/privacy" element={<ProtectedRoute><PrivacyPage /></ProtectedRoute>} />
+
+                  {/* ADMIN */}
+                  <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
+                  <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={['admin']}><AdminAuditLogsPage /></ProtectedRoute>} />
+                  <Route path="/admin/roles" element={<ProtectedRoute allowedRoles={['admin']}><AdminRolesPage /></ProtectedRoute>} />
+                  <Route path="/admin/reports" element={<ProtectedRoute allowedRoles={['admin']}><AdminReportsPage /></ProtectedRoute>} />
+                  <Route path="/admin/stats" element={<ProtectedRoute allowedRoles={['admin']}><GovernanceStats /></ProtectedRoute>} />
+
+                  {/* GOVERNANCE */}
+                  <Route path="/governance" element={<ProtectedRoute allowedRoles={['student_leader', 'faculty_rep']}><GovernanceDashboard /></ProtectedRoute>} />
+                  <Route path="/governance/stats" element={<ProtectedRoute allowedRoles={['student_leader', 'faculty_rep']}><GovernanceStats /></ProtectedRoute>} />
+
+                  {/* SUPPORT TICKETS */}
+                  <Route path="/my-tickets" element={<ProtectedRoute><MyTicketsPage /></ProtectedRoute>} />
+                  <Route path="/my-tickets/:id" element={<ProtectedRoute><TicketDetailPage /></ProtectedRoute>} />
+                  <Route path="/admin/tickets" element={<ProtectedRoute allowedRoles={['admin']}><AdminTicketsPage /></ProtectedRoute>} />
+
+                  {/* CHAT */}
+                  <Route path="/chat" element={<Navigate to="/chats" replace />} />
+                  <Route path="/chats" element={<ProtectedRoute><ChatsPage /></ProtectedRoute>} />
+                  <Route path="/chat/:conversationId" element={<ProtectedRoute><ChatDetail /></ProtectedRoute>} />
+
+                  {/* 404 */}
+                  <Route path="*" element={<NotFoundPage />} />
+                </Routes>
+              </div>
+            </Suspense>
+          </ErrorBoundary>
+        </AppLayout>
+      ) : (
+        /* Auth pages without chrome – simple centering */
+        <main id="main-content" className="flex-1 flex flex-col min-h-0">
+          <ErrorBoundary>
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center" style={{ height: '100%' }}>
+                  <SkeletonLoader type="page" brandName="" loadingText="Loading page..." />
+                </div>
+              }
+            >
+              <div key={location.pathname} className="animate-fadeIn flex-1 flex flex-col min-h-0">
                 <Routes location={location}>
                   <Route path="/login" element={!user ? <LoginPage /> : <Navigate to={location.state?.from || '/'} replace />} />
                   <Route path="/signup" element={!user ? <SignupPage /> : <Navigate to="/" replace />} />
@@ -499,25 +494,47 @@ export default function App() {
       )}
 
       <style>{`
-        /* ============================================
-           GLOBAL OVERFLOW PROTECTION
-           ============================================ */
-        html, body, #root, .app {
-          overflow-x: hidden !important;
-          max-width: 100% !important;
-          width: 100% !important;
-          position: relative;
-        }
-        *, *::before, *::after {
-          max-width: 100vw;
-          box-sizing: border-box;
-        }
-        main {
-          overflow-x: hidden !important;
-          width: 100% !important;
+        /* ═══════════════════════════════════════════════════
+           GLOBAL LAYOUT & TOKENS
+           (--navbar-height is now defined only in globals.css)
+           ═══════════════════════════════════════════════════ */
+
+        html {
+          height: 100dvh;          /* dynamic viewport height – respects mobile browser chrome */
         }
 
-        /* Hide bottom chrome when keyboard open */
+        body {
+          overflow-x: hidden;       /* prevent horizontal scrollbars */
+          margin: 0;
+        }
+
+        #root {
+          min-height: 100dvh;       /* ensures root is at least viewport height */
+        }
+
+        .app {
+          display: flex;
+          flex-direction: column;
+          height: 100%;            /* fill viewport */
+          overflow: hidden;        /* prevent body-level scroll, use inner scroll areas */
+        }
+
+        /* main content fills available space */
+        main {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          min-height: 0;           /* allow shrinking for overflow */
+        }
+
+        /* ═══════════════════════════════════════════════════
+           OVERFLOW PROTECTION
+           ═══════════════════════════════════════════════════ */
+        *, *::before, *::after {
+          box-sizing: border-box;
+        }
+
+        /* Hide bottom chrome when keyboard open – DO NOT hide composer/reply bar */
         body.keyboard-open .bn-nav,
         body.keyboard-open .fixed-bottom {
           visibility: hidden !important;
@@ -526,26 +543,26 @@ export default function App() {
           transition: opacity 0.1s ease-out, visibility 0.1s ease-out;
         }
 
-        /* ============================================
+        /* ═══════════════════════════════════════════════════
            ANIMATIONS
-           ============================================ */
+           ═══════════════════════════════════════════════════ */
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(8px); }
           to   { opacity: 1; transform: translateY(0); }
         }
         .animate-fadeIn { animation: fadeIn 0.25s ease-out; }
 
-        /* ============================================
+        /* ═══════════════════════════════════════════════════
            RESPONSIVE SIDEBAR
-           ============================================ */
+           ═══════════════════════════════════════════════════ */
         @media (max-width: 767px) {
           .sb-root { display: none !important; }
           .mobile-sidebar-drawer .sb-root { display: flex !important; }
         }
 
-        /* ============================================
+        /* ═══════════════════════════════════════════════════
            PRINT STYLES
-           ============================================ */
+           ═══════════════════════════════════════════════════ */
         @media print {
           .app { background: white !important; }
           nav, .sidebar, .bottom-nav, .offline-indicator, .fixed, .watermark-overlay {
@@ -554,18 +571,18 @@ export default function App() {
           main { padding: 0 !important; margin: 0 !important; }
         }
 
-        /* ============================================
+        /* ═══════════════════════════════════════════════════
            REDUCED MOTION
-           ============================================ */
+           ═══════════════════════════════════════════════════ */
         .reduce-motion *, .reduce-motion *::before, .reduce-motion *::after {
           animation-duration: 0.01ms !important;
           animation-iteration-count: 1 !important;
           transition-duration: 0.01ms !important;
         }
 
-        /* ============================================
+        /* ═══════════════════════════════════════════════════
            SAFE AREA INSETS
-           ============================================ */
+           ═══════════════════════════════════════════════════ */
         .pb-safe { padding-bottom: env(safe-area-inset-bottom, 1rem); }
         .pt-safe { padding-top:    env(safe-area-inset-top,    1rem); }
       `}</style>

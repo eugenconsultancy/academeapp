@@ -31,7 +31,6 @@ from ninja.security import HttpBearer
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
-# Redis may not be available in development
 try:
     from django_redis import get_redis_connection
 except ImportError:
@@ -47,9 +46,12 @@ from .schemas import (
     StartConversationIn, BlockUserIn, MarkReadIn, ReportIn,
     BulkMessageIn, ForwardMessageIn, PresignedUrlIn, PresignedUrlOut,
     DraftIn, BulkSendIn, BulkMessageItem, RateLimitOut,
-    UserSearchOut, MessageSearchOut, ParticipantInfo,  # <-- added ParticipantInfo
+    UserSearchOut, MessageSearchOut, ParticipantInfo,
+    SendMessageResponse, BulkSendResponse,
 )
 from .notifications import send_push_notification
+# NEW: import the PresenceService for robust online status checks
+from .services import PresenceService
 
 router = Router(tags=["chat"])
 User = get_user_model()
@@ -58,8 +60,6 @@ User = get_user_model()
 # ─── Authentication ───────────────────────────────────────────────────────────
 
 class AuthBearer(HttpBearer):
-    """JWT Bearer token authentication for REST endpoints."""
-    
     def authenticate(self, request, token):
         try:
             import jwt as pyjwt
@@ -81,10 +81,9 @@ class AuthBearer(HttpBearer):
 auth = AuthBearer()
 
 
-# ─── Redis helpers (graceful fallback for dev) ───────────────────────────────
+# ─── Redis helpers ────────────────────────────────────────────────────────────
 
 def _redis():
-    """Return raw Redis connection, or None if Redis is not available."""
     if not get_redis_connection:
         return None
     try:
@@ -93,7 +92,7 @@ def _redis():
         return None
 
 
-# ─── Rate‑Limit Helpers (with DB fallback) ───────────────────────────────────
+# ─── Rate‑limit helpers ─────────────────────────────────────────────────────
 
 def _daily_key(user_id) -> str:
     today = timezone.now().date().isoformat()
@@ -112,7 +111,6 @@ def check_daily_limit(user_id) -> tuple:
         count = r.get(key)
         count = int(count) if count else 0
     else:
-        # DB fallback: count today's messages
         today = timezone.now().date()
         count = Message.objects.filter(
             sender_id=user_id, created_at__date=today
@@ -133,14 +131,13 @@ def increment_daily_limit(user_id) -> int:
             return 1
         return r.incr(key)
     else:
-        # DB fallback (approximate, but fine for dev)
         today = timezone.now().date()
         return Message.objects.filter(
             sender_id=user_id, created_at__date=today
         ).count() + 1
 
 
-# ─── Block / Unblock Cache Helpers (with DB fallback) ────────────────────────
+# ─── Block helpers ──────────────────────────────────────────────────────────
 
 def _block_key(blocker_id) -> str:
     return f"blocked:{blocker_id}"
@@ -150,7 +147,6 @@ def user_blocks(blocker_id, blocked_id) -> bool:
     r = _redis()
     if r and r.sismember(_block_key(blocker_id), str(blocked_id)):
         return True
-    # DB is the authoritative source
     return BlockList.objects.filter(
         blocker_id=blocker_id, blocked_user_id=blocked_id
     ).exists()
@@ -168,15 +164,12 @@ def remove_block_from_cache(blocker_id, blocked_id):
         r.srem(_block_key(blocker_id), str(blocked_id))
 
 
-def _is_user_online(user_id) -> bool:
-    r = _redis()
-    if r:
-        return r.exists(f"user_online_{user_id}")
-    # Without Redis, assume offline (push notifications will be sent)
-    return False
+# ─── Online status via PresenceService (replaces old _is_user_online) ─────────
+
+# ⚠️ Direct Redis check removed – use PresenceService.is_online() everywhere
 
 
-# ─── WebSocket Broadcast Helper ───────────────────────────────────────────────
+# ─── WebSocket broadcast ─────────────────────────────────────────────────────
 
 def _broadcast_to_conversation(conversation_id, event: dict):
     try:
@@ -185,10 +178,10 @@ def _broadcast_to_conversation(conversation_id, event: dict):
             f"chat_{conversation_id}", event
         )
     except Exception:
-        pass  # WebSocket broadcast is best-effort for REST endpoints
+        pass
 
 
-# ─── Helper: Get conversation for user ────────────────────────────────────────
+# ─── Helper: get conversation for user ────────────────────────────────────────
 
 def _get_user_conversation(conversation_id: uuid.UUID, user) -> Conversation:
     conv = get_object_or_404(Conversation, id=conversation_id)
@@ -197,13 +190,19 @@ def _get_user_conversation(conversation_id: uuid.UUID, user) -> Conversation:
     return conv
 
 
-# ─── Helper: Build ParticipantInfo for other user in 1‑on‑1 chat ────────────
+# ─── Helper: Build ParticipantInfo for other user ────────────────────────────
 
 def _build_other_participant(conv, current_user) -> Optional[ParticipantInfo]:
-    """Return ParticipantInfo for the other user in a 1‑on‑1 conversation, or None."""
+    """Return ParticipantInfo for the other user in a 1‑on‑1 chat, or None."""
     if conv.is_group:
         return None
     other = conv.get_other_participant(current_user)
+    if not other:
+        return None
+    # Use PresenceService for real‑time status, no need to include 'is_online' in only()
+    other = User.objects.filter(id=other.id).only(
+        'id', 'full_name', 'profile_pic', 'avatar_color'
+    ).first()
     if not other:
         return None
     return ParticipantInfo(
@@ -211,7 +210,7 @@ def _build_other_participant(conv, current_user) -> Optional[ParticipantInfo]:
         full_name=other.full_name,
         avatar_url=other.profile_pic or None,
         avatar_color=getattr(other, 'avatar_color', None),
-        is_online=other.is_online,
+        is_online=PresenceService.is_online(other.id),   # real‑time status via Redis + DB fallback
     )
 
 
@@ -220,8 +219,8 @@ def _build_other_participant(conv, current_user) -> Optional[ParticipantInfo]:
 @router.get("/conversations", response=List[ConversationOut], auth=auth)
 def list_conversations(
     request,
-    filter: str = Query("all", description="Filter: all, unread, read, archived, blocked"),
-    cursor: Optional[str] = Query(None, description="Cursor for pagination (ISO datetime)"),
+    filter: str = Query("all"),
+    cursor: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=100),
 ):
     user = request.auth
@@ -277,7 +276,7 @@ def list_conversations(
             is_group=conv.is_group,
             group_name=conv.group_name,
             group_avatar=conv.group_avatar,
-            other_participant=other_info,             # <-- now populated
+            other_participant=other_info,
             last_message_content=conv.last_message_content,
             last_message_at=conv.last_message_at,
             last_message_sender_id=conv.last_message_sender_id,
@@ -326,19 +325,12 @@ def create_conversation(request, payload: StartConversationIn):
             p.is_deleted = False
             p.save(update_fields=['is_deleted'])
         
-        other = User.objects.get(id=other_id)
-        other_info = ParticipantInfo(
-            id=other.id,
-            full_name=other.full_name,
-            avatar_url=other.profile_pic or None,
-            avatar_color=getattr(other, 'avatar_color', None),
-            is_online=other.is_online,
-        )
+        other_info = _build_other_participant(existing, user)
         return ConversationOut(
             id=existing.id,
             participants=[user.id, other_id],
             is_group=False,
-            other_participant=other_info,               # <-- populated
+            other_participant=other_info,
             last_message_content=existing.last_message_content,
             last_message_at=existing.last_message_at,
             last_message_sender_id=existing.last_message_sender_id,
@@ -355,19 +347,12 @@ def create_conversation(request, payload: StartConversationIn):
         ConversationParticipant.objects.create(conversation=conv, user_id=other_id)
         p = ConversationParticipant.objects.get(conversation=conv, user=user)
 
-    other = User.objects.get(id=other_id)
-    other_info = ParticipantInfo(
-        id=other.id,
-        full_name=other.full_name,
-        avatar_url=other.profile_pic or None,
-        avatar_color=getattr(other, 'avatar_color', None),
-        is_online=other.is_online,
-    )
+    other_info = _build_other_participant(conv, user)
     return ConversationOut(
         id=conv.id,
         participants=[user.id, other_id],
         is_group=False,
-        other_participant=other_info,                  # <-- populated
+        other_participant=other_info,
         last_message_content=None,
         last_message_at=None,
         last_message_sender_id=None,
@@ -379,19 +364,12 @@ def create_conversation(request, payload: StartConversationIn):
     )
 
 
-# The rest of the file (toggle_pin, toggle_archive, etc.) remains identical
-# to the previously provided api.py except for the added import and the two
-# helper/endpoint changes above.
-# I'm including the remainder here for completeness.
+# ─── Toggle pin / archive / mute ─────────────────────────────────────────────
 
 @router.post("/conversations/{conversation_id}/pin", auth=auth)
 def toggle_pin(request, conversation_id: uuid.UUID):
     user = request.auth
-    cp = get_object_or_404(
-        ConversationParticipant,
-        conversation_id=conversation_id,
-        user=user,
-    )
+    cp = get_object_or_404(ConversationParticipant, conversation_id=conversation_id, user=user)
     cp.is_pinned = not cp.is_pinned
     cp.save(update_fields=['is_pinned', 'updated_at'])
     return {"pinned": cp.is_pinned}
@@ -400,11 +378,7 @@ def toggle_pin(request, conversation_id: uuid.UUID):
 @router.post("/conversations/{conversation_id}/archive", auth=auth)
 def toggle_archive(request, conversation_id: uuid.UUID):
     user = request.auth
-    cp = get_object_or_404(
-        ConversationParticipant,
-        conversation_id=conversation_id,
-        user=user,
-    )
+    cp = get_object_or_404(ConversationParticipant, conversation_id=conversation_id, user=user)
     cp.is_archived = not cp.is_archived
     cp.save(update_fields=['is_archived', 'updated_at'])
     return {"archived": cp.is_archived}
@@ -413,11 +387,7 @@ def toggle_archive(request, conversation_id: uuid.UUID):
 @router.post("/conversations/{conversation_id}/mute", auth=auth)
 def toggle_mute(request, conversation_id: uuid.UUID):
     user = request.auth
-    cp = get_object_or_404(
-        ConversationParticipant,
-        conversation_id=conversation_id,
-        user=user,
-    )
+    cp = get_object_or_404(ConversationParticipant, conversation_id=conversation_id, user=user)
     cp.is_muted = not cp.is_muted
     cp.save(update_fields=['is_muted', 'updated_at'])
     return {"muted": cp.is_muted}
@@ -442,9 +412,9 @@ def save_draft(request, conversation_id: uuid.UUID, payload: DraftIn):
     return {"success": True}
 
 
-# ─── Messaging Endpoints (as before, unchanged) ─────────────────────────────
+# ─── Messaging Endpoints ─────────────────────────────────────────────────────
 
-@router.post("/conversations/{conversation_id}/messages", response=MessageOut, auth=auth)
+@router.post("/conversations/{conversation_id}/messages", response=SendMessageResponse, auth=auth)
 def send_message(request, conversation_id: uuid.UUID, payload: MessageIn):
     user = request.auth
     conv = _get_user_conversation(conversation_id, user)
@@ -464,7 +434,13 @@ def send_message(request, conversation_id: uuid.UUID, payload: MessageIn):
     if payload.client_msg_id:
         existing = Message.objects.filter(sender=user, client_msg_id=payload.client_msg_id).first()
         if existing:
-            return MessageOut.from_message(existing)
+            rate_limit = RateLimitOut(
+                used=count,
+                limit=limit,
+                remaining=max(0, limit - count),
+                reset_at=reset_at.isoformat(),
+            )
+            return SendMessageResponse(message=MessageOut.from_message(existing), rate_limit=rate_limit)
 
     if payload.file_url and payload.file_size:
         max_size = getattr(settings, 'CHAT_MAX_ATTACHMENT_SIZE', 10 * 1024 * 1024)
@@ -493,7 +469,8 @@ def send_message(request, conversation_id: uuid.UUID, payload: MessageIn):
         msg.save()
     except IntegrityError:
         msg = Message.objects.get(sender=user, client_msg_id=payload.client_msg_id)
-        return MessageOut.from_message(msg)
+        rate_limit = RateLimitOut(used=count, limit=limit, remaining=max(0, limit - count), reset_at=reset_at.isoformat())
+        return SendMessageResponse(message=MessageOut.from_message(msg), rate_limit=rate_limit)
 
     conv.last_message_content = msg.content or msg.file_name or msg.msg_type
     conv.last_message_at = msg.created_at
@@ -504,13 +481,20 @@ def send_message(request, conversation_id: uuid.UUID, payload: MessageIn):
         conversation=conv
     ).exclude(user=user).update(unread_count=F('unread_count') + 1)
 
-    increment_daily_limit(user.id)
+    new_count = increment_daily_limit(user.id)
+    rate_limit_out = RateLimitOut(
+        used=new_count,
+        limit=limit,
+        remaining=max(0, limit - new_count),
+        reset_at=_get_midnight_utc().isoformat(),
+    )
 
     message_out = MessageOut.from_message(msg)
     _broadcast_to_conversation(conversation_id, {"type": "chat_message", "message": message_out.model_dump()})
 
+    # Send push notifications to offline participants using PresenceService
     for participant in conv.participants.exclude(id=user.id):
-        if not _is_user_online(participant.id):
+        if not PresenceService.is_online(participant.id):
             try:
                 send_push_notification(
                     user_id=str(participant.id),
@@ -520,17 +504,14 @@ def send_message(request, conversation_id: uuid.UUID, payload: MessageIn):
             except Exception:
                 pass
 
-    result = MessageOut.from_message(msg)
-    if payload._tempId:
-        result._tempId = payload._tempId
-    return result
+    return SendMessageResponse(message=message_out, rate_limit=rate_limit_out)
 
 
 @router.get("/conversations/{conversation_id}/messages", response=PaginatedMessages, auth=auth)
 def get_messages(
     request,
     conversation_id: uuid.UUID,
-    cursor: Optional[str] = Query(None, description="ISO datetime cursor for pagination"),
+    cursor: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=100),
 ):
     user = request.auth
@@ -588,7 +569,7 @@ def edit_message(request, message_id: uuid.UUID, content: str = Query(..., min_l
 
 
 @router.delete("/messages/{message_id}", auth=auth)
-def delete_message(request, message_id: uuid.UUID, mode: str = Query("self", description="Delete mode: 'self' or 'everyone'")):
+def delete_message(request, message_id: uuid.UUID, mode: str = Query("self")):
     user = request.auth
     msg = get_object_or_404(Message, id=message_id)
 
@@ -643,7 +624,7 @@ def forward_message(request, message_id: uuid.UUID, payload: ForwardMessageIn):
 
 # ─── Bulk Offline Sync ────────────────────────────────────────────────────────
 
-@router.post("/conversations/{conversation_id}/bulk-send", response=List[MessageOut], auth=auth)
+@router.post("/conversations/{conversation_id}/bulk-send", response=BulkSendResponse, auth=auth)
 def bulk_send_messages(request, conversation_id: uuid.UUID, payload: BulkSendIn):
     user = request.auth
     conv = _get_user_conversation(conversation_id, user)
@@ -652,6 +633,7 @@ def bulk_send_messages(request, conversation_id: uuid.UUID, payload: BulkSendIn)
         blocked, count, limit, reset_at = check_daily_limit(user.id)
         if blocked:
             raise HttpError(429, f"Daily limit ({limit}) reached during bulk send. {len(results)} messages sent before limit.")
+
         existing = Message.objects.filter(sender=user, client_msg_id=item.client_msg_id).first()
         if existing:
             result = MessageOut.from_message(existing)
@@ -659,6 +641,7 @@ def bulk_send_messages(request, conversation_id: uuid.UUID, payload: BulkSendIn)
                 result._tempId = item._tempId
             results.append(result)
             continue
+
         msg = Message(
             conversation=conv, sender=user, content=item.content, msg_type=item.msg_type,
             status=MessageStatus.SENT, client_msg_id=item.client_msg_id, file_url=item.file_url or '',
@@ -672,6 +655,7 @@ def bulk_send_messages(request, conversation_id: uuid.UUID, payload: BulkSendIn)
                 result._tempId = item._tempId
             results.append(result)
             continue
+
         increment_daily_limit(user.id)
         result = MessageOut.from_message(msg)
         if item._tempId:
@@ -686,13 +670,20 @@ def bulk_send_messages(request, conversation_id: uuid.UUID, payload: BulkSendIn)
             conv.last_message_sender = user
             conv.save(update_fields=['last_message_content', 'last_message_at', 'last_message_sender'])
 
-    if results:
         ConversationParticipant.objects.filter(conversation=conv).exclude(user=user).update(unread_count=F('unread_count') + len(results))
 
     for msg_out in results:
         _broadcast_to_conversation(conversation_id, {"type": "chat_message", "message": msg_out.model_dump()})
 
-    return results
+    # Compute final rate‑limit state after all increments
+    _, final_count, limit, reset_at = check_daily_limit(user.id)
+    rate_limit_out = RateLimitOut(
+        used=final_count,
+        limit=limit,
+        remaining=max(0, limit - final_count),
+        reset_at=reset_at.isoformat(),
+    )
+    return BulkSendResponse(messages=results, rate_limit=rate_limit_out)
 
 
 # ─── Search Endpoints ─────────────────────────────────────────────────────────
@@ -823,7 +814,7 @@ def get_bulk_task_status(request, task_id: uuid.UUID):
     return {"task_id": task.id, "status": task.status, "total_recipients": task.total_recipients, "success_count": task.success_count, "failed_count": task.failed_count, "created_at": task.created_at.isoformat(), "completed_at": task.completed_at.isoformat() if task.completed_at else None}
 
 
-# ─── Presigned URL (S3 Upload) ────────────────────────────────────────────────
+# ─── Presigned URL ────────────────────────────────────────────────────────────
 
 @router.post("/upload/presigned-url", response=PresignedUrlOut, auth=auth)
 def get_presigned_url(request, payload: PresignedUrlIn):

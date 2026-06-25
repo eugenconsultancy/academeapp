@@ -11,6 +11,7 @@
  * - Missed message sync on reconnect
  * - Token refresh handling
  * - Message deduplication
+ * - Rate‑limit state updates from server events
  */
 
 import { useEffect, useRef, useCallback } from 'react';
@@ -23,13 +24,8 @@ const HEARTBEAT_INTERVAL = 25000;
 const MAX_RECONNECT_ATTEMPTS = 10;
 const INITIAL_CONNECT_DELAY = 800; // short delay to let token settle
 
-// Auth failure close codes sent by the backend middleware/consumer
 const AUTH_FAILURE_CODES = new Set([4001, 4003]);
 
-/**
- * Quick local check: is the JWT token expired?
- * (Can be replaced by a shared utility from client.js if exported.)
- */
 function isTokenExpired(token) {
     try {
         const payload = JSON.parse(atob(token.split('.')[1]));
@@ -51,6 +47,7 @@ const useWebSocket = (conversationId) => {
 
     const storeRef = useRef(useChatStore.getState());
 
+    // Keep storeRef in sync without triggering re-renders
     useEffect(() => {
         storeRef.current = useChatStore.getState();
     });
@@ -110,7 +107,6 @@ const useWebSocket = (conversationId) => {
         return null;
     }, [conversationId]);
 
-    // ✅ All store actions now match useChatStore API
     const handleServerEvent = useCallback((data) => {
         const state = storeRef.current;
         const { type } = data;
@@ -130,6 +126,12 @@ const useWebSocket = (conversationId) => {
             case 'message.sent': {
                 const msg = data.message;
                 state.upsertMessage(conversationId, msg);
+
+                // ── Rate‑limit update from WebSocket message.sent event ──
+                if (data.rate_limit) {
+                    const { used, limit, reset_at } = data.rate_limit;
+                    state.setRateLimit?.(used, limit, reset_at);
+                }
                 break;
             }
             case 'message.status': {
@@ -161,10 +163,18 @@ const useWebSocket = (conversationId) => {
                 });
                 break;
             }
+            case 'error': {
+                // Server‑sent error events (e.g., rate limit)
+                if (data.code === 'rate_limit') {
+                    const limit = data.limit || 60;
+                    const reset_at = data.reset_at || null;
+                    state.setRateLimit?.(limit, limit, reset_at);  // used = limit → remaining = 0
+                }
+                break;
+            }
             case 'typing':
             case 'pong':
-            case 'error':
-                // handled elsewhere
+                // no action needed
                 break;
             default:
                 break;
@@ -175,14 +185,12 @@ const useWebSocket = (conversationId) => {
         if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
         const token = currentTokenRef.current;
-        // Do NOT connect if no token exists, or if the token is expired
         if (!token || isTokenExpired(token)) {
             console.warn('No valid token available – WebSocket connection delayed');
             reconnectTimer.current = setTimeout(() => connect(), 2000);
             return;
         }
 
-        // Build WebSocket URL with fallback
         const wsBase = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
         const wsUrl = `${wsBase}/ws/chat/${conversationId}/?token=${token}`;
         const ws = new WebSocket(wsUrl);
@@ -216,8 +224,6 @@ const useWebSocket = (conversationId) => {
             storeRef.current.setOnline(false);
             clearTimers();
 
-            // 🔑 If the server explicitly closed the connection due to
-            // authentication failure, do NOT reconnect.
             if (AUTH_FAILURE_CODES.has(event.code)) {
                 console.warn('Auth failure detected – will not reconnect');
                 return;
@@ -243,7 +249,6 @@ const useWebSocket = (conversationId) => {
         }
     }, [clearTimers]);
 
-    // Token refresh event – reconnect with new token
     useEffect(() => {
         const handleTokenRefresh = (event) => {
             const newToken = event.detail?.token;
@@ -258,12 +263,10 @@ const useWebSocket = (conversationId) => {
         return () => window.removeEventListener(TOKEN_REFRESHED_EVENT, handleTokenRefresh);
     }, [connect, disconnect]);
 
-    // Main connect effect – triggered when conversationId changes
     useEffect(() => {
         isManuallyClosed.current = false;
         reconnectAttempt.current = 0;
 
-        // Delayed initial connection to allow token to be written
         initialConnectTimer.current = setTimeout(() => {
             connect();
         }, INITIAL_CONNECT_DELAY);
@@ -278,7 +281,6 @@ const useWebSocket = (conversationId) => {
         };
     }, [conversationId, connect, clearTimers]);
 
-    // Unmount cleanup
     useEffect(() => {
         return () => {
             isManuallyClosed.current = true;

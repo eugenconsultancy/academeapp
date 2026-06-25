@@ -38,13 +38,11 @@
 
 /* ════════════════════════════════════════════════════════════════
    CUSTOM BASE STYLES
+   (overflow rules removed – they are now only in globals.css)
 ════════════════════════════════════════════════════════════════ */
 @layer base {
   html {
     scroll-behavior: smooth;
-    overflow-x: hidden !important;
-    max-width: 100% !important;
-    width: 100% !important;
     height: 100dvh;
   }
 
@@ -54,16 +52,12 @@
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     text-rendering: optimizeLegibility;
     transition: background-color var(--transition-base), color var(--transition-base);
-    overflow-x: hidden !important;
-    max-width: 100% !important;
-    width: 100% !important;
+    /* overflow-x: hidden now lives in globals.css – no duplicate here */
   }
 
   #root {
     min-height: 100dvh;
-    overflow-x: hidden !important;
-    max-width: 100% !important;
-    width: 100% !important;
+    /* overflow-x removed – already in globals.css */
   }
 
   :focus-visible {
@@ -540,11 +534,21 @@
 }
 
 /* ════════════════════════════════════════════════════════════════
-   DARK MODE TRANSITIONS
+   DARK MODE TRANSITIONS – targeted instead of global *
 ════════════════════════════════════════════════════════════════ */
-* {
-  transition-property: background-color, border-color, color, fill, stroke,
-    box-shadow;
+body,
+.card,
+.btn,
+.input,
+nav,
+aside,
+header,
+footer,
+.glass-card,
+.glass-panel,
+.glass-dropdown,
+.watermark-overlay {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
 }
@@ -577,15 +581,8 @@
 
 /* ════════════════════════════════════════════════════════════════
    MOBILE VIEWPORT & KEYBOARD FIXES
+   (overflow rules removed – now only in globals.css)
 ════════════════════════════════════════════════════════════════ */
-
-/* Global overflow prevention */
-html, body, #root, .app {
-  overflow-x: hidden !important;
-  max-width: 100% !important;
-  width: 100% !important;
-  position: relative;
-}
 
 /* Fix 100vh issues on mobile - use dynamic viewport height */
 .min-h-screen {

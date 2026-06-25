@@ -412,9 +412,12 @@ if not DEBUG and REDIS_URL:
                 'CLIENT_CLASS': 'django_redis.client.DefaultClient',
                 'PARSER_CLASS': 'redis.connection.HiredisParser',
                 'CONNECTION_POOL_CLASS': 'redis.BlockingConnectionPool',
-                'CONNECTION_POOL_CLASS_KWARGS': {
+                'CONNECTION_POOL_KWARGS': {
                     'max_connections': 50,
                     'timeout': 20,
+                    # Low timeouts for fail-fast behavior
+                    'socket_connect_timeout': 0.5, 
+                    'socket_timeout': 0.5,
                 },
                 'MAX_CONNECTIONS': 1000,
                 'PICKLE_VERSION': -1,
@@ -435,7 +438,7 @@ else:
         }
     }
 
-# Session cookie settings (only once, not duplicated)
+# Session cookie settings
 SESSION_COOKIE_AGE = 86400  # 24 hours
 SESSION_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_HTTPONLY = True
@@ -443,7 +446,7 @@ SESSION_COOKIE_SAMESITE = 'Lax'
 
 # CSRF cookie settings
 CSRF_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript to read CSRF token if needed
+CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript to read CSRF token
 CSRF_COOKIE_SAMESITE = 'Lax'
 
 # ============================================

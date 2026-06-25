@@ -30,7 +30,9 @@ function handleApiError(error, context = 'API request') {
         case 429: {
             const data = error.response?.data;
             const limit = data?.limit;
-            useChatStore.getState()?.setRateLimit?.(limit || 60, 0);
+            const resetAt = data?.reset_at;
+            // Update rate-limit state directly from the error payload
+            useChatStore.getState()?.setRateLimit?.(limit ?? 60, limit ?? 60, resetAt ?? null);
             console.warn(`[RateLimit] ${context}: ${detail}`);
             break;
         }
@@ -41,14 +43,12 @@ function handleApiError(error, context = 'API request') {
             console.warn(`[Not Found] ${context}: ${detail}`);
             break;
         case 401:
-            // 401 is handled globally by the interceptor; just log here
             console.warn(`[Unauthorized] ${context}: ${detail}`);
             break;
         default:
             console.error(`[Error ${status}] ${context}: ${detail}`);
             break;
     }
-    // NEVER re‑throw – caller receives a safe fallback
 }
 
 // ─── API Methods ─────────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ const chatApi = {
             return await client.get('/chat/conversations', { params });
         } catch (error) {
             handleApiError(error, 'getConversations');
-            return { data: [] }; // safe empty list
+            return { data: [] };
         }
     },
 
@@ -134,20 +134,25 @@ const chatApi = {
                 payload,
             );
 
-            // Update rate‑limit store when the server returns the info
+            // The backend now returns a SendMessageResponse with rate_limit
             if (response.data?.rate_limit) {
-                const { used, limit } = response.data.rate_limit;
-                useChatStore.getState()?.setRateLimit?.(limit, limit - used);
+                const { used, limit, reset_at } = response.data.rate_limit;
+                useChatStore.getState()?.setRateLimit?.(used, limit, reset_at);
             }
 
             return response;
         } catch (error) {
             if (error.response?.status === 429) {
                 const data = error.response.data;
-                useChatStore.getState()?.setRateLimit?.(data.limit || 60, 0);
+                // Set used = limit to indicate fully exhausted
+                useChatStore.getState()?.setRateLimit?.(
+                    data.limit ?? 60,
+                    data.limit ?? 60,
+                    data.reset_at ?? null,
+                );
             }
             handleApiError(error, 'sendMessage');
-            return { data: null }; // caller should treat as failed send
+            return { data: null };
         }
     },
 
@@ -191,7 +196,19 @@ const chatApi = {
             });
         } catch (error) {
             handleApiError(error, 'bulkSendMessages');
-            return { data: [] }; // empty array indicating nothing synced
+            return { data: [] };
+        } finally {
+            // Always refresh the rate limit after a bulk sync attempt
+            // because the server may have succeeded partially or fully.
+            try {
+                const rateLimitRes = await client.get('/chat/rate-limit');
+                if (rateLimitRes.data) {
+                    const { used, limit, reset_at } = rateLimitRes.data;
+                    useChatStore.getState()?.setRateLimit?.(used, limit, reset_at);
+                }
+            } catch {
+                // silent – non‑critical
+            }
         }
     },
 
@@ -250,7 +267,6 @@ const chatApi = {
 
     async searchUsers(q) {
         try {
-            // ✅ FIXED: trailing slash added to match backend route "/users/search/"
             return await client.get('/chat/users/search/', {
                 params: { q, limit: 10 },
             });
@@ -266,15 +282,12 @@ const chatApi = {
         try {
             const response = await client.get('/chat/rate-limit');
             if (response.data) {
-                useChatStore.getState()?.setRateLimit?.(
-                    response.data.limit,
-                    response.data.remaining,
-                );
+                const { used, limit, reset_at } = response.data;
+                useChatStore.getState()?.setRateLimit?.(used, limit, reset_at);
             }
             return response;
         } catch (error) {
             handleApiError(error, 'getRateLimit');
-            // Return a safe fallback that won't block the UI
             return { data: { used: 0, limit: 60, remaining: 60, reset_at: null } };
         }
     },
@@ -285,7 +298,6 @@ const chatApi = {
         try {
             return await client.patch(`/chat/conversations/${convId}/draft`, { draft });
         } catch (error) {
-            // Non‑critical – just warn, never crash
             console.warn('Failed to save draft:', error.message);
             return null;
         }
@@ -295,13 +307,11 @@ const chatApi = {
 
     async uploadFile(file) {
         try {
-            // Step 1: Get presigned POST URL and fields
             const { data } = await client.post('/chat/upload/presigned-url', {
                 file_name: file.name,
                 content_type: file.type || 'application/octet-stream',
             });
 
-            // Step 2: Upload directly to S3 (no auth headers)
             const formData = new FormData();
             if (data.fields) {
                 Object.entries(data.fields).forEach(([key, value]) => {
@@ -328,7 +338,7 @@ const chatApi = {
             };
         } catch (error) {
             handleApiError(error, 'uploadFile');
-            return null; // upload failed
+            return null;
         }
     },
 };

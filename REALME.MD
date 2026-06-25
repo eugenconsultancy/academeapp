@@ -3,7 +3,25 @@ Alice Wanjiku	+254702496101	student	test1234
 Brian Otieno	+254702496102	student_leader	test1234
 Grace Chepkoech	+254702496107	class_rep	test1234
 
-
+7. INDIVIDUAL QUICK COMMANDS
+Task	Directory	Command (Git Bash)
+Git push	academe/	git add . && git commit -m "msg" && git push origin main
+Activate venv	academe/backend/	source venv/Scripts/activate
+Django run	academe/backend/	python manage.py runserver
+Install deps	academe/frontend/	npm install
+Web build	academe/frontend/	npm run build
+Web dev	academe/frontend/	npm run dev
+APK debug	academe/frontend/android/	./gradlew assembleDebug
+APK release	academe/frontend/android/	./gradlew assembleRelease
+Clean Android	academe/frontend/android/	./gradlew clean
+📍 APK Output Location
+text
+C:\Users\GATARA-BJTU\academe\frontend\android\app\build\outputs\apk\
+├── debug\
+│   └── app-debug.apk
+└── release\
+    └── app-release.apk
+Note: For the 422 error fix, the most important step is restarting the Django server after saving the api.py changes.
 
 
 Here's a detailed outline of each dependency, organized by category:
