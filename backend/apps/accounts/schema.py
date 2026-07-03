@@ -16,7 +16,7 @@ class SignupIn(Schema):
     @field_validator('phone_number')
     @classmethod
     def validate_phone(cls, v):
-        # Accept +254..., 07..., 01... – we'll normalise later
+        # Accept +254..., 07..., 01… – we'll normalise later
         if not re.match(r'^(\+?254|0)[1-9]\d{8}$', v):
             raise ValueError('Invalid phone number format')
         return v
@@ -74,6 +74,8 @@ class ProfileOut(Schema):
     login_count: int
     biometric_enabled: bool
     two_factor_enabled: bool
+    is_superuser: bool   # added
+    is_staff: bool       # added
 
     @field_validator('admission_number', mode='before')
     @classmethod
@@ -82,7 +84,12 @@ class ProfileOut(Schema):
             return v[:3] + '****' + v[-3:]
         return v
 
-# ✅ NEW: Token response schema for refresh endpoint
+# ─── NEW: Password login schema ──────────────────────────────────────────
+class LoginIn(Schema):
+    identifier: str   # phone_number OR admission_number
+    password: str
+
+# ─── Token response schema ──────────────────────────────────────────────
 class TokenOut(Schema):
     access: str
     refresh: str

@@ -3,13 +3,13 @@ import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import OfflineIndicator from '../shared/OfflineIndicator';
 import BottomNav from './BottomNav';
-import FAB from './FAB';
+// FAB removed – now rendered globally in App.jsx
 
 export default function AppLayout({ children }) {
   const watermarkRef = useRef(null);
   const location = useLocation();
 
-  // ── Hide watermark & FAB on chat routes ──
+  // ── Hide watermark on chat routes ──
   useEffect(() => {
     if (location.pathname.startsWith('/chat')) {
       document.body.classList.add('chat-page');
@@ -65,32 +65,11 @@ export default function AppLayout({ children }) {
         }}
       >
         {children}
-
-        {/* Global FAB – hidden on chat pages */}
-        {!location.pathname.startsWith('/chat') && (
-          <div className="global-fab">
-            <FAB />
-          </div>
-        )}
       </main>
 
       <BottomNav />
 
       <style>{`
-        /* ═══ GLOBAL FAB – never overlaps sidebar ═══ */
-        .global-fab {
-          position: fixed;
-          bottom: 24px;
-          right: 24px;
-          z-index: 50;
-        }
-        @media (max-width: 1023px) {
-          .global-fab {
-            bottom: calc(80px + env(safe-area-inset-bottom, 0px));
-            right: 16px;
-          }
-        }
-
         /* ══════════════════════════════════════════════════════
            WATERMARK OVERLAY
            ═══════════════════════════════════════════════════ */

@@ -8,6 +8,10 @@ export const accountsApi = {
   verifyOTP: (phone, otp) =>
     apiClient.post('/accounts/verify-otp/', { phone_number: phone, otp: otp }),
 
+  // NEW: Password login
+  login: (identifier, password) =>
+    apiClient.post('/accounts/login/', { identifier, password }),
+
   verify2FALogin: (tempToken, code) =>
     apiClient.post('/accounts/2fa/verify-login/', { temp_token: tempToken, code: code }),
 
@@ -84,7 +88,6 @@ export const accountsApi = {
     apiClient.post(`/accounts/users/${userId}/deactivate/`),
 };
 
-// ── Support Tickets (moved to separate object) ──────────────────────────────
 export const supportApi = {
   listTickets: () => apiClient.get('/support/admin/all/'),
   getTicket: (id) => apiClient.get(`/support/admin/${id}/`),

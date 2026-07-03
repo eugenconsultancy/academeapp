@@ -142,7 +142,6 @@ const OverflowMenu = ({ onClose, items }) => {
   );
 };
 
-// ─── Stable MessageRow (outside parent, uses itemData) ────────────────────
 const MessageRow = React.memo(({ index, style, data }) => {
   const { messagesWithSeps, conversationId, currentUserId, onAction, setRowHeight } = data;
   const item = messagesWithSeps[index];
@@ -173,7 +172,8 @@ const ChatDetail = () => {
   const {
     setActiveConversation, messagesByConversation, setMessages, upsertMessage,
     cursors, setCursor, isOnline, offlineQueue, addToOfflineQueue, syncOfflineQueue,
-    rateLimit, typingUsers, presence, conversations,
+    rateLimit, typingUsers, presence, conversations, updateConversation,
+    fetchRateLimit, syncRateLimitFromServer, setConversations,
   } = useChatStore();
 
   const messages = messagesByConversation[conversationId] || [];
@@ -194,12 +194,14 @@ const ChatDetail = () => {
   const [showSearch, setShowSearch] = useState(false);
   const [showBlockConfirm, setShowBlockConfirm] = useState(false);
 
+  // Local blocked state for instant UI updates
+  const [blockedState, setBlockedState] = useState(false);
+
   const { type, data: modalData, open, close } = useMessageActions();
   const { sendMessage: wsSend, sendTyping, isConnected } = useWebSocket(conversationId);
   const storeActionsRef = useRef({});
-  storeActionsRef.current = { upsertMessage, setCursor, setMessages };
+  storeActionsRef.current = { upsertMessage, setCursor, setMessages, updateConversation, setConversations };
 
-  // ── Height of the messages area (flex‑fill, measured directly) ──────────
   const messagesContainerRef = useRef(null);
   const [listHeight, setListHeight] = useState(0);
 
@@ -213,7 +215,6 @@ const ChatDetail = () => {
     return () => ro.disconnect();
   }, []);
 
-  // Dynamic import react-window
   useEffect(() => {
     import('react-window').then(mod => {
       const List = mod.VariableSizeList || mod.default?.VariableSizeList;
@@ -221,11 +222,15 @@ const ChatDetail = () => {
     }).catch(() => { });
   }, []);
 
-  // Conversation metadata
-  const conversation = useMemo(
-    () => conversations?.find(c => String(c.id) === String(conversationId)),
-    [conversations, conversationId]
-  );
+  // ─── Conversation metadata ────────────────────────────────────────────
+  const conversation = useMemo(() => {
+    return conversations?.find(c => String(c.id) === String(conversationId));
+  }, [conversations, conversationId]);
+
+  // Sync local blockedState with the store value
+  useEffect(() => {
+    setBlockedState(conversation?.is_blocked || false);
+  }, [conversation?.is_blocked]);
 
   const otherUserId = useMemo(() => {
     if (conversation?.other_participant) return conversation.other_participant.id;
@@ -274,8 +279,8 @@ const ChatDetail = () => {
     return 'Offline';
   }, [otherIsOnline, otherLastSeen]);
 
+  const isBlocked = blockedState;
   const isMuted = conversation?.is_muted || false;
-  const isBlocked = conversation?.is_blocked || false;
 
   const waitForToken = useCallback(() => new Promise(resolve => {
     const t = localStorage.getItem('access_token');
@@ -286,7 +291,7 @@ const ChatDetail = () => {
 
   useEffect(() => { setActiveConversation(conversationId); }, [conversationId, setActiveConversation]);
 
-  // Load initial messages
+  // ─── Load messages ─────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     const fetchInitial = async () => {
@@ -301,23 +306,15 @@ const ChatDetail = () => {
     return () => { cancelled = true; };
   }, [conversationId, setMessages, setCursor, waitForToken]);
 
-  // Rate limit management
-  const fetchRateLimit = useCallback(async () => {
-    try {
-      const res = await chatApi.getRateLimit();
-      useChatStore.setState({ rateLimit: res.data });
-    } catch { /* ignore */ }
-  }, []);
-
+  // ─── Rate limit ────────────────────────────────────────────────────────
   useEffect(() => {
     fetchRateLimit();
     const id = setInterval(fetchRateLimit, 60000);
     return () => clearInterval(id);
   }, [fetchRateLimit]);
 
-  useEffect(() => {
-    if (isConnected) fetchRateLimit();
-  }, [isConnected, fetchRateLimit]);
+  useEffect(() => { if (currentUserId) fetchRateLimit(); }, [currentUserId, fetchRateLimit]);
+  useEffect(() => { if (isConnected) fetchRateLimit(); }, [isConnected, fetchRateLimit]);
 
   const rateLimitRef = useRef(rateLimit);
   useEffect(() => { rateLimitRef.current = rateLimit; }, [rateLimit]);
@@ -326,13 +323,13 @@ const ChatDetail = () => {
     if (rateLimit && rateLimit.remaining === 0) setShowRateLimit(true);
   }, [rateLimit]);
 
+  // ─── Scroll handling ──────────────────────────────────────────────────
   const getItemSize = useCallback(index => rowHeights.current[index] || 80, []);
   const setRowHeight = useCallback((index, height) => {
     const old = rowHeights.current[index] || 0;
     if (old !== height) { rowHeights.current[index] = height; totalHeightRef.current += height - old; listRef?.resetAfterIndex(index); }
   }, [listRef]);
 
-  // Auto-scroll to bottom
   useEffect(() => {
     if (listRef && messages.length > 0 && isNearBottomRef.current) listRef.scrollToItem(messages.length - 1, 'end');
     if (scrollRef.current && isNearBottomRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -373,8 +370,10 @@ const ChatDetail = () => {
     } catch { /* silent */ } finally { setLoadingOlder(false); }
   }, [conversationId, cursors, loadingOlder]);
 
+  // ─── Send message ──────────────────────────────────────────────────────
   const handleSend = useCallback(async (text, attachments = [], duration = null) => {
     if (!currentUserId || (!text.trim() && attachments.length === 0)) return;
+    if (isBlocked) { toast.error('Cannot send message to a blocked user.'); return; }
     const prevRate = rateLimitRef.current;
     if (prevRate && prevRate.remaining === 0) { setShowRateLimit(true); return; }
 
@@ -420,9 +419,15 @@ const ChatDetail = () => {
     const sendViaRest = async () => {
       try {
         const res = await chatApi.sendMessage(conversationId, payload);
-        if (res?.data) storeActionsRef.current.upsertMessage(conversationId, res.data);
+        if (res?.data) {
+          storeActionsRef.current.upsertMessage(conversationId, res.data.message || res.data);
+          if (res.data?.rate_limit) {
+            const rl = res.data.rate_limit;
+            useChatStore.setState({ rateLimit: { used: rl.used, limit: rl.limit, remaining: rl.remaining, reset_at: rl.reset_at } });
+          }
+        }
       } catch (err) {
-        useChatStore.setState({ rateLimit: prevRate });
+        if (prevRate) useChatStore.setState({ rateLimit: prevRate });
         if (!err.response || err.response?.status >= 500) {
           addToOfflineQueue({ ...tempMessage, payload, conversation_id: conversationId });
         } else {
@@ -438,23 +443,17 @@ const ChatDetail = () => {
       } else {
         addToOfflineQueue({ ...tempMessage, payload, conversation_id: conversationId });
       }
-    } catch (wsError) {
-      await sendViaRest();
-    }
-  }, [
-    currentUserId, conversationId, wsSend, isOnline, rateLimit, upsertMessage,
-    addToOfflineQueue, replyingTo
-  ]);
+    } catch { await sendViaRest(); }
+  }, [currentUserId, conversationId, wsSend, isOnline, rateLimit, upsertMessage, addToOfflineQueue, replyingTo, isBlocked]);
 
+  // ─── Delete, Forward, Report ──────────────────────────────────────────
   const handleDelete = useCallback(async (message, mode) => {
     try {
       await chatApi.deleteMessage(message.id, mode);
       useChatStore.getState().deleteMessageLocally(conversationId, message.id, mode);
       toast.success('Message deleted');
       close();
-    } catch {
-      toast.error('Delete failed');
-    }
+    } catch { toast.error('Delete failed'); }
   }, [conversationId, close]);
 
   const handleForward = useCallback(async (targetConvIds) => {
@@ -462,9 +461,7 @@ const ChatDetail = () => {
       await chatApi.forwardMessage(modalData.id, targetConvIds);
       toast.success('Message forwarded');
       close();
-    } catch {
-      toast.error('Forward failed');
-    }
+    } catch { toast.error('Forward failed'); }
   }, [modalData, close]);
 
   const handleReport = useCallback(async (reason, description) => {
@@ -477,24 +474,22 @@ const ChatDetail = () => {
       });
       toast.success('Report submitted');
       close();
-    } catch {
-      toast.error('Report failed');
-    }
+    } catch { toast.error('Report failed'); }
   }, [modalData, close]);
 
-  const handleReply = useCallback(message => {
-    setReplyingTo(message);
-    close();
-  }, [close]);
+  const handleReply = useCallback(message => { setReplyingTo(message); close(); }, [close]);
 
   const handleRetry = useCallback(async message => {
-    const payload = message.payload || {
-      content: message.content,
-      client_msg_id: message.client_msg_id
-    };
+    const payload = message.payload || { content: message.content, client_msg_id: message.client_msg_id };
     try {
       const res = await chatApi.sendMessage(conversationId, payload);
-      if (res?.data) storeActionsRef.current.upsertMessage(conversationId, res.data);
+      if (res?.data) {
+        storeActionsRef.current.upsertMessage(conversationId, res.data.message || res.data);
+        if (res.data?.rate_limit) {
+          const rl = res.data.rate_limit;
+          useChatStore.setState({ rateLimit: { used: rl.used, limit: rl.limit, remaining: rl.remaining, reset_at: rl.reset_at } });
+        }
+      }
     } catch { /* keep failed state */ }
   }, [conversationId]);
 
@@ -511,9 +506,7 @@ const ChatDetail = () => {
 
   const handleJumpToMessage = useCallback((msg) => {
     const idx = messages.findIndex(m => m.id === msg.id);
-    if (idx >= 0 && listRef) {
-      listRef.scrollToItem(idx, 'center');
-    }
+    if (idx >= 0 && listRef) listRef.scrollToItem(idx, 'center');
   }, [messages, listRef]);
 
   useEffect(() => {
@@ -535,38 +528,59 @@ const ChatDetail = () => {
     messagesWithSeps, conversationId, currentUserId, onAction: handleMessageAction, setRowHeight
   }), [messagesWithSeps, conversationId, currentUserId, handleMessageAction, setRowHeight]);
 
+  // ─── Toggle Mute ────────────────────────────────────────────────────────
   const toggleMute = useCallback(async () => {
     try {
-      await chatApi.toggleMute(conversationId);
-      useChatStore.getState().updateConversation(conversationId, { is_muted: !isMuted });
-      toast.success(isMuted ? 'Notifications unmuted' : 'Notifications muted');
-    } catch {
-      toast.error('Failed to toggle mute');
-    }
-  }, [conversationId, isMuted]);
+      const res = await chatApi.toggleMute(conversationId);
+      if (res.data?.muted !== undefined) {
+        updateConversation(conversationId, { is_muted: res.data.muted });
+        toast.success(res.data.muted ? 'Notifications muted' : 'Notifications unmuted');
+      }
+    } catch { toast.error('Failed to toggle mute'); }
+  }, [conversationId, updateConversation]);
 
+  // ─── Refresh conversations ────────────────────────────────────────────
+  const refreshConversations = useCallback(async () => {
+    try {
+      const res = await chatApi.getConversations('all', null);
+      const items = res.data?.results ?? res.data ?? [];
+      setConversations(items);
+    } catch (err) { console.warn('Failed to refresh conversations:', err); }
+  }, [setConversations]);
+
+  // ─── Block / Unblock ──────────────────────────────────────────────────
   const handleBlock = useCallback(async () => {
     if (!otherUserId) return;
+    setBlockedState(true);
+    updateConversation(conversationId, { is_blocked: true });
     try {
       await chatApi.blockUser(otherUserId);
       toast.success('User blocked');
+      await refreshConversations();
       navigate('/chats');
     } catch {
+      setBlockedState(false);
+      updateConversation(conversationId, { is_blocked: false });
       toast.error('Failed to block user');
     }
-  }, [otherUserId, navigate]);
+  }, [otherUserId, conversationId, updateConversation, refreshConversations, navigate]);
 
   const handleUnblock = useCallback(async () => {
     if (!otherUserId) return;
+    setBlockedState(false);
+    updateConversation(conversationId, { is_blocked: false });
     try {
       await chatApi.unblockUser(otherUserId);
       toast.success('User unblocked');
-      useChatStore.getState().updateConversation(conversationId, { is_blocked: false });
+      await refreshConversations();
     } catch {
+      setBlockedState(true);
+      updateConversation(conversationId, { is_blocked: true });
       toast.error('Failed to unblock user');
     }
-  }, [otherUserId, conversationId]);
+  }, [otherUserId, conversationId, updateConversation, refreshConversations]);
 
+  // ─── Overflow menu ────────────────────────────────────────────────────
   const overflowItems = useMemo(() => {
     const base = [
       {
@@ -585,20 +599,20 @@ const ChatDetail = () => {
       base.push({
         label: 'Unblock user',
         icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM4 12c0-4.42 3.58-8 8-8 1.85 0 3.55.63 4.9 1.69L5.69 16.9C4.63 15.55 4 13.85 4 12zm8 8c-1.85 0-3.55-.63-4.9-1.69L18.31 7.1C19.37 8.45 20 10.15 20 12c0 4.42-3.58 8-8 8z" /></svg>,
-        onClick: handleUnblock
+        onClick: handleUnblock,
       });
     } else {
       base.push({
         label: 'Block user',
         icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM4 12c0-4.42 3.58-8 8-8 1.85 0 3.55.63 4.9 1.69L5.69 16.9C4.63 15.55 4 13.85 4 12zm8 8c-1.85 0-3.55-.63-4.9-1.69L18.31 7.1C19.37 8.45 20 10.15 20 12c0 4.42-3.58 8-8 8z" /></svg>,
         onClick: () => setShowBlockConfirm(true),
-        danger: true
+        danger: true,
       });
     }
     return base;
   }, [isMuted, isBlocked, toggleMute, handleUnblock]);
 
-  // ── Loading / error ──
+  // ─── Loading / error ──────────────────────────────────────────────────
   if (initialLoading) {
     return (
       <div className={`cd-root${isDark ? ' dark' : ''}`}>
@@ -608,17 +622,15 @@ const ChatDetail = () => {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" /></svg>
           </button>
           <div className="cd-av-wrap">
-            <div className="cd-avatar" style={{ background: 'var(--skeleton)' }} />
+            <div className="cd-avatar" style={{ background: 'var(--chat-skeleton)' }} />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ width: 120, height: 14, borderRadius: 6, background: 'var(--skeleton)', marginBottom: 6 }} />
-            <div style={{ width: 70, height: 11, borderRadius: 5, background: 'var(--skeleton)' }} />
+            <div style={{ width: 120, height: 13, borderRadius: 6, background: 'var(--chat-skeleton)', marginBottom: 6 }} />
+            <div style={{ width: 70, height: 10, borderRadius: 5, background: 'var(--chat-skeleton)' }} />
           </div>
         </div>
         <div className="cd-messages">
-          <div className="cd-state-box">
-            <SkeletonMessages />
-          </div>
+          <div className="cd-state-box"><SkeletonMessages /></div>
         </div>
       </div>
     );
@@ -633,13 +645,9 @@ const ChatDetail = () => {
             <span className="cd-state-icon">⚠️</span>
             <span className="cd-error-text">{error}</span>
             <button className="cd-retry-btn" onClick={() => {
-              setError(null);
-              setInitialLoading(true);
+              setError(null); setInitialLoading(true);
               chatApi.getMessages(conversationId)
-                .then(res => {
-                  setMessages(conversationId, res.data.items, false);
-                  if (res.data.next_cursor) setCursor(conversationId, res.data.next_cursor);
-                })
+                .then(res => { setMessages(conversationId, res.data.items, false); if (res.data.next_cursor) setCursor(conversationId, res.data.next_cursor); })
                 .catch(() => setError('Could not load messages.'))
                 .finally(() => setInitialLoading(false));
             }}>Retry</button>
@@ -649,6 +657,7 @@ const ChatDetail = () => {
     );
   }
 
+  // ─── Render ────────────────────────────────────────────────────────────
   return (
     <div
       className={`cd-root${isDark ? ' dark' : ''}`}
@@ -658,7 +667,7 @@ const ChatDetail = () => {
     >
       <div className="cd-bg" />
 
-      {/* Modals */}
+      {/* ── Modals ── */}
       {showRateLimit && <RateLimitModal rateLimit={rateLimit} onDismiss={() => setShowRateLimit(false)} />}
       {type === 'delete' && (
         <DeleteConfirmation
@@ -680,29 +689,21 @@ const ChatDetail = () => {
       {showBlockConfirm && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6">
-            <h3 className="text-lg font-bold mb-4 dark:text-white">Block user?</h3>
+            <h3 className="text-lg font-bold mb-4 dark:text-white">Block {otherUserInfo.name}?</h3>
             <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
-              Are you sure you want to block {otherUserInfo.name}? You won't receive their messages anymore.
+              You won't receive their messages anymore. You can unblock them anytime from the overflow menu.
             </p>
             <div className="flex gap-3">
-              <button
-                onClick={() => setShowBlockConfirm(false)}
-                className="flex-1 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => { setShowBlockConfirm(false); handleBlock(); }}
-                className="flex-1 py-2 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600"
-              >
-                Block
-              </button>
+              <button onClick={() => setShowBlockConfirm(false)}
+                className="flex-1 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-medium">Cancel</button>
+              <button onClick={() => { setShowBlockConfirm(false); handleBlock(); }}
+                className="flex-1 py-2 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600">Block</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Header */}
+      {/* ── Header ── */}
       <div className="cd-header">
         <button className="cd-back-btn" onClick={() => navigate(-1)} aria-label="Go back">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" /></svg>
@@ -724,11 +725,11 @@ const ChatDetail = () => {
         {showOverflow && <OverflowMenu items={overflowItems} onClose={() => setShowOverflow(false)} />}
       </div>
 
-      {/* Banners */}
+      {/* ── Banners ── */}
       {!isOnline && <div className="cd-banner offline">📵 No internet — messages queue and send when you're back</div>}
       {!isConnected && isOnline && <div className="cd-banner warn">⟳ Reconnecting to live updates…</div>}
 
-      {/* Messages area – fills the remaining space automatically */}
+      {/* ── Messages area ── */}
       <div className="cd-messages" ref={messagesContainerRef}>
         {loadingOlder && (
           <div className="cd-load-earlier">
@@ -779,19 +780,22 @@ const ChatDetail = () => {
           </div>
         )}
 
+        {/* Scroll-to-bottom FAB — inside messages area only */}
         <button
           className={`cd-fab${showFab ? '' : ' hidden'}`}
           onClick={scrollToBottom}
           aria-label="Scroll to latest"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z" /></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z" />
+          </svg>
         </button>
       </div>
 
-      {/* Typing */}
+      {/* ── Typing ── */}
       <TypingIndicator typingUsers={typingUsers} currentUserId={currentUserId} />
 
-      {/* Reply bar */}
+      {/* ── Reply bar ── */}
       {replyingTo && (
         <div className="cd-reply-bar">
           <div className="cd-reply-indicator" />
@@ -799,11 +803,7 @@ const ChatDetail = () => {
             <div className="cd-reply-who">{replyingTo.sender_id === currentUserId ? 'You' : otherUserInfo.name}</div>
             <div className="cd-reply-text">{replyingTo.content}</div>
           </div>
-          <button
-            className="cd-reply-cancel"
-            onClick={() => setReplyingTo(null)}
-            aria-label="Cancel reply"
-          >
+          <button className="cd-reply-cancel" onClick={() => setReplyingTo(null)} aria-label="Cancel reply">
             <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
             </svg>
@@ -811,7 +811,27 @@ const ChatDetail = () => {
         </div>
       )}
 
-      {/* Composer – always sticks to the bottom */}
+      {/* ── Blocked banner — centred between messages and composer ── */}
+      {isBlocked && (
+        <div className="cd-blocked-banner">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM4 12c0-4.42 3.58-8 8-8 1.85 0 3.55.63 4.9 1.69L5.69 16.9C4.63 15.55 4 13.85 4 12zm8 8c-1.85 0-3.55-.63-4.9-1.69L18.31 7.1C19.37 8.45 20 10.15 20 12c0 4.42-3.58 8-8 8z" />
+          </svg>
+          You've blocked this user · messages are paused ·&nbsp;
+          <button
+            onClick={handleUnblock}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'var(--chat-danger)', fontWeight: 700,
+              fontSize: 'inherit', padding: 0, textDecoration: 'underline',
+            }}
+          >
+            Unblock
+          </button>
+        </div>
+      )}
+
+      {/* ── Composer ── */}
       <div className="cd-composer-wrap">
         <MessageComposer
           onSend={handleSend}
@@ -820,6 +840,7 @@ const ChatDetail = () => {
           replyingTo={replyingTo}
           disabled={rateLimit?.remaining === 0}
           rateLimit={rateLimit}
+          isBlocked={isBlocked}
         />
       </div>
     </div>

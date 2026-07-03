@@ -1,0 +1,559 @@
+for use to activate the login using passwords: 
+## 🔐 Enabling Password Login – Step-by-Step Guideline
+
+This guide explains how to add **password-based login** alongside the existing **OTP** and **Face ID** methods.  
+You will modify **backend endpoints**, **frontend API clients**, **authentication context**, and the **login UI** to support phone/email + password authentication.
+
+---
+
+### 📁 1. Backend (Django + Django Ninja)
+
+#### a) `apps/accounts/api.py` – add new login endpoint
+
+**Location:** `backend/apps/accounts/api.py`
+
+Add a new route **`/login/`** that accepts `phone_number` (or `email`) and `password`, validates credentials, and returns JWT tokens.
+
+```python
+# Inside router, after the existing OTP endpoints
+
+@router.post("/login/", auth=None)
+def password_login(request, data: dict):
+    """
+    Login with phone_number and password.
+    Expected payload: {"phone_number": "0712345678", "password": "your_password"}
+    """
+    phone = data.get("phone_number")
+    password = data.get("password")
+
+    if not phone or not password:
+        return {"error": "Phone number and password are required"}, 400
+
+    # Django's authenticate uses USERNAME_FIELD (phone_number)
+    user = authenticate(request, phone_number=phone, password=password)
+
+    if user is None:
+        return {"error": "Invalid credentials"}, 401
+
+    if not user.is_active:
+        return {"error": "Account is deactivated"}, 403
+
+    # Generate tokens
+    tokens = create_token_pair(user)
+    AccountService.increment_login_count(user)
+
+    # Return same structure as OTP verify
+    return {
+        "access": tokens["access"],
+        "refresh": tokens["refresh"],
+        "user": AccountService.serialize_user(user),
+    }
+```
+
+**Why:** This endpoint reuses the same token generation and user serialization logic as OTP login, ensuring a consistent frontend experience.
+
+---
+
+#### b) `apps/accounts/schema.py` – define a schema for password login
+
+Add a Pydantic schema for request validation (optional but recommended).
+
+```python
+# Inside schema.py
+class PasswordLoginIn(Schema):
+    phone_number: str
+    password: str
+```
+
+Then in `api.py` use `data: PasswordLoginIn` instead of a raw dict.
+
+**Why:** Better validation and auto-documentation.
+
+---
+
+#### c) Ensure password hashing is active
+
+Django’s `AbstractBaseUser` already uses `set_password()` which hashes with **PBKDF2** by default.  
+No changes are needed; it is **encrypted** and secure.
+
+---
+
+### 📁 2. Frontend – API Client
+
+#### a) `frontend/src/api/accountsApi.js` – add password login method
+
+Add a new function:
+
+```javascript
+// ── Authentication ─────────────────────────────────────────────────────
+loginWithPassword: (phone, password) =>
+  apiClient.post('/accounts/login/', { phone_number: phone, password: password }),
+```
+
+**Why:** Exposes the new endpoint to the frontend.
+
+---
+
+#### b) `frontend/src/contexts/AuthContext.jsx` – add password login action
+
+Add a new `loginWithPassword` function to the AuthContext.
+
+```javascript
+const loginWithPassword = useCallback(async (phone, password) => {
+  setLoginLoading(true);
+  setError(null);
+  try {
+    const response = await apiClient.post('/accounts/login/', {
+      phone_number: phone,
+      password: password,
+    });
+    const { access, refresh, user } = response.data;
+    storeTokens(access, refresh);
+    storeUser(user);
+    setUser(user);
+    return user;
+  } catch (err) {
+    const message = err.response?.data?.error || 'Login failed.';
+    setError(message);
+    throw new Error(message);
+  } finally {
+    setLoginLoading(false);
+  }
+}, []);
+```
+
+Add this to the context value object.
+
+**Why:** Centralizes authentication logic and manages loading/error states.
+
+---
+
+### 📁 3. Frontend – Login UI (`LoginPage.jsx`)
+
+You need to modify the login page to offer a **password** option alongside OTP and Face ID.
+
+#### a) Add a new authentication method tab
+
+Currently there are two tabs: `SMS Code` and `Face ID`.  
+Change to three tabs: **SMS**, **Face ID**, **Password**.
+
+Update the `AuthMethodTabs` component (or inline) to include a third tab.
+
+```jsx
+const AUTH_METHODS = [
+  { id: 'otp', icon: <FiMessageSquare size={13} />, label: 'SMS Code' },
+  { id: 'password', icon: <FiLock size={13} />, label: 'Password' },
+  { id: 'face', icon: <FiCamera size={13} />, label: 'Face ID' },
+];
+```
+
+#### b) Render the password form when `authMethod === 'password'`
+
+Inside the form, conditionally show:
+
+```jsx
+{authMethod === 'password' && (
+  <form onSubmit={handlePasswordLogin}>
+    <div style={{ marginBottom: '0.9rem' }}>
+      <label className="lp-label">Phone number</label>
+      <div className="lp-input-wrap">
+        <span className="lp-input-icon"><FiPhone size={15} /></span>
+        <input
+          type="tel"
+          className="lp-input"
+          value={phone}
+          onChange={e => setPhone(e.target.value)}
+          placeholder="+254 700 000 000"
+          required
+        />
+      </div>
+    </div>
+    <div style={{ marginBottom: '0.9rem' }}>
+      <label className="lp-label">Password</label>
+      <div className="lp-input-wrap">
+        <span className="lp-input-icon"><FiLock size={15} /></span>
+        <input
+          type="password"
+          className="lp-input"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          placeholder="Enter your password"
+          required
+        />
+      </div>
+      <span className="lp-helper">
+        <Link to="/forgot-password">Forgot password?</Link>
+      </span>
+    </div>
+    <button type="submit" className="lp-btn" disabled={loading}>
+      {loading ? <><div className="lp-spinner" /> Logging in…</> : 'Sign in with Password'}
+    </button>
+  </form>
+)}
+```
+
+#### c) Handle password login submission
+
+Add a `handlePasswordLogin` function:
+
+```javascript
+const handlePasswordLogin = async (e) => {
+  e.preventDefault();
+  if (!phone.trim() || !password.trim()) {
+    toast.error('Please fill in all fields');
+    return;
+  }
+  setLoading(true);
+  try {
+    await loginWithPassword(phone, password);
+    toast.success('Welcome back! 🎉');
+    setTimeout(() => navigate('/'), 700);
+  } catch (err) {
+    toast.error(err.message || 'Login failed');
+  } finally {
+    setLoading(false);
+  }
+};
+```
+
+#### d) Add `password` state
+
+```javascript
+const [password, setPassword] = useState('');
+```
+
+---
+
+### 📁 4. (Optional) Signup – allow setting password
+
+If you want users to set a password during registration:
+
+- Add a `password` field to the signup form.
+- In `SignupIn` schema (backend) add an optional `password` field.
+- In the signup endpoint, if provided, call `user.set_password(data.password)`.
+- On the frontend, add a password input to the signup form.
+
+This is optional but recommended so that new users can immediately use password login.
+
+---
+
+### 📁 5. Testing & Security Notes
+
+- **Encryption:** Django uses PBKDF2 with SHA-256 (default). Passwords are never stored in plain text.
+- **Force users to set a password:** You may need to add a `password` field in signup or prompt users to set one later (e.g., after first OTP login, show a "Set Password" option).
+- **Existing users** who never set a password will not be able to log in with password – they must first reset their password (via `/forgot-password`).
+- **Rate limiting:** Consider adding throttling to the login endpoint to prevent brute-force attacks.
+- **2FA:** If 2FA is enabled, the password login should also require 2FA. You can integrate it similarly to OTP flow (check `two_factor_enabled` and return `require_2fa` flag).
+
+---
+
+### 📂 File Modification Summary
+
+| File Path                                      | Change Type | Purpose                                                  |
+|------------------------------------------------|-------------|----------------------------------------------------------|
+| `backend/apps/accounts/api.py`                 | Add endpoint| `/login/` for password authentication                    |
+| `backend/apps/accounts/schema.py`              | Add schema  | Define `PasswordLoginIn` for validation (optional)       |
+| `frontend/src/api/accountsApi.js`              | Add method  | `loginWithPassword`                                      |
+| `frontend/src/contexts/AuthContext.jsx`        | Add action  | `loginWithPassword` in context                           |
+| `frontend/src/pages/LoginPage.jsx`             | Major edits | Add password tab, form, state, and handler              |
+| `frontend/src/pages/SignupPage.jsx` (optional) | Add field   | Allow setting password during signup (if desired)        |
+| `backend/apps/accounts/signals.py` (optional)  | Add logic   | Notify user to set password after signup (optional)      |
+
+---
+
+### 🧪 After Implementation
+
+1. **Test password login** with a user who has a password set (e.g., after password reset).
+2. **Test invalid credentials** – ensure proper error messages.
+3. **Test with 2FA** (if enabled) – you may need to extend the password login to check 2FA status and respond with a `require_2fa` flag.
+4. **Ensure all existing OTP and Face ID flows still work.**
+
+---
+
+This guideline provides a complete roadmap. Once implemented, users can choose between OTP, Face ID, or password, offering flexibility while maintaining security.
+
+
+
+
+
+
+
+
+
+# Password Login Implementation Guide
+
+This guide explains how to add **password-based authentication** to your Academe backend and frontend — alongside the existing OTP and biometric login methods.  
+All changes are designed to preserve the current OTP flow while adding a secure alternative.
+
+---
+
+## 🔧 Backend Changes
+
+### 1. `apps/accounts/schema.py` – Add Password Login Schema
+
+**Why**  
+Define the request structure for password login. Also make password optional in signup so users can set it immediately.
+
+**Changes**
+
+```python
+# Add this new schema
+class PasswordLoginIn(Schema):
+    phone_number: str
+    password: str
+
+# Modify SignupIn to accept an optional password
+class SignupIn(Schema):
+    phone_number: str
+    admission_number: str
+    full_name: str
+    email: Optional[str] = None
+    class_name: str
+    institution: str
+    image_data: Optional[str] = None
+    password: Optional[str] = None          # <-- new field
+```
+
+---
+
+### 2. `apps/accounts/api.py` – Add Password Login Endpoint
+
+**Why**  
+Create the actual login view that uses Django’s authentication backend to validate phone+password.
+
+**Changes**
+
+Add the endpoint (place near other auth routes):
+
+```python
+from django.contrib.auth import authenticate
+
+@router.post("/login/")
+def password_login(request, data: PasswordLoginIn):
+    user = authenticate(request, username=data.phone_number, password=data.password)
+    if not user:
+        return {"error": "Invalid credentials"}, 401
+    if not user.is_active:
+        return {"error": "Account is inactive"}, 401
+
+    tokens = create_token_pair(user)
+    AccountService.increment_login_count(user)
+
+    return {
+        "access": tokens["access"],
+        "refresh": tokens["refresh"],
+        "user": AccountService.serialize_user(user),
+    }
+```
+
+**Optional (if you want 2FA support for password login)**  
+You can mirror the OTP flow: if `user.two_factor_enabled`, create a temp token and return `require_2fa: True` instead of tokens. Then reuse the existing `/2fa/verify-login/` endpoint.
+
+---
+
+### 3. `apps/accounts/api.py` – Modify Signup to Accept Password
+
+**Why**  
+Allow new users to set a password during registration.
+
+**Changes**
+
+In the `signup` view, after creating the user:
+
+```python
+user = User.objects.create_user(
+    phone_number=data.phone_number,
+    admission_number=data.admission_number,
+    full_name=data.full_name,
+    email=data.email or "",
+    class_name=data.class_name,
+    institution=data.institution,
+)
+# If password was provided, set it
+if data.password:
+    user.set_password(data.password)
+    user.save(update_fields=['password'])
+```
+
+---
+
+### 4. `apps/accounts/services.py` – (Optional) Add Serialization Helper
+
+**Why**  
+Reuse the user serialization for both OTP and password login responses.
+
+**Changes**  
+We already have `AccountService.serialize_user` — use it in the login endpoint.
+
+---
+
+### 5. `apps/accounts/permissions.py` – No Change Needed
+
+The existing `JWTAuth` permission class works for any authenticated user regardless of how they logged in.
+
+---
+
+### 6. (Optional) `common/jwt_auth.py` – No Change
+
+Token creation (`create_token_pair`) already uses the user object and works with any login method.
+
+---
+
+## 🖥️ Frontend Changes
+
+### 1. `frontend/src/api/accountsApi.js` – Add Password Login API Call
+
+**Why**  
+Expose the new endpoint to the frontend.
+
+**Changes**
+
+```javascript
+// Add this method inside the accountsApi object
+passwordLogin: (phone, password) =>
+  apiClient.post('/accounts/login/', { phone_number: phone, password: password }),
+```
+
+---
+
+### 2. `frontend/src/contexts/AuthContext.jsx` – Add `passwordLogin` Method
+
+**Why**  
+Provide a unified authentication context method for components to use.
+
+**Changes**
+
+Inside the `AuthProvider`, add:
+
+```javascript
+const passwordLogin = useCallback(async (phone, password) => {
+  setLoginLoading(true);
+  setError(null);
+  try {
+    const response = await accountsApi.passwordLogin(phone, password);
+    const data = response.data;
+    if (data.require_2fa) {
+      localStorage.setItem('2fa_temp_token', data.temp_token);
+      localStorage.setItem('2fa_phone', phone);
+      return { require_2fa: true, temp_token: data.temp_token };
+    }
+    const { access, refresh, user } = data;
+    storeTokens(access, refresh);
+    storeUser(user);
+    setUser(user);
+    return user;
+  } catch (err) {
+    const message = err.response?.data?.error || 'Login failed.';
+    setError(message);
+    throw new Error(message);
+  } finally {
+    setLoginLoading(false);
+  }
+}, []);
+```
+
+Then expose it in the context value.
+
+---
+
+### 3. `frontend/src/pages/LoginPage.jsx` – Add Password Login Tab
+
+**Why**  
+Let users choose between OTP, Face ID, and Password login.
+
+**Changes**
+
+- Add a new authentication method tab: `'password'` alongside `'otp'` and `'face'`.
+- When `authMethod === 'password'`, render a form with phone number and password fields.
+- Use the `passwordLogin` method from `AuthContext`.
+
+**Example snippet** (inside the login form step):
+
+```jsx
+{authMethod === 'password' && (
+  <form onSubmit={handlePasswordLogin}>
+    <div style={{ marginBottom: '0.9rem' }}>
+      <label className="lp-label">Phone number</label>
+      <input
+        type="tel"
+        className="lp-input"
+        value={phone}
+        onChange={e => setPhone(e.target.value)}
+        placeholder="+254 700 000 000"
+        required
+      />
+    </div>
+    <div style={{ marginBottom: '0.9rem' }}>
+      <label className="lp-label">Password</label>
+      <input
+        type="password"
+        className="lp-input"
+        value={password}
+        onChange={e => setPassword(e.target.value)}
+        placeholder="Your password"
+        required
+      />
+    </div>
+    <button type="submit" className="lp-btn" disabled={loading}>
+      {loading ? <div className="lp-spinner" /> : 'Sign in with Password'}
+    </button>
+  </form>
+)}
+```
+
+- Also update the `AuthMethodTabs` component to include the new tab.
+
+---
+
+### 4. `frontend/src/stores/useUserStore.js` – (Optional) No Change Required
+
+The store already handles token storage and user state; it works with any login method.
+
+---
+
+## ✅ Additional Considerations
+
+| Concern | Solution |
+|---------|----------|
+| **Password hashing** | Django’s `set_password` automatically hashes with PBKDF2. Already used in reset/change endpoints. |
+| **Authentication backend** | Django’s default `ModelBackend` uses `USERNAME_FIELD` (`phone_number`) – no custom backend needed. |
+| **2FA integration** | The existing 2FA flow can be reused by returning `require_2fa` and `temp_token` after successful password login. |
+| **Signup with password** | Optional field – users can still sign up without a password and later set one via reset. |
+| **Existing OTP login** | Unchanged – both methods coexist. |
+| **Rate limiting** | Consider adding rate limits to the password login endpoint to prevent brute‑force. |
+
+---
+
+## 🔐 Security Best Practices
+
+- **Use HTTPS** in production.
+- **Enforce strong password policies** (length, complexity) – implement in the `SignupIn` schema validators.
+- **Log failed login attempts** via `AuditLog` (already integrated).
+- **Implement account lockout** after too many failed attempts (optional enhancement).
+- **Refresh token rotation** already implemented in `client.js` interceptor.
+
+---
+
+## 🧪 Testing Checklist
+
+- [ ] Sign up with a password → user is created with hashed password.
+- [ ] Login with correct phone + password → tokens and user data returned.
+- [ ] Login with incorrect password → 401 error.
+- [ ] Login with inactive account → 401 error.
+- [ ] OTP login still works as before.
+- [ ] 2FA (if enabled) correctly intercepts password login.
+- [ ] Frontend tabs switch seamlessly between OTP, Face ID, and Password.
+
+---
+
+## 📁 Summary of Modified Files
+
+| File | Purpose |
+|------|---------|
+| `backend/apps/accounts/schema.py` | Add `PasswordLoginIn`, extend `SignupIn`. |
+| `backend/apps/accounts/api.py` | Add `/login/` endpoint; modify signup to handle password. |
+| `frontend/src/api/accountsApi.js` | Add `passwordLogin` function. |
+| `frontend/src/contexts/AuthContext.jsx` | Add `passwordLogin` context method. |
+| `frontend/src/pages/LoginPage.jsx` | Add password login UI and tab. |
+
+That’s it! You now have a fully functional password login system that works alongside OTP and biometric authentication.

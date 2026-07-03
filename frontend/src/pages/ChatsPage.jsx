@@ -1,9 +1,12 @@
 // frontend/src/pages/ChatsPage.jsx
 //
-// Updated: container height via ResizeObserver, accurate initial values,
-//          dynamic viewport height for modal overlay, class‑based theming,
-//          reduced header spacing, anchored empty state, mobile‑aware modal buffer.
-//          Modal now centered (not bottom sheet).
+// FIXES:
+//  • ConvCard height reduced to ~68px (was ~90px) so 4-5 chats fit in viewport
+//  • Header padding tightened
+//  • Chips scrollbar hidden properly
+//  • Avatar size 44px (was 48px) for compact feel
+//  • Online dot matches smaller avatar
+//  • Preview font-size & line-height tightened
 
 import React, {
   useEffect, useState, useCallback, useMemo, useRef,
@@ -18,8 +21,8 @@ const FILTERS = ['all', 'unread', 'read', 'archived', 'blocked'];
 // ─── CSS ──────────────────────────────────────────────────────────────────
 const CSS = `
   .cp-root {
-    flex: 1;                /* fill available vertical space */
-    min-height: 0;          /* allow shrinking inside flex parent */
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
@@ -27,7 +30,7 @@ const CSS = `
     position: relative;
   }
 
-  /* ── Light theme (default) ── */
+  /* ── Light theme ── */
   .cp-root {
     --bg:           #eff1f8;
     --bg2:          #e7eaf5;
@@ -54,9 +57,9 @@ const CSS = `
     --glass-bg:     rgba(255,255,255,0.94);
     --glass-border: rgba(0,0,0,0.07);
     --shadow:       rgba(0,0,0,0.10);
-    --shadow-sm:    rgba(0,0,0,0.06);
+    --shadow-sm:    rgba(0,0,0,0.05);
     --unread-dot:   #6c63ff;
-    --unread-bg:    rgba(108,99,255,0.08);
+    --unread-bg:    rgba(108,99,255,0.07);
     --chip-bg:      #eceef7;
     --chip-text:    #5a647e;
     --input-bg:     #f4f5fb;
@@ -66,7 +69,7 @@ const CSS = `
     --card-border:  #e8eaf2;
   }
 
-  /* ── Dark theme (applied when <html> has .dark class) ── */
+  /* ── Dark theme ── */
   .dark .cp-root {
     --bg:           #0a0c14;
     --bg2:          #10131f;
@@ -105,7 +108,6 @@ const CSS = `
     --card-border:  #252d45;
   }
 
-  /* ── Rest of CSS (unchanged, except for spacing adjustments) ── */
   .cp-bg {
     position: absolute; inset: 0;
     background: var(--bg);
@@ -123,8 +125,8 @@ const CSS = `
     content: '';
     position: absolute; inset: 0;
     background-image:
-      linear-gradient(rgba(124,111,255,0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(124,111,255,0.04) 1px, transparent 1px);
+      linear-gradient(rgba(124,111,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124,111,255,0.03) 1px, transparent 1px);
     background-size: 32px 32px;
     pointer-events: none;
   }
@@ -133,35 +135,35 @@ const CSS = `
     position: relative; z-index: 30;
     background: var(--offline-bg); color: var(--offline-text);
     font-size: 12px; font-weight: 600;
-    text-align: center; padding: 7px 16px;
+    text-align: center; padding: 6px 16px;
     border-bottom: 1px solid rgba(240,74,107,0.15);
   }
 
+  /* ── Header: tighter padding ── */
   .cp-header {
     position: relative; z-index: 20;
     background: var(--glass-bg);
     backdrop-filter: blur(24px) saturate(1.7);
     -webkit-backdrop-filter: blur(24px) saturate(1.7);
     border-bottom: 1.5px solid var(--glass-border);
-    box-shadow: 0 4px 28px var(--shadow), 0 1px 0 var(--glass-border);
-    padding: 12px 16px 0;   /* reduced from 16px */
+    box-shadow: 0 3px 20px var(--shadow), 0 1px 0 var(--glass-border);
+    padding: 10px 16px 0;
   }
 
   .cp-greeting {
-    font-size: 12px; font-weight: 600;
-    color: var(--text3); margin-bottom: 2px;
+    font-size: 11px; font-weight: 600;
+    color: var(--text3); margin-bottom: 1px;
     letter-spacing: 0.2px;
   }
 
   .cp-title-row {
     display: flex; align-items: center;
     justify-content: space-between;
-    margin-bottom: 8px;     /* reduced from 14px */
+    margin-bottom: 8px;
   }
   .cp-title-left { display: flex; flex-direction: column; }
-
   .cp-title {
-    font-size: 24px; font-weight: 900;
+    font-size: 22px; font-weight: 900;
     letter-spacing: -0.6px;
     color: var(--text); line-height: 1.1;
     background: linear-gradient(135deg, var(--text) 50%, var(--accent2));
@@ -169,38 +171,37 @@ const CSS = `
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
-
   .cp-subtitle {
-    font-size: 12px; color: var(--text3);
-    margin-top: 3px; display: flex; align-items: center; gap: 5px;
+    font-size: 11.5px; color: var(--text3);
+    margin-top: 2px; display: flex; align-items: center; gap: 5px;
   }
 
   .cp-new-btn {
-    width: 40px; height: 40px;
-    border-radius: 13px; border: none;
+    width: 38px; height: 38px;
+    border-radius: 12px; border: none;
     background: linear-gradient(135deg, var(--accent), var(--accent2));
     color: #fff; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
-    box-shadow: 0 5px 16px var(--accent-glow);
-    transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+    box-shadow: 0 4px 14px var(--accent-glow);
+    transition: transform 0.15s, box-shadow 0.15s;
   }
-  .cp-new-btn:hover  { transform: scale(1.07) translateY(-1px); box-shadow: 0 8px 22px var(--accent-glow); }
+  .cp-new-btn:hover  { transform: scale(1.07) translateY(-1px); box-shadow: 0 7px 20px var(--accent-glow); }
   .cp-new-btn:active { transform: scale(0.92); }
 
-  .cp-search-wrap { position: relative; margin-bottom: 10px; }   /* reduced from 14px */
+  .cp-search-wrap { position: relative; margin-bottom: 8px; }
   .cp-search-icon {
-    position: absolute; left: 13px; top: 50%;
+    position: absolute; left: 12px; top: 50%;
     transform: translateY(-50%);
     color: var(--text3); pointer-events: none;
-    width: 16px; height: 16px;
+    width: 15px; height: 15px;
   }
   .cp-search-input {
-    width: 100%; padding: 11px 38px;
+    width: 100%; padding: 9px 34px;
     background: var(--input-bg);
     border: 1.5px solid var(--input-border);
-    border-radius: 16px; color: var(--text);
-    font-size: 14px; outline: none; box-sizing: border-box;
+    border-radius: 14px; color: var(--text);
+    font-size: 13.5px; outline: none; box-sizing: border-box;
     transition: border-color 0.2s, box-shadow 0.2s;
   }
   .cp-search-input::placeholder { color: var(--text3); }
@@ -209,38 +210,39 @@ const CSS = `
     box-shadow: 0 0 0 3px var(--accent-soft);
   }
   .cp-search-clear {
-    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
     background: none; border: none; cursor: pointer; color: var(--text3);
-    padding: 4px; border-radius: 50%;
+    padding: 3px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    transition: color 0.15s, background 0.15s;
+    transition: color 0.15s;
   }
-  .cp-search-clear:hover { color: var(--text); background: var(--border); }
+  .cp-search-clear:hover { color: var(--text); }
 
   .cp-chips {
-    display: flex; gap: 7px;
-    padding: 0 0 10px;       /* reduced from 14px */
+    display: flex; gap: 6px;
+    padding: 0 0 9px;
     overflow-x: auto; scrollbar-width: none;
   }
   .cp-chips::-webkit-scrollbar { display: none; }
   .cp-chip {
-    padding: 7px 16px; border-radius: 24px;
+    padding: 5px 14px; border-radius: 22px;
     border: 1.5px solid transparent;
-    cursor: pointer; font-size: 13px; font-weight: 600;
+    cursor: pointer; font-size: 12.5px; font-weight: 600;
     white-space: nowrap;
     background: var(--chip-bg); color: var(--chip-text);
-    transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s, box-shadow 0.15s;
+    transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s;
     display: flex; align-items: center; gap: 5px;
+    flex-shrink: 0;
   }
   .cp-chip:active { transform: scale(0.94); }
   .cp-chip.active {
     background: var(--accent); color: #fff;
-    box-shadow: 0 3px 14px var(--accent-glow);
+    box-shadow: 0 2px 10px var(--accent-glow);
   }
   .cp-chip-badge {
-    font-size: 11px; font-weight: 800;
-    border-radius: 10px; padding: 1px 6px;
-    min-width: 18px; text-align: center;
+    font-size: 10.5px; font-weight: 800;
+    border-radius: 10px; padding: 1px 5px;
+    min-width: 16px; text-align: center;
   }
   .cp-chip.active .cp-chip-badge { background: rgba(255,255,255,0.25); color: #fff; }
   .cp-chip:not(.active) .cp-chip-badge { background: var(--accent-soft); color: var(--accent); }
@@ -248,42 +250,47 @@ const CSS = `
   .cp-list-area { position: relative; z-index: 5; flex: 1; overflow: hidden; }
 
   .cp-section-label {
-    padding: 12px 16px 4px;
-    font-size: 11px; font-weight: 800;
+    padding: 8px 16px 3px;
+    font-size: 10.5px; font-weight: 800;
     letter-spacing: 0.9px; text-transform: uppercase;
     color: var(--text3);
     display: flex; align-items: center; gap: 8px;
   }
   .cp-section-label-line { flex: 1; height: 1px; background: var(--border); }
 
+  /* ── ConvCard: compact 68px height ── */
   .cp-conv-card {
-    display: flex; align-items: center; gap: 12px;
-    padding: 11px 16px; margin: 2px 10px;
-    border-radius: 16px; cursor: pointer;
+    display: flex; align-items: center; gap: 11px;
+    padding: 9px 14px;
+    margin: 1px 8px;
+    border-radius: 14px; cursor: pointer;
     background: var(--card-bg);
     border: 1px solid transparent;
     transition: background 0.15s, border-color 0.15s, transform 0.1s, box-shadow 0.15s;
+    min-height: 66px;
+    box-sizing: border-box;
   }
   .cp-conv-card:hover {
     background: var(--card-hover);
     border-color: var(--card-border);
-    box-shadow: 0 2px 12px var(--shadow-sm);
+    box-shadow: 0 2px 10px var(--shadow-sm);
     transform: translateY(-1px);
   }
   .cp-conv-card:active { transform: scale(0.98); }
-  .cp-conv-card.unread { background: var(--unread-bg); border-color: rgba(124,111,255,0.15); }
+  .cp-conv-card.unread { background: var(--unread-bg); border-color: rgba(124,111,255,0.14); }
 
-  .cp-conv-av-wrap { position: relative; flex-shrink: 0; width: 48px; height: 48px; }
+  /* ── Avatar 44px ── */
+  .cp-conv-av-wrap { position: relative; flex-shrink: 0; width: 44px; height: 44px; }
   .cp-conv-av {
-    width: 48px; height: 48px; border-radius: 15px;
+    width: 44px; height: 44px; border-radius: 14px;
     background: linear-gradient(135deg, var(--accent), var(--accent2));
-    color: #fff; font-size: 18px; font-weight: 700;
+    color: #fff; font-size: 16px; font-weight: 700;
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 3px 10px var(--accent-glow);
+    box-shadow: 0 2px 8px var(--accent-glow);
     flex-shrink: 0;
   }
   .cp-conv-presence {
-    width: 12px; height: 12px; border-radius: 50%;
+    width: 11px; height: 11px; border-radius: 50%;
     border: 2px solid var(--surface);
     position: absolute; bottom: -1px; right: -1px;
   }
@@ -291,33 +298,37 @@ const CSS = `
   .cp-conv-presence.offline { background: var(--offline); }
 
   .cp-conv-body { flex: 1; min-width: 0; }
-  .cp-conv-row1 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 3px; }
+  .cp-conv-row1 {
+    display: flex; justify-content: space-between;
+    align-items: baseline; gap: 8px; margin-bottom: 2px;
+  }
   .cp-conv-name {
-    font-size: 14.5px; font-weight: 700; color: var(--text);
+    font-size: 14px; font-weight: 700; color: var(--text);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .cp-conv-time { font-size: 11px; color: var(--text3); font-weight: 500; flex-shrink: 0; }
 
   .cp-conv-row2 { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
   .cp-conv-preview {
-    font-size: 13px; color: var(--text2);
+    font-size: 12.5px; color: var(--text2);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     flex: 1;
+    line-height: 1.35;
   }
-  .cp-conv-preview.unread { color: var(--text); font-weight: 500; }
+  .cp-conv-preview.unread { color: var(--text); font-weight: 600; }
 
   .cp-unread-badge {
-    min-width: 20px; height: 20px;
+    min-width: 19px; height: 19px;
     border-radius: 10px; padding: 0 5px;
     background: var(--accent); color: #fff;
-    font-size: 11px; font-weight: 800;
+    font-size: 10.5px; font-weight: 800;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
   }
 
-  .cp-ptr { display: flex; justify-content: center; padding: 10px; position: relative; z-index: 5; }
+  .cp-ptr { display: flex; justify-content: center; padding: 8px; position: relative; z-index: 5; }
   .cp-ptr-spin {
-    width: 20px; height: 20px;
+    width: 18px; height: 18px;
     border: 2px solid var(--border);
     border-top-color: var(--accent);
     border-radius: 50%;
@@ -325,19 +336,19 @@ const CSS = `
   }
   @keyframes cp-spin { to { transform: rotate(360deg); } }
 
-  .cp-load-more { display: flex; justify-content: center; padding: 12px; }
+  .cp-load-more { display: flex; justify-content: center; padding: 10px; }
   .cp-load-more-btn {
-    padding: 9px 26px;
+    padding: 8px 22px;
     background: var(--surface); color: var(--text2);
-    border: 1.5px solid var(--border); border-radius: 24px;
+    border: 1.5px solid var(--border); border-radius: 22px;
     cursor: pointer; font-size: 13px; font-weight: 600;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
   }
   .cp-load-more-btn:hover   { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
   .cp-load-more-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .cp-skeletons { padding: 8px 0; }
-  .cp-skel-item { display: flex; align-items: center; gap: 12px; padding: 12px 18px; }
+  .cp-skeletons { padding: 6px 0; }
+  .cp-skel-item { display: flex; align-items: center; gap: 11px; padding: 10px 16px; }
   .cp-skel {
     background: var(--skeleton); border-radius: 6px;
     overflow: hidden; position: relative;
@@ -348,158 +359,127 @@ const CSS = `
     animation: cp-shimmer 1.4s infinite;
   }
   @keyframes cp-shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
-  .cp-skel-av   { width: 48px; height: 48px; border-radius: 15px; flex-shrink: 0; }
-  .cp-skel-body { flex: 1; display: flex; flex-direction: column; gap: 8px; }
-  .cp-skel-line { height: 12px; border-radius: 4px; }
+  .cp-skel-av   { width: 44px; height: 44px; border-radius: 14px; flex-shrink: 0; }
+  .cp-skel-body { flex: 1; display: flex; flex-direction: column; gap: 7px; }
+  .cp-skel-line { height: 11px; border-radius: 4px; }
 
-  /* ── Empty state card ── */
   .cp-empty {
     display: flex; align-items: center; justify-content: center;
-    height: 100%; padding: 40px 32px;
+    height: 100%; padding: 32px 24px;
   }
   .cp-empty-card {
-    max-width: 360px; width: 100%;
+    max-width: 340px; width: 100%;
     text-align: center;
-    display: flex; flex-direction: column;
-    gap: 10px;
+    display: flex; flex-direction: column; gap: 8px;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 24px;
-    padding: 36px 24px;
-    box-shadow: 0 8px 32px var(--shadow-sm);
-    backdrop-filter: blur(12px);
+    border-radius: 22px;
+    padding: 30px 20px;
+    box-shadow: 0 6px 24px var(--shadow-sm);
   }
-  .cp-empty-icon   { font-size: 56px; margin-bottom: 4px; }
-  .cp-empty-title  { font-size: 19px; font-weight: 800; color: var(--text); letter-spacing: -0.3px; }
-  .cp-empty-sub    { font-size: 14px; color: var(--text3); line-height: 1.65; margin-top: 4px; }
-  .cp-empty-pills  { display: flex; flex-wrap: wrap; gap: 7px; justify-content: center; margin-top: 4px; }
+  .cp-empty-icon   { font-size: 48px; margin-bottom: 2px; }
+  .cp-empty-title  { font-size: 18px; font-weight: 800; color: var(--text); letter-spacing: -0.3px; }
+  .cp-empty-sub    { font-size: 13.5px; color: var(--text3); line-height: 1.6; }
+  .cp-empty-pills  { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 2px; }
   .cp-empty-pill {
-    padding: 6px 14px;
-    background: var(--surface2); border: 1px solid var(--border); border-radius: 22px;
-    font-size: 12px; font-weight: 600; color: var(--text2);
+    padding: 5px 13px;
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 20px;
+    font-size: 11.5px; font-weight: 600; color: var(--text2);
   }
   .cp-empty-cta {
-    margin-top: 8px; padding: 12px 30px;
+    margin-top: 6px; padding: 11px 26px;
     background: linear-gradient(135deg, var(--accent), var(--accent2));
-    color: #fff; border: none; border-radius: 16px;
+    color: #fff; border: none; border-radius: 14px;
     cursor: pointer; font-size: 14px; font-weight: 700;
-    box-shadow: 0 5px 18px var(--accent-glow);
+    box-shadow: 0 4px 16px var(--accent-glow);
     transition: opacity 0.15s, transform 0.1s;
   }
-  .cp-empty-cta:hover  { opacity: 0.9; transform: translateY(-2px); }
+  .cp-empty-cta:hover  { opacity: 0.9; transform: translateY(-1px); }
   .cp-empty-cta:active { transform: scale(0.95); }
 
   .cp-conn-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
   .cp-conn-dot.online  { background: var(--online); box-shadow: 0 0 0 2.5px var(--online-ring); }
   .cp-conn-dot.offline { background: var(--offline); }
 
+  /* ── New Chat Modal ── */
   .cp-modal-overlay {
-    position: fixed;
-    inset: 0;
-    width: 100%;
-    height: calc(var(--visual-vh, 1vh) * 100);   /* dynamic viewport height */
+    position: fixed; inset: 0; width: 100%;
+    height: calc(var(--visual-vh, 1vh) * 100);
     z-index: 100;
     background: rgba(0,0,0,0.6);
-    display: flex;
-    align-items: center;          /* ← changed from flex-end to center modal vertically */
-    justify-content: center;
+    display: flex; align-items: center; justify-content: center;
     backdrop-filter: blur(8px);
     animation: cp-fade 0.15s ease;
   }
   @keyframes cp-fade { from { opacity: 0; } to { opacity: 1; } }
-
   .cp-modal {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 26px;          /* ← full rounded corners instead of bottom‑sheet style */
-    width: 100%;
-    max-width: 490px;
-    display: flex;
-    flex-direction: column;
-    box-shadow: 0 10px 48px var(--shadow);   /* symmetrical shadow */
+    border-radius: 24px;
+    width: calc(100% - 32px);
+    max-width: 460px;
+    display: flex; flex-direction: column;
+    box-shadow: 0 10px 48px var(--shadow);
     animation: cp-slide-up 0.2s cubic-bezier(0.34, 1.3, 0.64, 1);
     overflow: hidden;
   }
   @keyframes cp-slide-up {
-    from { transform: translateY(44px); opacity: 0; }
+    from { transform: translateY(40px); opacity: 0; }
     to   { transform: translateY(0);    opacity: 1; }
   }
   .cp-modal-handle {
-    width: 38px; height: 4px; border-radius: 2px;
-    background: var(--border); margin: 12px auto 0; flex-shrink: 0;
+    width: 36px; height: 4px; border-radius: 2px;
+    background: var(--border); margin: 10px auto 0; flex-shrink: 0;
   }
   .cp-modal-header {
-    padding: 14px 18px;
+    padding: 12px 16px;
     display: flex; align-items: center; justify-content: space-between;
     border-bottom: 1px solid var(--border); flex-shrink: 0;
   }
-  .cp-modal-title { font-size: 16px; font-weight: 800; color: var(--text); }
+  .cp-modal-title { font-size: 15.5px; font-weight: 800; color: var(--text); }
   .cp-modal-close {
-    width: 32px; height: 32px; border-radius: 50%; border: none;
+    width: 30px; height: 30px; border-radius: 50%; border: none;
     background: var(--chip-bg); color: var(--text3); cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     transition: background 0.15s, color 0.15s;
   }
   .cp-modal-close:hover { background: var(--border); color: var(--text); }
-
   .cp-modal-body {
-    padding: 14px 16px;
-    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-    flex: 1;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    padding: 12px 14px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    flex: 1; overflow-y: auto; overscroll-behavior: contain;
+    display: flex; flex-direction: column; gap: 6px;
   }
-
   .cp-modal-search-sticky {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    background: var(--surface);
-    padding-bottom: 8px;
+    position: sticky; top: 0; z-index: 2;
+    background: var(--surface); padding-bottom: 8px;
   }
   .cp-modal-search {
-    width: 100%;
-    padding: 11px 14px;
+    width: 100%; padding: 10px 13px;
     background: var(--input-bg);
     border: 1.5px solid var(--input-border);
-    border-radius: 14px;
-    color: var(--text);
-    font-size: 14px;
-    outline: none;
-    box-sizing: border-box;
+    border-radius: 13px; color: var(--text);
+    font-size: 13.5px; outline: none; box-sizing: border-box;
     transition: border-color 0.2s, box-shadow 0.2s;
   }
-  .cp-modal-search:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-soft);
-  }
+  .cp-modal-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   .cp-modal-search::placeholder { color: var(--text3); }
-
-  .cp-modal-hint {
-    font-size: 12.5px;
-    color: var(--text3);
-    text-align: center;
-    margin-top: 20px;
-  }
-
+  .cp-modal-hint { font-size: 12px; color: var(--text3); text-align: center; margin-top: 16px; }
   .cp-user-item {
-    display: flex; align-items: center; gap: 12px;
-    padding: 11px 10px; border-radius: 14px;
+    display: flex; align-items: center; gap: 11px;
+    padding: 9px 8px; border-radius: 12px;
     cursor: pointer; transition: background 0.1s;
   }
   .cp-user-item:hover { background: var(--accent-soft); }
   .cp-user-av {
-    width: 44px; height: 44px; border-radius: 14px;
+    width: 42px; height: 42px; border-radius: 13px;
     background: linear-gradient(135deg, var(--accent), var(--accent2));
     color: #fff; display: flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 17px; flex-shrink: 0;
-    box-shadow: 0 3px 10px var(--accent-glow);
+    font-weight: 700; font-size: 16px; flex-shrink: 0;
+    box-shadow: 0 2px 8px var(--accent-glow);
   }
-  .cp-user-name   { font-size: 14px; font-weight: 700; color: var(--text); }
-  .cp-user-detail { font-size: 12px; color: var(--text3); margin-top: 1px; }
+  .cp-user-name   { font-size: 13.5px; font-weight: 700; color: var(--text); }
+  .cp-user-detail { font-size: 11.5px; color: var(--text3); margin-top: 1px; }
 `;
 
 // ─── Greeting & helpers ──────────────────────────────────────────────────
@@ -526,13 +506,13 @@ const timeAgo = (dateStr) => {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
 };
 
-// ─── Sub‑components ──────────────────────────────────────────────────────
+// ─── Sub-components ──────────────────────────────────────────────────────
 const SkeletonRow = () => (
   <div className="cp-skel-item">
     <div className="cp-skel cp-skel-av" />
     <div className="cp-skel-body">
-      <div className="cp-skel cp-skel-line" style={{ width: '48%' }} />
-      <div className="cp-skel cp-skel-line" style={{ width: '72%' }} />
+      <div className="cp-skel cp-skel-line" style={{ width: '46%' }} />
+      <div className="cp-skel cp-skel-line" style={{ width: '68%' }} />
     </div>
   </div>
 );
@@ -545,12 +525,12 @@ const SectionLabel = ({ text }) => (
 );
 
 const ConvCard = React.memo(({ conv, presence, onClick }) => {
-  const name = conv.name || conv.display_name || 'Unknown';
+  const name = conv.other_participant?.full_name || conv.group_name || 'Unknown';
   const ini = initials(name);
   const unread = conv.unread_count || 0;
-  const otherId = conv.participants?.find(p => true)?.id;
+  const otherId = conv.other_participant?.id;
   const isOnline = otherId ? !!(presence?.[otherId]?.online) : false;
-  const preview = conv.last_message?.content || 'Start the conversation';
+  const preview = conv.last_message_content || 'Start the conversation';
   const when = timeAgo(conv.last_message_at);
 
   return (
@@ -573,8 +553,9 @@ const ConvCard = React.memo(({ conv, presence, onClick }) => {
   );
 });
 
-const ITEM_SIZE = 80;
-const SECTION_SIZE = 38;
+// Compact item sizes — 68px card, 34px section label
+const ITEM_SIZE = 68;
+const SECTION_SIZE = 34;
 
 const VRow = React.memo(({ index, style, data }) => {
   const { flatList, presence, onSelect } = data;
@@ -590,7 +571,7 @@ const VRow = React.memo(({ index, style, data }) => {
   );
 });
 
-// ─── ChatsPage ───────────────────────────────────────────────────────────
+// ─── ChatsPage ────────────────────────────────────────────────────────────
 const ChatsPage = () => {
   const { conversations, setConversations, setActiveConversation, presence, isOnline, cursors } = useChatStore();
 
@@ -604,59 +585,35 @@ const ChatsPage = () => {
   const navigate = useNavigate();
   const [ListComponent, setListComponent] = useState(null);
 
-  // ── Container & header height via ResizeObserver ──
   const rootRef = useRef(null);
   const headerRef = useRef(null);
-
-  // Better initial estimate: viewport minus navbar (64px)
   const [rootHeight, setRootHeight] = useState(() => window.innerHeight - 64);
-  const [headerH, setHeaderH] = useState(180);   // more accurate default
+  const [headerH, setHeaderH] = useState(170);
 
   useEffect(() => {
     const rootEl = rootRef.current;
     const headerEl = headerRef.current;
     if (!rootEl || !headerEl) return;
-
-    const updateRootHeight = () => {
-      setRootHeight(rootEl.getBoundingClientRect().height);
-    };
-    const updateHeaderHeight = () => {
-      setHeaderH(Math.round(headerEl.getBoundingClientRect().height));
-    };
-
-    // Measure immediately
-    updateRootHeight();
-    updateHeaderHeight();
-
-    const roRoot = new ResizeObserver(updateRootHeight);
-    roRoot.observe(rootEl);
-    const roHeader = new ResizeObserver(updateHeaderHeight);
-    roHeader.observe(headerEl);
-
-    return () => {
-      roRoot.disconnect();
-      roHeader.disconnect();
-    };
+    const updateRoot = () => setRootHeight(rootEl.getBoundingClientRect().height);
+    const updateHeader = () => setHeaderH(Math.round(headerEl.getBoundingClientRect().height));
+    updateRoot(); updateHeader();
+    const roRoot = new ResizeObserver(updateRoot); roRoot.observe(rootEl);
+    const roHeader = new ResizeObserver(updateHeader); roHeader.observe(headerEl);
+    return () => { roRoot.disconnect(); roHeader.disconnect(); };
   }, []);
 
-  const listHeight = rootHeight > 0 ? Math.max(0, rootHeight - headerH) : 600;
+  const listHeight = rootHeight > 0 ? Math.max(0, rootHeight - headerH) : 500;
 
   const [showNewChat, setShowNewChat] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userSearchResults, setUserSearchResults] = useState([]);
   const [searchingUsers, setSearchingUsers] = useState(false);
 
-  // ── Modal max‑height with mobile‑aware buffer ──
-  const getModalBuffer = useCallback(() => {
-    return window.innerWidth < 768 ? 120 : 80;
-  }, []);
-
+  const getModalBuffer = useCallback(() => window.innerWidth < 768 ? 100 : 60, []);
   const [modalMaxHeight, setModalMaxHeight] = useState(() => {
     const vh = window.visualViewport?.height ?? window.innerHeight;
-    const buffer = window.innerWidth < 768 ? 120 : 80;
-    return vh - buffer;
+    return vh - (window.innerWidth < 768 ? 100 : 60);
   });
-
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
@@ -666,11 +623,7 @@ const ChatsPage = () => {
   }, [getModalBuffer]);
 
   useEffect(() => {
-    if (showNewChat) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
+    document.body.style.overflow = showNewChat ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [showNewChat]);
 
@@ -704,11 +657,8 @@ const ChatsPage = () => {
       const res = await chatApi.getConversations(filter, cursor);
       const items = res.data?.results ?? res.data ?? [];
       const next = res.data?.next_cursor ?? null;
-      if (cursor && !isRefresh) {
-        setConversations(prev => [...prev, ...items]);
-      } else {
-        setConversations(items);
-      }
+      if (cursor && !isRefresh) setConversations(prev => [...prev, ...items]);
+      else setConversations(items);
       if (useChatStore.getState().setCursor) useChatStore.getState().setCursor('conversations', next);
     } catch { setError('Could not load conversations.'); }
     finally { setLoading(false); setLoadingMore(false); setRefreshing(false); }
@@ -733,8 +683,8 @@ const ChatsPage = () => {
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(c =>
-        (c.name || c.display_name || '').toLowerCase().includes(q) ||
-        (c.last_message?.content || '').toLowerCase().includes(q)
+        (c.other_participant?.full_name || c.group_name || '').toLowerCase().includes(q) ||
+        (c.last_message_content || '').toLowerCase().includes(q)
       );
     }
     return { pinned: list.filter(c => c.is_pinned), recent: list.filter(c => !c.is_pinned) };
@@ -795,7 +745,10 @@ const ChatsPage = () => {
     try {
       const res = await chatApi.createConversation([userId]);
       const convId = res.data?.id ?? res.data?.conversation_id;
-      if (convId) { setShowNewChat(false); setUserSearchQuery(''); setUserSearchResults([]); navigate(`/chat/${convId}`); }
+      if (convId) {
+        setShowNewChat(false); setUserSearchQuery(''); setUserSearchResults([]);
+        navigate(`/chat/${convId}`);
+      }
     } catch (err) { console.error('Failed to create conversation', err); }
   };
 
@@ -810,7 +763,6 @@ const ChatsPage = () => {
     );
   };
 
-  // ─── Empty state render helper ────────────────────────────────────
   const renderEmpty = (icon, title, subtitle, pills = null, showCta = false) => (
     <div className="cp-empty">
       <div className="cp-empty-card">
@@ -821,7 +773,7 @@ const ChatsPage = () => {
           <div className="cp-empty-pills">{pills.map((p, i) => <span key={i} className="cp-empty-pill">{p}</span>)}</div>
         )}
         {showCta && (
-          <button className="cp-empty-cta" onClick={() => setShowNewChat(true)}>New Chat</button>
+          <button className="cp-empty-cta" onClick={() => setShowNewChat(true)}>Start a Chat</button>
         )}
       </div>
     </div>
@@ -849,7 +801,7 @@ const ChatsPage = () => {
             </div>
           </div>
           <button className="cp-new-btn" onClick={() => setShowNewChat(true)} aria-label="New chat">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor">
               <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
             </svg>
           </button>
@@ -867,7 +819,7 @@ const ChatsPage = () => {
           />
           {searchInput && (
             <button className="cp-search-clear" onClick={clearSearch} aria-label="Clear">
-              <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+              <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
               </svg>
             </button>
@@ -882,7 +834,7 @@ const ChatsPage = () => {
 
         {loading ? (
           <div className="cp-skeletons">
-            {Array.from({ length: 7 }).map((_, i) => <SkeletonRow key={i} />)}
+            {Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)}
           </div>
         ) : error ? (
           renderEmpty('⚠️', 'Something went wrong', error, null, true)
@@ -892,8 +844,11 @@ const ChatsPage = () => {
           ) : filter !== 'all' ? (
             renderEmpty('📭', 'Nothing here', `No ${filter} conversations right now.`)
           ) : (
-            renderEmpty('💬', 'Start a conversation', 'Connect with classmates, share notes, and collaborate on assignments.',
-              ['Share notes 📝', 'Study together 📚', 'Ask questions ❓', 'Collaborate 🤝'], true)
+            renderEmpty(
+              '💬', 'Start a conversation',
+              'Connect with classmates, share notes, and collaborate on assignments.',
+              ['Share notes 📝', 'Study together 📚', 'Ask questions ❓'], true
+            )
           )
         ) : (
           <>
@@ -932,7 +887,9 @@ const ChatsPage = () => {
             <div className="cp-modal-header">
               <span className="cp-modal-title">New Chat</span>
               <button className="cp-modal-close" onClick={() => setShowNewChat(false)} aria-label="Close">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                </svg>
               </button>
             </div>
             <div className="cp-modal-body">

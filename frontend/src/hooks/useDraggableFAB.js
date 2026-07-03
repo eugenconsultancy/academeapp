@@ -1,13 +1,13 @@
+// frontend/src/hooks/useDraggableFAB.js
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 // ── Constants ──────────────────────────────────────────────────────────
 const DEFAULT_POSITION = { x: 20, y: window.innerHeight - 100 };
 const FAB_SIZE = 56;
-const HALF_FAB = FAB_SIZE / 2;
-const SNAP_THRESHOLD = 0.3;
 const DRAG_THRESHOLD = 5;
 const EDGE_PADDING = 16;
 const ANIMATION_DURATION = 300;
+const SNAP_THRESHOLD = 0.3;
 
 export function useDraggableFAB(options = {}) {
     const {
@@ -19,9 +19,6 @@ export function useDraggableFAB(options = {}) {
         onDragStart = null,
         onDragEnd = null,
         onClick = null,
-        onLongPress = null,
-        onDoubleTap = null,
-        boundaryElement = null,
     } = options;
 
     const [position, setPosition] = useState(() => {
@@ -29,25 +26,28 @@ export function useDraggableFAB(options = {}) {
             const saved = localStorage.getItem('fab_position');
             if (saved) {
                 const parsed = JSON.parse(saved);
-                if (_isWithinBounds(parsed.x, parsed.y, edgePadding)) {
+                if (parsed.x >= edgePadding && parsed.x <= _getMaxX(edgePadding) &&
+                    parsed.y >= edgePadding && parsed.y <= _getMaxY(edgePadding)) {
                     return parsed;
                 }
             }
-        } catch (e) { }
+        } catch { }
         return defaultPosition;
     });
 
     const [isDragging, setIsDragging] = useState(false);
-    const [isExpanded, setIsExpanded] = useState(false);
     const [snapEdge, setSnapEdge] = useState(null);
 
+    const positionRef = useRef(position);
+    const isDraggingRef = useRef(false);
     const dragStartRef = useRef({ x: 0, y: 0, time: 0 });
-    const velocityRef = useRef({ x: 0, y: 0 });
-    const lastPositionRef = useRef(position);
-    const touchStartTimeRef = useRef(0);
     const hasMovedRef = useRef(false);
+    const velocityRef = useRef({ x: 0, y: 0 });
     const animationFrameRef = useRef(null);
     const isMountedRef = useRef(true);
+
+    useEffect(() => { positionRef.current = position; }, [position]);
+    useEffect(() => { isDraggingRef.current = isDragging; }, [isDragging]);
 
     useEffect(() => {
         try { localStorage.setItem('fab_position', JSON.stringify(position)); } catch { }
@@ -70,6 +70,7 @@ export function useDraggableFAB(options = {}) {
         };
     }, [edgePadding]);
 
+    // ── Snap animation ─────────────────────────────────────────────────
     const snapToNearestEdge = useCallback(
         (x, y, velocityX = 0) => {
             const maxX = _getMaxX(edgePadding);
@@ -89,7 +90,6 @@ export function useDraggableFAB(options = {}) {
             }
 
             const clampedY = Math.max(edgePadding, Math.min(y, maxY));
-
             const startX = x;
             const startY = y;
             const startTime = performance.now();
@@ -114,170 +114,194 @@ export function useDraggableFAB(options = {}) {
         [edgePadding, preferredEdge]
     );
 
-    // ── Mouse handlers (no dataTransfer) ──────────────────
-    const handleDragStart = useCallback(
-        (e) => {
-            if (disabled) return;
-            dragStartRef.current = {
-                x: e.clientX,
-                y: e.clientY,
-                time: Date.now(),
+    // ── Internal drag handlers ──────────────────────────────────────
+    const handleDragMove = useCallback((clientX, clientY) => {
+        if (disabled) return;
+        const deltaX = clientX - dragStartRef.current.x;
+        const deltaY = clientY - dragStartRef.current.y;
+        if (Math.abs(deltaX) > DRAG_THRESHOLD || Math.abs(deltaY) > DRAG_THRESHOLD) {
+            hasMovedRef.current = true;
+            setIsDragging(true);
+        }
+        if (hasMovedRef.current) {
+            const newX = positionRef.current.x + deltaX;
+            const newY = positionRef.current.y + deltaY;
+            const maxX = _getMaxX(edgePadding);
+            const maxY = _getMaxY(edgePadding);
+            setPosition({
+                x: Math.max(edgePadding, Math.min(newX, maxX)),
+                y: Math.max(edgePadding, Math.min(newY, maxY)),
+            });
+        }
+    }, [disabled, edgePadding]);
+
+    const handleDragEndInternal = useCallback((clientX, clientY) => {
+        if (disabled) return;
+        setIsDragging(false);
+        const now = Date.now();
+        const timeDelta = now - dragStartRef.current.time;
+        if (timeDelta > 0) {
+            velocityRef.current = {
+                x: (clientX - dragStartRef.current.x) / timeDelta * 1000,
+                y: (clientY - dragStartRef.current.y) / timeDelta * 1000,
             };
-            hasMovedRef.current = false;
-            lastPositionRef.current = { ...position };
-            if (onDragStart) onDragStart(position);
-        },
-        [disabled, position, onDragStart]
-    );
+        }
+        if (snapToEdge && hasMovedRef.current) {
+            snapToNearestEdge(positionRef.current.x, positionRef.current.y, velocityRef.current.x);
+        }
+        if (onDragEnd) onDragEnd(positionRef.current);
 
-    const handleDrag = useCallback(
-        (e) => {
-            if (disabled || e.clientX === 0) return;
-            const deltaX = e.clientX - dragStartRef.current.x;
-            const deltaY = e.clientY - dragStartRef.current.y;
-            if (Math.abs(deltaX) > DRAG_THRESHOLD || Math.abs(deltaY) > DRAG_THRESHOLD) {
-                hasMovedRef.current = true;
-                setIsDragging(true);
-            }
-            if (hasMovedRef.current) {
-                const newX = position.x + deltaX;
-                const newY = position.y + deltaY;
-                const maxX = _getMaxX(edgePadding);
-                const maxY = _getMaxY(edgePadding);
-                setPosition({
-                    x: Math.max(edgePadding, Math.min(newX, maxX)),
-                    y: Math.max(edgePadding, Math.min(newY, maxY)),
-                });
-            }
-        },
-        [disabled, position, edgePadding]
-    );
+        // ── Only fire onClick if it was a genuine click (no drag) ──
+        if (!hasMovedRef.current && onClick) {
+            onClick();
+        }
 
-    const handleDragEnd = useCallback(
-        (e) => {
-            if (disabled) return;
-            setIsDragging(false);
-            const now = Date.now();
-            const timeDelta = now - dragStartRef.current.time;
-            if (timeDelta > 0) {
-                velocityRef.current = {
-                    x: (e.clientX - dragStartRef.current.x) / timeDelta * 1000,
-                    y: (e.clientY - dragStartRef.current.y) / timeDelta * 1000,
-                };
-            }
-            if (snapToEdge && hasMovedRef.current) {
-                snapToNearestEdge(position.x, position.y, velocityRef.current.x);
-            }
-            if (onDragEnd) onDragEnd(position);
-            if (!hasMovedRef.current && onClick) onClick();
-        },
-        [disabled, snapToEdge, position, snapToNearestEdge, onDragEnd, onClick]
-    );
+        dragStartRef.current = { x: 0, y: 0, time: 0 };
+        hasMovedRef.current = false;
+    }, [disabled, snapToEdge, snapToNearestEdge, onDragEnd, onClick]);
 
-    // ── Touch handlers ────────────────────────────────────
-    const handleTouchStart = useCallback(
-        (e) => {
-            if (disabled) return;
+    // ── Global mouse listeners ──────────────────────────────────────
+    useEffect(() => {
+        if (!isDragging) return;
+        const onMouseMove = (e) => {
+            handleDragMove(e.clientX, e.clientY);
+        };
+        const onMouseUp = (e) => {
+            handleDragEndInternal(e.clientX, e.clientY);
+        };
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+        };
+    }, [isDragging, handleDragMove, handleDragEndInternal]);
+
+    // ── Global touch listeners ──────────────────────────────────────
+    useEffect(() => {
+        if (!isDragging) return;
+        const onTouchMove = (e) => {
             const touch = e.touches[0];
-            dragStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-            touchStartTimeRef.current = Date.now();
-            hasMovedRef.current = false;
-            lastPositionRef.current = { ...position };
-            if (onDragStart) onDragStart(position);
-        },
-        [disabled, position, onDragStart]
-    );
+            if (touch) {
+                handleDragMove(touch.clientX, touch.clientY);
+            }
+        };
+        const onTouchEnd = (e) => {
+            const touch = e.changedTouches[0];
+            handleDragEndInternal(touch.clientX, touch.clientY);
+        };
+        window.addEventListener('touchmove', onTouchMove, { passive: true });
+        window.addEventListener('touchend', onTouchEnd);
+        return () => {
+            window.removeEventListener('touchmove', onTouchMove);
+            window.removeEventListener('touchend', onTouchEnd);
+        };
+    }, [isDragging, handleDragMove, handleDragEndInternal]);
 
-    const handleTouchMove = useCallback(
-        (e) => {
-            if (disabled) return;
-            const touch = e.touches[0];
-            const deltaX = touch.clientX - dragStartRef.current.x;
-            const deltaY = touch.clientY - dragStartRef.current.y;
-            if (Math.abs(deltaX) > DRAG_THRESHOLD || Math.abs(deltaY) > DRAG_THRESHOLD) {
-                hasMovedRef.current = true;
-                setIsDragging(true);
-            }
-            if (hasMovedRef.current) {
-                const maxX = _getMaxX(edgePadding);
-                const maxY = _getMaxY(edgePadding);
-                setPosition({
-                    x: Math.max(edgePadding, Math.min(touch.clientX - HALF_FAB, maxX)),
-                    y: Math.max(edgePadding, Math.min(touch.clientY - HALF_FAB, maxY)),
-                });
-            }
-        },
-        [disabled, edgePadding]
-    );
+    // ── Public handlers ──────────────────────────────────────────────
+    const handleDragStart = useCallback((e) => {
+        if (disabled) return;
+        const clientX = e.clientX;
+        const clientY = e.clientY;
+        dragStartRef.current = { x: clientX, y: clientY, time: Date.now() };
+        hasMovedRef.current = false;
+        if (onDragStart) onDragStart(positionRef.current);
+    }, [disabled, onDragStart]);
 
-    const handleTouchEnd = useCallback(
-        (e) => {
-            if (disabled) return;
-            setIsDragging(false);
-            const now = Date.now();
-            const touchDuration = now - touchStartTimeRef.current;
-            if (!hasMovedRef.current && touchDuration > 500 && onLongPress) onLongPress();
-            if (!hasMovedRef.current && touchDuration < 300) {
-                const lastTap = dragStartRef.current._lastTap || 0;
-                if (now - lastTap < 300 && onDoubleTap) onDoubleTap();
-                dragStartRef.current._lastTap = now;
-            }
-            if (snapToEdge && hasMovedRef.current) {
-                snapToNearestEdge(position.x, position.y, velocityRef.current.x);
-            }
-            if (onDragEnd) onDragEnd(position);
-            if (!hasMovedRef.current && onClick) onClick();
-        },
-        [disabled, snapToEdge, position, snapToNearestEdge, onDragEnd, onClick, onLongPress, onDoubleTap]
-    );
+    const handleTouchStart = useCallback((e) => {
+        if (disabled) return;
+        const touch = e.touches[0];
+        if (!touch) return;
+        dragStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+        hasMovedRef.current = false;
+        if (onDragStart) onDragStart(positionRef.current);
+    }, [disabled, onDragStart]);
 
+    // ── Keyboard navigation ──────────────────────────────────────────
     const handleKeyDown = useCallback(
         (e) => {
             const STEP = 20;
             const maxX = _getMaxX(edgePadding);
             const maxY = _getMaxY(edgePadding);
             switch (e.key) {
-                case 'ArrowLeft': e.preventDefault(); setPosition(p => ({ ...p, x: Math.max(edgePadding, p.x - STEP) })); break;
-                case 'ArrowRight': e.preventDefault(); setPosition(p => ({ ...p, x: Math.min(maxX, p.x + STEP) })); break;
-                case 'ArrowUp': e.preventDefault(); setPosition(p => ({ ...p, y: Math.max(edgePadding, p.y - STEP) })); break;
-                case 'ArrowDown': e.preventDefault(); setPosition(p => ({ ...p, y: Math.min(maxY, p.y + STEP) })); break;
-                case 'Enter': case ' ': e.preventDefault(); if (onClick) onClick(); break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    setPosition(p => ({ ...p, x: Math.max(edgePadding, p.x - STEP) }));
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    setPosition(p => ({ ...p, x: Math.min(maxX, p.x + STEP) }));
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    setPosition(p => ({ ...p, y: Math.max(edgePadding, p.y - STEP) }));
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    setPosition(p => ({ ...p, y: Math.min(maxY, p.y + STEP) }));
+                    break;
+                case 'Enter':
+                case ' ':
+                    e.preventDefault();
+                    if (onClick) onClick();
+                    break;
+                default:
+                    break;
             }
         },
         [edgePadding, onClick]
     );
 
-    const resetPosition = useCallback(() => { setPosition(defaultPosition); setSnapEdge(null); }, [defaultPosition]);
-    const toggleExpanded = useCallback(() => setIsExpanded(prev => !prev), []);
-    const getPosition = useCallback(() => ({ ...position }), [position]);
+    const resetPosition = useCallback(() => {
+        setPosition(defaultPosition);
+        setSnapEdge(null);
+    }, [defaultPosition]);
 
+    const toggleExpanded = useCallback(() => setIsExpanded(prev => !prev), []);
+    const getPosition = useCallback(() => ({ ...positionRef.current }), []);
+
+    // ── Cleanup ──────────────────────────────────────────────────────
     useEffect(() => {
         isMountedRef.current = true;
-        return () => { isMountedRef.current = false; if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current); };
+        return () => {
+            isMountedRef.current = false;
+            if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+        };
     }, []);
 
     return {
-        position, isDragging, isExpanded, snapEdge,
-        handleDragStart, handleDrag, handleDragEnd,
-        handleTouchStart, handleTouchMove, handleTouchEnd,
+        position,
+        isDragging,
+        isExpanded: false, // kept for API compatibility
+        snapEdge,
+        handleDragStart,
+        handleTouchStart,
         handleKeyDown,
-        resetPosition, toggleExpanded, getPosition, snapToNearestEdge,
-        ariaAttributes: {
-            role: 'button', 'aria-label': 'Floating action button', 'aria-draggable': !disabled,
-            'aria-expanded': isExpanded, tabIndex: 0,
-        },
+        resetPosition,
+        toggleExpanded,
+        getPosition,
+        snapToNearestEdge,
         fabStyle: {
-            position: 'fixed', left: `${position.x}px`, top: `${position.y}px`,
-            width: `${FAB_SIZE}px`, height: `${FAB_SIZE}px`, zIndex: 1000,
+            position: 'fixed',
+            left: `${position.x}px`,
+            top: `${position.y}px`,
+            width: `${FAB_SIZE}px`,
+            height: `${FAB_SIZE}px`,
+            zIndex: 1000,
             cursor: disabled ? 'default' : isDragging ? 'grabbing' : 'grab',
             transition: isDragging ? 'none' : `left ${ANIMATION_DURATION}ms ease-out, top ${ANIMATION_DURATION}ms ease-out`,
-            touchAction: 'none', userSelect: 'none',
+            touchAction: 'none',
+            userSelect: 'none',
         },
     };
 }
 
-function _getMaxX(padding) { return (typeof window !== 'undefined' ? window.innerWidth : 1024) - FAB_SIZE - padding; }
-function _getMaxY(padding) { return (typeof window !== 'undefined' ? window.innerHeight : 768) - FAB_SIZE - padding; }
-function _isWithinBounds(x, y, padding) { return x >= padding && x <= _getMaxX(padding) && y >= padding && y <= _getMaxY(padding); }
+// ── Helpers ──────────────────────────────────────────────────────────
+function _getMaxX(padding) {
+    return (typeof window !== 'undefined' ? window.innerWidth : 1024) - FAB_SIZE - padding;
+}
+function _getMaxY(padding) {
+    return (typeof window !== 'undefined' ? window.innerHeight : 768) - FAB_SIZE - padding;
+}
 
 export default useDraggableFAB;

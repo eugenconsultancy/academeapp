@@ -43,6 +43,7 @@ class ConversationOut(BaseModel):
     is_pinned: bool = False
     is_muted: bool = False
     is_archived: bool = False
+    is_blocked: bool = False          # NEW: whether current user has blocked the other participant
     last_message_content: Optional[str] = None
     last_message_at: Optional[datetime] = None
     last_message_sender_id: Optional[uuid.UUID] = None
@@ -111,9 +112,12 @@ class MessageIn(BaseModel):
 
 
 class MessageOut(BaseModel):
+    """Full message data returned to clients."""
     id: uuid.UUID
     conversation_id: uuid.UUID
     sender_id: uuid.UUID
+    sender_name: str = ""
+    sender_avatar: Optional[str] = None
     content: str
     msg_type: str
     status: str
@@ -138,10 +142,13 @@ class MessageOut(BaseModel):
 
     @staticmethod
     def from_message(msg: Message, reply_preview: Optional[str] = None) -> "MessageOut":
+        sender = msg.sender
         return MessageOut(
             id=msg.id,
             conversation_id=msg.conversation_id,
             sender_id=msg.sender_id,
+            sender_name=sender.full_name or sender.phone_number or "Unknown",
+            sender_avatar=getattr(sender, 'profile_pic', None),
             content=msg.content if not msg.deleted_for_everyone else "",
             msg_type=msg.msg_type,
             status=msg.status,
@@ -314,7 +321,7 @@ class BulkSendIn(BaseModel):
     messages: List[BulkMessageItem] = Field(..., min_length=1, max_length=100)
 
 
-# ─── New rate‑limit wrapper schemas ────────────────────────────────────────
+# ─── Rate‑limit wrapper schemas ─────────────────────────────────────────────
 
 class SendMessageResponse(BaseModel):
     message: MessageOut
@@ -326,7 +333,7 @@ class BulkSendResponse(BaseModel):
     rate_limit: RateLimitOut
 
 
-# ─── WebSocket‑specific schemas ──────────────────────────────────────────────
+# ─── WebSocket‑specific schemas ─────────────────────────────────────────────
 
 class MessageStatusUpdateIn(BaseModel):
     message_id: uuid.UUID

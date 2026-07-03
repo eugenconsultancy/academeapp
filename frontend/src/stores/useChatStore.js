@@ -420,14 +420,19 @@ const useChatStore = create((set, get) => ({
             const serverMsg = res.data?.message || res.data;
             if (serverMsg) {
                 get().upsertMessage(convId, serverMsg);
+                // Update rate limit from server response
+                if (res.data?.rate_limit) {
+                    const rl = res.data.rate_limit;
+                    set({ rateLimit: { used: rl.used, limit: rl.limit, remaining: rl.remaining, reset_at: rl.reset_at } });
+                }
                 return serverMsg;
             }
             // Fallback: mark as sent?
             get().updateMessageStatus(convId, tempMsg.id, 'sent');
             return tempMsg;
         } catch (err) {
-            // Restore rate limit on failure?
-            get().syncRateLimitFromServer(); // refresh from server
+            // Restore rate limit on failure? refresh from server
+            get().syncRateLimitFromServer();
             throw err;
         }
     },
@@ -439,7 +444,6 @@ export function getConversationDisplayName(conv) {
     if (conv.group_name) return conv.group_name;
     // Fallback to participant names
     if (conv.participants && conv.participants.length) {
-        // Assumes participants contain names, but fallback to 'Chat'
         const names = conv.participants.map(p => p.full_name || p.username || p).filter(Boolean);
         if (names.length) return names.join(', ');
     }

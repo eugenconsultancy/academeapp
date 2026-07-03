@@ -50,7 +50,6 @@ from .schemas import (
     SendMessageResponse, BulkSendResponse,
 )
 from .notifications import send_push_notification
-# NEW: import the PresenceService for robust online status checks
 from .services import PresenceService
 
 router = Router(tags=["chat"])
@@ -164,9 +163,9 @@ def remove_block_from_cache(blocker_id, blocked_id):
         r.srem(_block_key(blocker_id), str(blocked_id))
 
 
-# ─── Online status via PresenceService (replaces old _is_user_online) ─────────
+# ─── Online status via PresenceService ──────────────────────────────────────
 
-# ⚠️ Direct Redis check removed – use PresenceService.is_online() everywhere
+# Direct Redis check removed – use PresenceService.is_online() everywhere
 
 
 # ─── WebSocket broadcast ─────────────────────────────────────────────────────
@@ -199,7 +198,7 @@ def _build_other_participant(conv, current_user) -> Optional[ParticipantInfo]:
     other = conv.get_other_participant(current_user)
     if not other:
         return None
-    # Use PresenceService for real‑time status, no need to include 'is_online' in only()
+    # Fetch only needed fields
     other = User.objects.filter(id=other.id).only(
         'id', 'full_name', 'profile_pic', 'avatar_color'
     ).first()
@@ -207,10 +206,10 @@ def _build_other_participant(conv, current_user) -> Optional[ParticipantInfo]:
         return None
     return ParticipantInfo(
         id=other.id,
-        full_name=other.full_name,
+        full_name=other.full_name or other.phone_number or "Unknown",
         avatar_url=other.profile_pic or None,
         avatar_color=getattr(other, 'avatar_color', None),
-        is_online=PresenceService.is_online(other.id),   # real‑time status via Redis + DB fallback
+        is_online=PresenceService.is_online(other.id),
     )
 
 
@@ -270,6 +269,10 @@ def list_conversations(
             conv.participants.values_list('id', flat=True)
         )
         other_info = _build_other_participant(conv, user)
+        # Determine if current user has blocked the other participant (1-on-1 only)
+        is_blocked = False
+        if other_info and not conv.is_group:
+            is_blocked = user_blocks(user.id, other_info.id)
         result.append(ConversationOut(
             id=conv.id,
             participants=participant_ids,
@@ -277,6 +280,7 @@ def list_conversations(
             group_name=conv.group_name,
             group_avatar=conv.group_avatar,
             other_participant=other_info,
+            is_blocked=is_blocked,
             last_message_content=conv.last_message_content,
             last_message_at=conv.last_message_at,
             last_message_sender_id=conv.last_message_sender_id,
@@ -326,11 +330,15 @@ def create_conversation(request, payload: StartConversationIn):
             p.save(update_fields=['is_deleted'])
         
         other_info = _build_other_participant(existing, user)
+        is_blocked = False
+        if other_info:
+            is_blocked = user_blocks(user.id, other_info.id)
         return ConversationOut(
             id=existing.id,
             participants=[user.id, other_id],
             is_group=False,
             other_participant=other_info,
+            is_blocked=is_blocked,
             last_message_content=existing.last_message_content,
             last_message_at=existing.last_message_at,
             last_message_sender_id=existing.last_message_sender_id,
@@ -348,11 +356,15 @@ def create_conversation(request, payload: StartConversationIn):
         p = ConversationParticipant.objects.get(conversation=conv, user=user)
 
     other_info = _build_other_participant(conv, user)
+    is_blocked = False
+    if other_info:
+        is_blocked = user_blocks(user.id, other_info.id)
     return ConversationOut(
         id=conv.id,
         participants=[user.id, other_id],
         is_group=False,
         other_participant=other_info,
+        is_blocked=is_blocked,
         last_message_content=None,
         last_message_at=None,
         last_message_sender_id=None,

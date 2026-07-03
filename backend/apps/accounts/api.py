@@ -14,7 +14,7 @@ from .models import User, Badge, DataExport, UserSession, StudentRole
 from .schema import (
     SignupIn, OTPRequestIn, OTPVerifyIn, ProfileUpdateIn,
     ResetPasswordIn, BiometricEnrollIn, BiometricLoginIn,
-    TokenOut,                           # ← added
+    TokenOut, LoginIn,  # LoginIn is now available
 )
 from .permissions import IsAdmin
 from .services import AccountService, TwoFactorService
@@ -64,6 +64,29 @@ class ChangePasswordIn(Schema):
 # AUTHENTICATION
 # ============================================
 
+def _build_user_response(user):
+    """Helper to serialize user with all required fields"""
+    return {
+        "id": str(user.id),
+        "phone_number": user.phone_number,
+        "admission_number": user.admission_number,
+        "full_name": user.full_name,
+        "email": user.email or "",
+        "class_name": user.class_name,
+        "institution": user.institution,
+        "profile_pic": user.profile_pic or "",
+        "role": user.role,
+        "badges": [b.badge_type for b in user.badges.all()],
+        "is_online": user.is_online,
+        "login_count": user.login_count,
+        "two_factor_enabled": user.two_factor_enabled,
+        "biometric_enabled": user.biometric_enabled,
+        "last_login": user.last_login.isoformat() if user.last_login else None,
+        "is_superuser": user.is_superuser,
+        "is_staff": user.is_staff,
+    }
+
+
 @router.post("/signup/")
 def signup(request, data: SignupIn):
     if User.objects.filter(phone_number=data.phone_number).exists():
@@ -79,6 +102,7 @@ def signup(request, data: SignupIn):
     )
     return {"message": "Registration successful"}
 
+
 @router.post("/request-otp/")
 def request_otp(request, data: OTPRequestIn):
     print(f"DEBUG: request_otp called with phone {data.phone_number}")
@@ -92,6 +116,7 @@ def request_otp(request, data: OTPRequestIn):
 
     return {"otp": otp, "message": "OTP generated successfully"}
 
+
 @router.post("/verify-otp/")
 def verify_otp(request, data: OTPVerifyIn):
     if not PhoneOTPAuth.verify_otp(data.phone_number, data.otp):
@@ -104,24 +129,62 @@ def verify_otp(request, data: OTPVerifyIn):
     return {
         "access": tokens["access"],
         "refresh": tokens["refresh"],
-        "user": {
-            "id": str(user.id),
-            "phone_number": user.phone_number,
-            "admission_number": user.admission_number,
-            "full_name": user.full_name,
-            "email": user.email or "",
-            "class_name": user.class_name,
-            "institution": user.institution,
-            "profile_pic": user.profile_pic or "",
-            "role": user.role,
-            "badges": [],
-            "is_online": True,
-            "login_count": user.login_count,
-            "two_factor_enabled": user.two_factor_enabled,
-            "biometric_enabled": user.biometric_enabled,
-            "last_login": user.last_login.isoformat() if user.last_login else None,
-        }
+        "user": _build_user_response(user),
     }
+
+
+# ============================================
+# PASSWORD LOGIN (New)
+# ============================================
+
+@router.post("/login/")
+def login(request, data: LoginIn):
+    identifier = data.identifier.strip()
+    password = data.password
+
+    # Try phone number first
+    user = None
+    if identifier.startswith('+') or identifier.isdigit():
+        try:
+            user = User.objects.get(phone_number=identifier)
+        except User.DoesNotExist:
+            pass
+
+    # Then try admission number
+    if not user:
+        try:
+            user = User.objects.get(admission_number=identifier)
+        except User.DoesNotExist:
+            pass
+
+    if not user:
+        return {"error": "Invalid credentials"}
+
+    # Authenticate with password
+    auth_user = authenticate(username=user.phone_number, password=password)
+    if not auth_user:
+        return {"error": "Invalid password"}
+
+    # Update activity
+    AccountService.update_last_activity(user)
+    AccountService.increment_login_count(user)
+
+    # Check 2FA
+    if user.two_factor_enabled:
+        temp_token = AccountService.create_2fa_temp_token(user)
+        return {
+            "require_2fa": True,
+            "temp_token": temp_token,
+            "user": _build_user_response(user),
+        }
+
+    tokens = create_token_pair(user)
+    return {
+        "access": tokens["access"],
+        "refresh": tokens["refresh"],
+        "user": _build_user_response(user),
+    }
+
 
 # ============================================
 # PASSWORD RESET (Self-Serve)
@@ -190,23 +253,8 @@ def change_password(request, data: ChangePasswordIn):
 @router.get("/profile/", auth=JWTAuth())
 def get_profile(request):
     user = request.auth
-    return {
-        "id": str(user.id),
-        "phone_number": user.phone_number,
-        "admission_number": user.admission_number,
-        "full_name": user.full_name,
-        "email": user.email or "",
-        "class_name": user.class_name,
-        "institution": user.institution,
-        "profile_pic": user.profile_pic or "",
-        "role": user.role,
-        "badges": [b.badge_type for b in user.badges.all()],
-        "is_online": user.is_online,
-        "login_count": user.login_count,
-        "two_factor_enabled": user.two_factor_enabled,
-        "biometric_enabled": user.biometric_enabled,
-        "last_login": user.last_login.isoformat() if user.last_login else None,
-    }
+    return _build_user_response(user)
+
 
 @router.put("/profile/", auth=JWTAuth())
 def update_profile(request, data: ProfileUpdateIn):
@@ -224,6 +272,7 @@ def update_profile(request, data: ProfileUpdateIn):
         "email": user.email,
         "class_name": user.class_name
     }
+
 
 @router.post("/profile/upload-pic/", auth=JWTAuth())
 def upload_profile_pic(request, file: UploadedFile = None):
@@ -259,14 +308,17 @@ def upload_profile_pic(request, file: UploadedFile = None):
 
     return {"error": "No file provided"}
 
+
 @router.get("/students/search/", auth=JWTAuth())
 def search_students(request, q: str = Query(...)):
     students = User.objects.filter(full_name__icontains=q, is_active=True)[:10]
     return [{"id": str(s.id), "full_name": s.full_name, "class_name": s.class_name} for s in students]
 
+
 @router.post("/export-data/", auth=JWTAuth())
 def export_data(request):
     return {"message": "Data export started", "export_id": "pending"}
+
 
 @router.post("/delete-account/", auth=JWTAuth())
 def delete_account(request):
@@ -508,7 +560,6 @@ def revoke_all_sessions(request):
     }
 
 
-# ✅ FIXED: refresh_token endpoint now has an explicit response schema
 @router.post("/refresh-token/", auth=None, response={200: TokenOut})
 def refresh_token(request):
     import json
@@ -562,6 +613,7 @@ def enroll_biometric(request, data: BiometricEnrollIn):
         return {"error": message}
     return {"message": "Biometric data enrolled successfully."}
 
+
 @router.post("/biometric/login/", auth=None)
 def biometric_login(request, data: BiometricLoginIn):
     user = User.objects.filter(phone_number=data.phone_number).first()
@@ -575,17 +627,13 @@ def biometric_login(request, data: BiometricLoginIn):
     tokens = create_token_pair(user)
     AccountService.increment_login_count(user)
 
+    # Use the same helper for consistency
     return {
         "access": tokens["access"],
         "refresh": tokens["refresh"],
-        "user": {
-            "id": str(user.id),
-            "full_name": user.full_name,
-            "role": user.role,
-            "two_factor_enabled": user.two_factor_enabled,
-            "biometric_enabled": user.biometric_enabled,
-        }
+        "user": _build_user_response(user),
     }
+
 
 @router.post("/biometric/disable/", auth=JWTAuth())
 def disable_biometric(request):
@@ -609,6 +657,7 @@ def two_factor_setup(request):
     cache.set(f"2fa_secret_{user.id}", secret, timeout=300)
     return {"qr_code": qr_code, "secret": secret}
 
+
 @router.post("/2fa/verify-setup/", auth=JWTAuth())
 def verify_two_factor_setup(request, data: TwoFactorVerifySetupIn):
     user = request.auth
@@ -624,6 +673,7 @@ def verify_two_factor_setup(request, data: TwoFactorVerifySetupIn):
     cache.delete(f"2fa_secret_{user.id}")
     return {"message": "2FA enabled", "backup_codes": backup_codes}
 
+
 @router.post("/2fa/disable/", auth=JWTAuth())
 def disable_two_factor(request, data: TwoFactorDisableIn):
     user = request.auth
@@ -635,10 +685,12 @@ def disable_two_factor(request, data: TwoFactorDisableIn):
     cache.delete(f"backup_codes_{user.id}")
     return {"message": "2FA disabled"}
 
+
 @router.get("/2fa/status/", auth=JWTAuth())
 def two_factor_status(request):
     user = request.auth
     return {"two_factor_enabled": user.two_factor_enabled}
+
 
 @router.post("/2fa/verify-login/", auth=None)
 def verify_2fa_login(request, data: TwoFactorVerifyLoginIn):
@@ -654,23 +706,7 @@ def verify_2fa_login(request, data: TwoFactorVerifyLoginIn):
     return {
         "access": tokens["access"],
         "refresh": tokens["refresh"],
-        "user": {
-            "id": str(user.id),
-            "phone_number": user.phone_number,
-            "admission_number": user.admission_number,
-            "full_name": user.full_name,
-            "email": user.email or "",
-            "class_name": user.class_name,
-            "institution": user.institution,
-            "profile_pic": user.profile_pic or "",
-            "role": user.role,
-            "badges": [b.badge_type for b in user.badges.all()],
-            "is_online": user.is_online,
-            "login_count": user.login_count,
-            "two_factor_enabled": user.two_factor_enabled,
-            "biometric_enabled": user.biometric_enabled,
-            "last_login": user.last_login.isoformat() if user.last_login else None,
-        }
+        "user": _build_user_response(user),
     }
 
 
@@ -697,6 +733,8 @@ def list_all_users(request):
             'class_name': u.class_name,
             'role': u.role,
             'is_active': u.is_active,
+            'is_superuser': u.is_superuser,
+            'is_staff': u.is_staff,
             'active_roles': [{
                 'id': str(r.id),
                 'role': r.role,

@@ -49,11 +49,11 @@ export function AuthProvider({ children }) {
     const [isRefreshingToken, setIsRefreshingToken] = useState(false);
     const idleTimerRef = useRef(null);
     const logoutRef = useRef(null);
-    const isCheckingRef = useRef(false);      // ⬅️ Prevent concurrent checkAuth
+    const isCheckingRef = useRef(false);
 
     const logout = useCallback(() => {
         clearAuthData();
-        storeUser(null);               // clear user from localStorage
+        storeUser(null);
         setUser(null);
         setError(null);
         if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
@@ -64,13 +64,11 @@ export function AuthProvider({ children }) {
         } catch { /* ignore */ }
     }, []);
 
-    // Keep logoutRef updated so checkAuth can safely call logout
     useEffect(() => {
         logoutRef.current = logout;
     }, [logout]);
 
     const checkAuth = useCallback(async () => {
-        // Prevent concurrent executions
         if (isCheckingRef.current) return;
         isCheckingRef.current = true;
 
@@ -82,7 +80,6 @@ export function AuthProvider({ children }) {
                 return;
             }
 
-            // Try refreshing if the access token is expired
             if (isTokenExpired(access) && refresh) {
                 try {
                     setIsRefreshingToken(true);
@@ -97,7 +94,6 @@ export function AuthProvider({ children }) {
                 }
             }
 
-            // Fetch latest user profile
             try {
                 const response = await apiClient.get('/accounts/profile/');
                 setUser(response.data);
@@ -106,10 +102,8 @@ export function AuthProvider({ children }) {
                 if (err.response?.status === 401) {
                     logoutRef.current?.();
                 }
-                // For other errors, keep existing user data if available
             }
         } catch (err) {
-            // Unexpected errors – stay logged out
             logoutRef.current?.();
         } finally {
             setLoading(false);
@@ -117,7 +111,7 @@ export function AuthProvider({ children }) {
         }
     }, []);
 
-    // ── Auth actions ─────────────────────────────────────────────────────────
+    // ─── Auth actions ─────────────────────────────────────────────────────────
     const register = useCallback(async (userData) => {
         setLoginLoading(true);
         setError(null);
@@ -154,12 +148,49 @@ export function AuthProvider({ children }) {
                 storeTokens(access, refresh);
                 storeUser(userData);
                 setUser(userData);
+                localStorage.setItem('last_login_identifier', phone); // save for auto-fill
             } else {
                 throw new Error('Login succeeded but no token received.');
             }
             return userData;
         } catch (err) {
             const message = err.response?.data?.error || err.response?.data?.message || 'Login failed.';
+            setError(message);
+            throw new Error(message);
+        } finally {
+            setLoginLoading(false);
+        }
+    }, []);
+
+    // ─── NEW: passwordLogin ─────────────────────────────────────────────────
+    const passwordLogin = useCallback(async (identifier, password) => {
+        setLoginLoading(true);
+        setError(null);
+        try {
+            const response = await apiClient.post('/accounts/login/', {
+                identifier,
+                password,
+            });
+            const data = response.data;
+
+            if (data.require_2fa) {
+                localStorage.setItem('2fa_temp_token', data.temp_token);
+                localStorage.setItem('2fa_phone', identifier);
+                return { require_2fa: true, temp_token: data.temp_token };
+            }
+
+            const { access, refresh, user: userData } = data;
+            if (access) {
+                storeTokens(access, refresh);
+                storeUser(userData);
+                setUser(userData);
+                localStorage.setItem('last_login_identifier', identifier);
+                return userData;
+            } else {
+                throw new Error('Login succeeded but no token received.');
+            }
+        } catch (err) {
+            const message = err.response?.data?.error || 'Login failed.';
             setError(message);
             throw new Error(message);
         } finally {
@@ -188,6 +219,7 @@ export function AuthProvider({ children }) {
                 storeTokens(access, refresh);
                 storeUser(userData);
                 setUser(userData);
+                localStorage.setItem('last_login_identifier', phone);
                 return userData;
             } else {
                 throw new Error('Biometric login succeeded but no token received.');
@@ -423,6 +455,7 @@ export function AuthProvider({ children }) {
         isStudentLeader,
         isClassRep,
         login,
+        passwordLogin,      // <-- new
         logout,
         requestOTP,
         register,

@@ -62,6 +62,8 @@ function MenuItem({ item, index, total, openDirection, onClick }) {
     return (
         <button
             onClick={(e) => { e.stopPropagation(); onClick(); }}
+            onMouseDown={(e) => e.stopPropagation()}      // <-- PREVENT DRAG
+            onTouchStart={(e) => e.stopPropagation()}     // <-- PREVENT DRAG ON TOUCH
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             title={item.label}

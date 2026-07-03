@@ -45,16 +45,18 @@ export default function ProtectedRoute({
         user,
         loading,
         isAuthenticated,
-        isAdmin,
         hasRole,
         hasPermission,
     } = useAuth();
 
     // ── Derive account status booleans safely from user ─────────
-    // Adjust the field names to match your actual user object from the backend.
     const isEmailVerified = user?.is_email_verified ?? user?.email_verified ?? false;
-    const isAccountActive = user?.is_active ?? true;   // default to true if missing
+    const isAccountActive = user?.is_active ?? true;
     const isAccountSuspended = user?.is_suspended ?? false;
+
+    // ── DIRECT ADMIN/SUPERUSER CHECK ─────────────────────────────
+    // Use the raw user fields instead of relying on AuthContext's isAdmin
+    const isAdmin = user?.role === 'admin' || user?.is_superuser === true;
 
     const location = useLocation();
 
@@ -92,10 +94,8 @@ export default function ProtectedRoute({
     }
 
     // ═════════════════════════════════════════════════════════
-    // ACCOUNT STATUS CHECKS (now using derived booleans)
+    // ACCOUNT STATUS CHECKS
     // ═════════════════════════════════════════════════════════
-
-    // Check if account is suspended
     if (isAccountSuspended) {
         return (
             <UnauthorizedFallback
@@ -107,7 +107,6 @@ export default function ProtectedRoute({
         );
     }
 
-    // Check if account is inactive
     if (!isAccountActive) {
         return (
             <UnauthorizedFallback
@@ -129,14 +128,17 @@ export default function ProtectedRoute({
     }
 
     // ═════════════════════════════════════════════════════════
+    // ADMIN / SUPERUSER BYPASS – grant access immediately
+    // ═════════════════════════════════════════════════════════
+    if (isAdmin) {
+        return children;
+    }
+
+    // ═════════════════════════════════════════════════════════
     // ROLE-BASED ACCESS
     // ═════════════════════════════════════════════════════════
     if (protectionLevel === ROUTE_PROTECTION.ROLE_BASED && allowedRoles) {
         const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
-
-        if (isAdmin && roles.includes('admin')) {
-            return children;
-        }
 
         const hasAllowedRole = roles.some((role) => hasRole(role));
 
@@ -157,10 +159,6 @@ export default function ProtectedRoute({
     // PERMISSION-BASED ACCESS
     // ═════════════════════════════════════════════════════════
     if (protectionLevel === ROUTE_PROTECTION.PERMISSION_BASED && requiredPermission) {
-        if (isAdmin) {
-            return children;
-        }
-
         const [action, resource] = requiredPermission.split(':');
 
         if (!hasPermission(action, resource)) {
@@ -183,7 +181,7 @@ export default function ProtectedRoute({
 }
 
 // ═══════════════════════════════════════════════════════════════
-// UNAUTHORIZED FALLBACK COMPONENT (unchanged)
+// UNAUTHORIZED FALLBACK COMPONENT
 // ═══════════════════════════════════════════════════════════════
 function UnauthorizedFallback({
     icon = null,
@@ -228,7 +226,7 @@ function UnauthorizedFallback({
 }
 
 // ═══════════════════════════════════════════════════════════════
-// CONVENIENCE WRAPPERS (unchanged)
+// CONVENIENCE WRAPPERS
 // ═══════════════════════════════════════════════════════════════
 export function GuestRoute({ children, redirectTo = '/' }) {
     return (

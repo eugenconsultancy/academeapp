@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import {
   FiZap, FiPhone, FiArrowRight, FiArrowLeft,
   FiWifiOff, FiCamera, FiMessageSquare, FiShield, FiCheckCircle,
+  FiLock, FiEye, FiEyeOff, FiUser,
 } from 'react-icons/fi';
 
 // ─── Camera capture helper ────────────────────────────────────────────────
@@ -175,6 +176,7 @@ function AuthMethodTabs({ method, onChange }) {
       {[
         { id: 'otp', icon: <FiMessageSquare size={13} />, label: 'SMS Code' },
         { id: 'face', icon: <FiCamera size={13} />, label: 'Face ID' },
+        { id: 'password', icon: <FiLock size={13} />, label: 'Password' },
       ].map(tab => (
         <button key={tab.id} type="button" onClick={() => onChange(tab.id)} style={{
           flex: 1, padding: '7px 10px', border: 'none', borderRadius: 9,
@@ -206,6 +208,10 @@ export default function LoginPage() {
   const [featIdx, setFeatIdx] = useState(0);
   const [featVisible, setFeatVisible] = useState(true);
 
+  // Password login state
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
   // 2FA
   const [show2FAModal, setShow2FAModal] = useState(false);
   const [tempToken, setTempToken] = useState('');
@@ -213,8 +219,16 @@ export default function LoginPage() {
   const [verifying2FA, setVerifying2FA] = useState(false);
 
   const verifyingRef = useRef(false);
-  const { login, biometricLogin, verify2FALogin } = useAuth();
+  const { login, passwordLogin, biometricLogin, verify2FALogin } = useAuth();
   const navigate = useNavigate();
+
+  // Auto-fill last used identifier
+  useEffect(() => {
+    const lastId = localStorage.getItem('last_login_identifier');
+    if (lastId) {
+      setPhone(lastId);
+    }
+  }, []);
 
   // Online status
   useEffect(() => {
@@ -306,6 +320,27 @@ export default function LoginPage() {
     }
   };
 
+  const handlePasswordLogin = async e => {
+    e?.preventDefault?.();
+    if (!phone.trim() || !password.trim()) { toast.error('Enter both identifier and password'); return; }
+    setLoading(true);
+    try {
+      const result = await passwordLogin(phone, password);
+      if (result?.require_2fa) {
+        setTempToken(result.temp_token);
+        setShow2FAModal(true);
+        return;
+      }
+      toast.success('Welcome back! 🎉');
+      setTimeout(() => navigate('/'), 700);
+    } catch (err) {
+      toast.error(err.response?.data?.error || err.message || 'Invalid credentials');
+      setPassword('');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleVerify2FA = async () => {
     if (twoFactorCode.length < 6) { toast.error('Enter 6-digit code'); return; }
     setVerifying2FA(true);
@@ -326,13 +361,181 @@ export default function LoginPage() {
 
   const feat = FEATURES[featIdx];
 
+  // ─── Render auth method content ───────────────────────────────────────
+  const renderAuthContent = () => {
+    if (authMethod === 'otp') {
+      return (
+        <>
+          {step === 'phone' ? (
+            <form onSubmit={requestOTP}>
+              <div style={{ marginBottom: '0.9rem' }}>
+                <label className="lp-label">Phone number</label>
+                <div className="lp-input-wrap">
+                  <span className="lp-input-icon"><FiPhone size={15} /></span>
+                  <input
+                    type="tel"
+                    className="lp-input"
+                    value={phone}
+                    onChange={e => setPhone(e.target.value)}
+                    placeholder="+254 700 000 000"
+                    required
+                    autoFocus
+                  />
+                </div>
+                <span className="lp-helper">We'll send a one-time code. No passwords stored.</span>
+              </div>
+
+              <button type="submit" className="lp-btn" disabled={loading}>
+                {loading
+                  ? <><div className="lp-spinner" /> Sending…</>
+                  : <>Continue <FiArrowRight size={15} /></>}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={verifyOTP}>
+              <div style={{ marginBottom: '0.6rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                  <label className="lp-label" style={{ marginBottom: 0 }}>6-digit code</label>
+                  {resendTimer > 0 && (
+                    <span style={{ fontSize: '0.68rem', color: '#9ca3af' }}>Resend in {resendTimer}s</span>
+                  )}
+                </div>
+                <OTPInput value={otp} onChange={setOtp} onComplete={handleOTPComplete} />
+                <div style={{ textAlign: 'right', marginTop: '0.35rem' }}>
+                  <button
+                    type="button"
+                    className="lp-resend"
+                    disabled={resendTimer > 0 || loading}
+                    onClick={requestOTP}
+                  >
+                    {resendTimer > 0 ? `Resend in ${resendTimer}s` : 'Resend code'}
+                  </button>
+                </div>
+              </div>
+
+              <button type="submit" className="lp-btn" disabled={loading || otp.length < 6}>
+                {loading
+                  ? <><div className="lp-spinner" /> Verifying…</>
+                  : 'Verify & sign in'}
+              </button>
+
+              <button type="button" className="lp-back" onClick={() => setStep('phone')}>
+                <FiArrowLeft size={12} /> Change number
+              </button>
+            </form>
+          )}
+        </>
+      );
+    }
+
+    if (authMethod === 'face') {
+      return (
+        <div>
+          <div style={{ marginBottom: '0.9rem' }}>
+            <label className="lp-label">Phone number</label>
+            <div className="lp-input-wrap">
+              <span className="lp-input-icon"><FiPhone size={15} /></span>
+              <input
+                type="tel"
+                className="lp-input"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                placeholder="+254 700 000 000"
+                required
+              />
+            </div>
+            <span className="lp-helper">We'll match your face with your enrolled biometric.</span>
+          </div>
+
+          <button
+            type="button"
+            className="lp-btn"
+            onClick={handleBiometricLogin}
+            disabled={loading}
+          >
+            {loading ? <><div className="lp-spinner" /> Capturing…</> : <><FiCamera size={15} /> Use Face ID</>}
+          </button>
+
+          <button type="button" className="lp-back" onClick={() => setAuthMethod('otp')}>
+            <FiArrowLeft size={12} /> Back to OTP
+          </button>
+        </div>
+      );
+    }
+
+    // Password login
+    return (
+      <form onSubmit={handlePasswordLogin}>
+        <div style={{ marginBottom: '0.9rem' }}>
+          <label className="lp-label">Phone or Admission number</label>
+          <div className="lp-input-wrap">
+            <span className="lp-input-icon"><FiUser size={15} /></span>
+            <input
+              type="text"
+              className="lp-input"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              placeholder="+254 700 000 000 or I81/1001/2020"
+              required
+              autoFocus
+            />
+          </div>
+          <span className="lp-helper">Use your phone number or admission number.</span>
+        </div>
+
+        <div style={{ marginBottom: '0.9rem' }}>
+          <label className="lp-label">Password</label>
+          <div className="lp-input-wrap">
+            <span className="lp-input-icon"><FiLock size={15} /></span>
+            <input
+              type={showPassword ? 'text' : 'password'}
+              className="lp-input"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="Enter your password"
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              style={{
+                position: 'absolute', right: '0.8rem', top: '50%',
+                transform: 'translateY(-50%)', background: 'none', border: 'none',
+                color: '#9ca3af', cursor: 'pointer'
+              }}
+            >
+              {showPassword ? <FiEyeOff size={15} /> : <FiEye size={15} />}
+            </button>
+          </div>
+          <div style={{ textAlign: 'right', marginTop: '0.35rem' }}>
+            <button
+              type="button"
+              onClick={() => navigate('/forgot-password')}
+              style={{ background: 'none', border: 'none', color: '#6366f1', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
+            >
+              Forgot password?
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" className="lp-btn" disabled={loading || !phone.trim() || !password.trim()}>
+          {loading ? <><div className="lp-spinner" /> Signing in…</> : 'Sign in'}
+        </button>
+
+        <button type="button" className="lp-back" onClick={() => setAuthMethod('otp')}>
+          <FiArrowLeft size={12} /> Back to OTP
+        </button>
+      </form>
+    );
+  };
+
   return (
     <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-        /* ── Keyframes (minimal set) ── */
+        /* ── Keyframes ── */
         @keyframes lp-grad {
           0%   { background-position: 0% 50%; }
           50%  { background-position: 100% 50%; }
@@ -381,8 +584,6 @@ export default function LoginPage() {
           animation: lp-grad 14s ease infinite;
           overflow: hidden;
         }
-
-        /* One orb only */
         .lp-orb {
           position: absolute;
           width: 480px; height: 480px;
@@ -393,8 +594,6 @@ export default function LoginPage() {
           animation: lp-float 10s ease-in-out infinite;
           pointer-events: none;
         }
-
-        /* Dot grid */
         .lp-grid {
           position: absolute;
           inset: 0;
@@ -404,7 +603,6 @@ export default function LoginPage() {
           background-size: 56px 56px;
           pointer-events: none;
         }
-
         .lp-hero-content { position: relative; z-index: 2; }
 
         .lp-hero-eyebrow {
@@ -439,7 +637,6 @@ export default function LoginPage() {
           margin-bottom: 2rem;
         }
 
-        /* Stats row */
         .lp-stats {
           display: flex;
           gap: 1.5rem;
@@ -456,7 +653,6 @@ export default function LoginPage() {
         }
         .lp-stat-label { font-size: 0.67rem; color: rgba(255,255,255,0.45); font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
 
-        /* Feature ticker */
         .lp-ticker {
           border: 1px solid rgba(255,255,255,0.1);
           border-radius: 14px;
@@ -480,7 +676,6 @@ export default function LoginPage() {
         }
         .lp-ticker-desc { font-size: 0.72rem; color: rgba(255,255,255,0.5); line-height: 1.45; }
 
-        /* Ticker dots */
         .lp-ticker-dots {
           display: flex;
           gap: 5px;
@@ -513,7 +708,6 @@ export default function LoginPage() {
           animation: lp-in 0.5s cubic-bezier(0.16,1,0.3,1) both;
         }
 
-        /* Brand */
         .lp-brand {
           display: flex;
           align-items: center;
@@ -545,7 +739,6 @@ export default function LoginPage() {
           margin-top: 1px;
         }
 
-        /* Card headline */
         .lp-card-title {
           font-size: 1.1rem;
           font-weight: 800;
@@ -560,7 +753,6 @@ export default function LoginPage() {
           margin-bottom: 1.25rem;
         }
 
-        /* Offline banner */
         .lp-offline {
           display: flex; align-items: center; gap: 0.5rem;
           padding: 0.6rem 0.85rem;
@@ -572,7 +764,6 @@ export default function LoginPage() {
           margin-bottom: 0.9rem;
         }
 
-        /* Label */
         .lp-label {
           display: block;
           font-size: 0.74rem; font-weight: 700;
@@ -586,7 +777,6 @@ export default function LoginPage() {
           display: block; line-height: 1.4;
         }
 
-        /* Input */
         .lp-input-wrap { position: relative; }
         .lp-input-icon {
           position: absolute;
@@ -613,7 +803,6 @@ export default function LoginPage() {
         }
         .lp-input::placeholder { color: #9ca3af; }
 
-        /* Primary button */
         .lp-btn {
           width: 100%;
           padding: 0.78rem;
@@ -636,7 +825,6 @@ export default function LoginPage() {
         .lp-btn:active:not(:disabled) { transform: scale(0.98); }
         .lp-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
-        /* Ghost button */
         .lp-btn-ghost {
           width: 100%;
           padding: 0.72rem;
@@ -658,7 +846,6 @@ export default function LoginPage() {
         }
         .lp-btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        /* Divider */
         .lp-divider {
           display: flex; align-items: center; gap: 0.55rem;
           margin: 0.6rem 0;
@@ -669,7 +856,6 @@ export default function LoginPage() {
           content: ''; flex: 1; height: 1px; background: #e5e7eb;
         }
 
-        /* Resend */
         .lp-resend {
           background: none; border: none;
           color: #6366f1; font-size: 0.75rem; font-weight: 600;
@@ -680,7 +866,6 @@ export default function LoginPage() {
         .lp-resend:hover:not(:disabled) { color: #4f46e5; text-decoration: underline; }
         .lp-resend:disabled { color: #9ca3af; cursor: default; }
 
-        /* Back */
         .lp-back {
           width: 100%; padding: 0.45rem; border: none;
           background: transparent; color: #9ca3af;
@@ -691,14 +876,12 @@ export default function LoginPage() {
         }
         .lp-back:hover { color: #6366f1; }
 
-        /* Trust line */
         .lp-trust {
           display: flex; align-items: center; justify-content: center;
           gap: 0.4rem; margin-top: 0.8rem;
           font-size: 0.67rem; color: #9ca3af; font-weight: 500;
         }
 
-        /* Footer */
         .lp-footer {
           text-align: center; margin-top: 0.85rem;
           font-size: 0.78rem; color: #9ca3af;
@@ -706,7 +889,6 @@ export default function LoginPage() {
         .lp-footer a { color: #6366f1; font-weight: 700; text-decoration: none; }
         .lp-footer a:hover { color: #4f46e5; text-decoration: underline; }
 
-        /* Spinner */
         .lp-spinner {
           width: 15px; height: 15px;
           border: 2px solid rgba(255,255,255,0.3);
@@ -788,7 +970,6 @@ export default function LoginPage() {
           .lp-card { padding: 1.5rem 1.25rem 1.4rem; border-radius: 20px; }
           .lp-panel { padding: 1rem; background: #fff; }
         }
-
         @media (prefers-reduced-motion: reduce) {
           .lp-orb, .lp-hero { animation: none; }
           .lp-card { animation: none; }
@@ -865,21 +1046,36 @@ export default function LoginPage() {
             </div>
 
             {/* Step heading */}
-            {step === 'phone' && (
+            {authMethod === 'otp' && (
               <>
-                <div className="lp-card-title">Sign in to your account</div>
-                <div className="lp-card-sub">No password needed — we use secure OTP.</div>
+                {step === 'phone' ? (
+                  <>
+                    <div className="lp-card-title">Sign in with OTP</div>
+                    <div className="lp-card-sub">No password needed – we use secure SMS.</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="lp-card-title">Verify your number</div>
+                    <div className="lp-card-sub">Code sent to <strong style={{ color: '#374151' }}>{phone}</strong></div>
+                  </>
+                )}
               </>
             )}
-            {step === 'otp' && (
+            {authMethod === 'face' && (
               <>
-                <div className="lp-card-title">Verify your number</div>
-                <div className="lp-card-sub">Code sent to <strong style={{ color: '#374151' }}>{phone}</strong></div>
+                <div className="lp-card-title">Face ID Login</div>
+                <div className="lp-card-sub">Use your enrolled face to sign in.</div>
+              </>
+            )}
+            {authMethod === 'password' && (
+              <>
+                <div className="lp-card-title">Password Login</div>
+                <div className="lp-card-sub">Use your phone/admission number and password.</div>
               </>
             )}
 
-            {/* Step dots */}
-            <StepDots step={step} />
+            {/* Step dots only for OTP flow */}
+            {authMethod === 'otp' && <StepDots step={step} />}
 
             {/* Offline */}
             {!isOnline && (
@@ -888,92 +1084,11 @@ export default function LoginPage() {
               </div>
             )}
 
-            {/* ── Phone step ── */}
-            {step === 'phone' && (
-              <form onSubmit={requestOTP}>
-                <div style={{ marginBottom: '0.9rem' }}>
-                  <label className="lp-label">Phone number</label>
-                  <div className="lp-input-wrap">
-                    <span className="lp-input-icon"><FiPhone size={15} /></span>
-                    <input
-                      type="tel"
-                      className="lp-input"
-                      value={phone}
-                      onChange={e => setPhone(e.target.value)}
-                      placeholder="+254 700 000 000"
-                      required
-                      autoFocus
-                    />
-                  </div>
-                  <span className="lp-helper">We'll send a one-time code. No passwords stored.</span>
-                </div>
+            {/* ─── Auth method tabs ─── */}
+            <AuthMethodTabs method={authMethod} onChange={setAuthMethod} />
 
-                <button type="submit" className="lp-btn" disabled={loading}>
-                  {loading
-                    ? <><div className="lp-spinner" /> Sending…</>
-                    : <>Continue <FiArrowRight size={15} /></>}
-                </button>
-
-                <div className="lp-divider">or</div>
-
-                <button
-                  type="button"
-                  className="lp-btn-ghost"
-                  onClick={handleBiometricLogin}
-                  disabled={loading}
-                >
-                  <FiCamera size={15} /> Sign in with Face ID
-                </button>
-              </form>
-            )}
-
-            {/* ── OTP step ── */}
-            {step === 'otp' && (
-              <form onSubmit={verifyOTP}>
-                <div style={{ marginBottom: '0.6rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-                    <label className="lp-label" style={{ marginBottom: 0 }}>6-digit code</label>
-                    {resendTimer > 0 && (
-                      <span style={{ fontSize: '0.68rem', color: '#9ca3af' }}>Resend in {resendTimer}s</span>
-                    )}
-                  </div>
-                  <OTPInput value={otp} onChange={setOtp} onComplete={handleOTPComplete} />
-                  <div style={{ textAlign: 'right', marginTop: '0.35rem' }}>
-                    <button
-                      type="button"
-                      className="lp-resend"
-                      disabled={resendTimer > 0 || loading}
-                      onClick={requestOTP}
-                    >
-                      {resendTimer > 0 ? `Resend in ${resendTimer}s` : 'Resend code'}
-                    </button>
-                  </div>
-                </div>
-
-                <button type="submit" className="lp-btn" disabled={loading || otp.length < 6}>
-                  {loading
-                    ? <><div className="lp-spinner" /> Verifying…</>
-                    : 'Verify & sign in'}
-                </button>
-
-                <AuthMethodTabs method={authMethod} onChange={setAuthMethod} />
-
-                {authMethod === 'face' && (
-                  <button
-                    type="button"
-                    className="lp-btn-ghost"
-                    onClick={handleBiometricLogin}
-                    disabled={loading}
-                  >
-                    <FiCamera size={15} /> Authenticate with Face ID
-                  </button>
-                )}
-
-                <button type="button" className="lp-back" onClick={() => setStep('phone')}>
-                  <FiArrowLeft size={12} /> Change number
-                </button>
-              </form>
-            )}
+            {/* ─── Render content based on selected method ─── */}
+            {renderAuthContent()}
 
             {/* Trust */}
             <div className="lp-trust">

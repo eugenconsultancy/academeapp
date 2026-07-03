@@ -7,7 +7,7 @@
  * - Automatic reconnection with exponential backoff
  * - Stops reconnecting on auth failure close codes (4001/4003)
  * - Heartbeat ping/pong for connection health
- * - Token-based authentication via URL query parameter
+ * - Token-based authentication via URL query parameter (URL-encoded)
  * - Missed message sync on reconnect
  * - Token refresh handling
  * - Message deduplication
@@ -22,7 +22,7 @@ const MAX_RECONNECT_DELAY = 30000;
 const BASE_RECONNECT_DELAY = 1000;
 const HEARTBEAT_INTERVAL = 25000;
 const MAX_RECONNECT_ATTEMPTS = 10;
-const INITIAL_CONNECT_DELAY = 800; // short delay to let token settle
+const INITIAL_CONNECT_DELAY = 800;
 
 const AUTH_FAILURE_CODES = new Set([4001, 4003]);
 
@@ -30,7 +30,7 @@ function isTokenExpired(token) {
     try {
         const payload = JSON.parse(atob(token.split('.')[1]));
         const now = Math.floor(Date.now() / 1000);
-        return payload.exp ? (payload.exp - 10) <= now : false; // 10s buffer
+        return payload.exp ? (payload.exp - 10) <= now : false;
     } catch {
         return true;
     }
@@ -47,7 +47,6 @@ const useWebSocket = (conversationId) => {
 
     const storeRef = useRef(useChatStore.getState());
 
-    // Keep storeRef in sync without triggering re-renders
     useEffect(() => {
         storeRef.current = useChatStore.getState();
     });
@@ -82,7 +81,7 @@ const useWebSocket = (conversationId) => {
             MAX_RECONNECT_DELAY
         );
         reconnectAttempt.current += 1;
-        console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempt.current})`);
+        console.log(`🔄 Reconnecting in ${delay}ms (attempt ${reconnectAttempt.current})`);
         reconnectTimer.current = setTimeout(() => {
             connect();
         }, delay);
@@ -126,8 +125,6 @@ const useWebSocket = (conversationId) => {
             case 'message.sent': {
                 const msg = data.message;
                 state.upsertMessage(conversationId, msg);
-
-                // ── Rate‑limit update from WebSocket message.sent event ──
                 if (data.rate_limit) {
                     const { used, limit, reset_at } = data.rate_limit;
                     state.setRateLimit?.(used, limit, reset_at);
@@ -152,7 +149,7 @@ const useWebSocket = (conversationId) => {
             case 'message.sync': {
                 const msgs = data.messages || [];
                 if (msgs.length > 0) {
-                    state.setMessages(conversationId, msgs, true);  // append older
+                    state.setMessages(conversationId, msgs, true);
                 }
                 break;
             }
@@ -164,17 +161,15 @@ const useWebSocket = (conversationId) => {
                 break;
             }
             case 'error': {
-                // Server‑sent error events (e.g., rate limit)
                 if (data.code === 'rate_limit') {
                     const limit = data.limit || 60;
                     const reset_at = data.reset_at || null;
-                    state.setRateLimit?.(limit, limit, reset_at);  // used = limit → remaining = 0
+                    state.setRateLimit?.(limit, limit, reset_at);
                 }
                 break;
             }
             case 'typing':
             case 'pong':
-                // no action needed
                 break;
             default:
                 break;
@@ -186,18 +181,22 @@ const useWebSocket = (conversationId) => {
 
         const token = currentTokenRef.current;
         if (!token || isTokenExpired(token)) {
-            console.warn('No valid token available – WebSocket connection delayed');
+            console.warn('⏳ No valid token available – WebSocket connection delayed');
             reconnectTimer.current = setTimeout(() => connect(), 2000);
             return;
         }
 
+        // URL‑encode the token to avoid issues with special characters
+        const encodedToken = encodeURIComponent(token);
         const wsBase = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
-        const wsUrl = `${wsBase}/ws/chat/${conversationId}/?token=${token}`;
+        const wsUrl = `${wsBase}/ws/chat/${conversationId}/?token=${encodedToken}`;
+
+        console.log(`🔌 Connecting WebSocket: ${wsUrl.replace(encodedToken, '***HIDDEN***')}`);
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
         ws.onopen = () => {
-            console.log('WebSocket connected');
+            console.log('✅ WebSocket connected');
             storeRef.current.setOnline(true);
             reconnectAttempt.current = 0;
             startHeartbeat();
@@ -220,12 +219,12 @@ const useWebSocket = (conversationId) => {
         };
 
         ws.onclose = (event) => {
-            console.log('WebSocket closed:', event.code, event.reason);
+            console.log(`❌ WebSocket closed: code=${event.code}, reason=${event.reason || 'no reason'}`);
             storeRef.current.setOnline(false);
             clearTimers();
 
             if (AUTH_FAILURE_CODES.has(event.code)) {
-                console.warn('Auth failure detected – will not reconnect');
+                console.warn('🔒 Auth failure detected – will not reconnect');
                 return;
             }
 

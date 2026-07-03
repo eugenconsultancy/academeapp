@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from '@ta
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { Toaster } from 'react-hot-toast';
 import App from './App.jsx';
+import FAB from './components/layout/FAB'; // ← Import FAB
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { FontProvider } from './contexts/FontContext';
@@ -13,20 +14,17 @@ import OfflineIndicator from './components/shared/OfflineIndicator';
 import SkeletonLoader from './components/shared/SkeletonLoader';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 import { offlineStorage } from './utils/storage';
-import useUserStore from './stores/useUserStore';   // centralized auth store
+import useUserStore from './stores/useUserStore';
 import './styles/globals.css';
 import './styles/themes.css';
 import './styles/fonts.css';
 import './index.css';
 
-// ═══════════════════════════════════════════════════════════════
-// VIEWPORT HEIGHT (kept as-is – already correct)
-// ═══════════════════════════════════════════════════════════════
+// ─── Viewport height ──────────────────────────────────────────────
 (function initVisualVh() {
   const setVh = (h) => {
     document.documentElement.style.setProperty('--visual-vh', `${h * 0.01}px`);
   };
-
   if (window.visualViewport) {
     setVh(window.visualViewport.height);
     window.visualViewport.addEventListener('resize', () => {
@@ -37,58 +35,43 @@ import './index.css';
   }
 })();
 
-// ═══════════════════════════════════════════════════════════════
-// CENTRALIZED 401 HANDLER
-// ═══════════════════════════════════════════════════════════════
+// ─── 401 handler ──────────────────────────────────────────────────
 const handleAuthFailure = () => {
-  // Use the Zustand store (available outside React tree)
   const { logout } = useUserStore.getState();
-  logout();                        // clears user + token
-  window.location.href = '/login'; // hard redirect (avoids stale state)
+  logout();
+  window.location.href = '/login';
 };
 
-// ═══════════════════════════════════════════════════════════════
-// TANSTACK QUERY CLIENT – GLOBAL ERROR HANDLING
-// ═══════════════════════════════════════════════════════════════
+// ─── React Query client ──────────────────────────────────────────
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error, query) => {
-      // Ignore 404s and weather (non-critical)
       if (error?.response?.status === 404) return;
       if (query?.queryKey?.[0] === 'weather') return;
-
-      // 401 → force logout (one single place)
       if (error?.response?.status === 401) {
         console.warn('[QueryCache] 401 – forcing logout');
         handleAuthFailure();
         return;
       }
-
-      // All other errors – log once
       console.error('[Query Cache Error]:', error.message || error);
     },
   }),
   mutationCache: new MutationCache({
-    onError: (error, variables, context, mutation) => {
-      // Skip known benign errors
+    onError: (error) => {
       if (error?.message === 'No claim ID') return;
-
-      // 401 → logout
       if (error?.response?.status === 401) {
         console.warn('[MutationCache] 401 – forcing logout');
         handleAuthFailure();
         return;
       }
-
       console.error('[Mutation Cache Error]:', error.message || error);
     },
   }),
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5,           // 5 minutes
-      gcTime: 1000 * 60 * 30,             // 30 minutes
+      staleTime: 1000 * 60 * 5,
+      gcTime: 1000 * 60 * 30,
       retry: (failureCount, error) => {
-        // Never retry on 401 / 403
         if (error?.response?.status === 401 || error?.response?.status === 403) return false;
         return failureCount < 2;
       },
@@ -104,37 +87,27 @@ const queryClient = new QueryClient({
   },
 });
 
-// ═══════════════════════════════════════════════════════════════
-// GLOBAL UNHANDLED PROMISE REJECTION – LAST RESORT
-// ═══════════════════════════════════════════════════════════════
+// ─── Unhandled rejection handler ──────────────────────────────────
 window.addEventListener('unhandledrejection', (event) => {
   const reason = event.reason;
-
-  // If the rejection is already an auth-related error, redirect
   if (
     reason?.response?.status === 401 ||
     (reason?.message && reason.message.includes('No refresh token'))
   ) {
-    event.preventDefault(); // prevent the default browser error
+    event.preventDefault();
     console.warn('[UnhandledRejection] Auth failure – redirecting');
     handleAuthFailure();
     return;
   }
-
-  // For any other unexpected rejection, log and prevent the app from crashing
   console.error('[Unhandled Rejection]:', reason);
-  event.preventDefault(); // suppress browser console error (dev-only behaviour)
+  event.preventDefault();
 });
 
-// Catch synchronous errors as well (rare)
 window.addEventListener('error', (event) => {
   console.error('[Global Error]:', event.error || event.message);
-  // Do NOT prevent default – browser may need to show its own error
 });
 
-// ═══════════════════════════════════════════════════════════════
-// OFFLINE STORAGE INIT
-// ═══════════════════════════════════════════════════════════════
+// ─── Offline storage init ──────────────────────────────────────────
 async function initializeApp() {
   try {
     await offlineStorage.performMaintenance();
@@ -145,14 +118,12 @@ async function initializeApp() {
 }
 initializeApp();
 
-// ═══════════════════════════════════════════════════════════════
-// RENDER
-// ═══════════════════════════════════════════════════════════════
+// ─── Render ─────────────────────────────────────────────────────────
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <StrictMode>
     <ErrorBoundary fallback={<div className="p-8 text-center">Something went wrong.</div>}>
-      <HashRouter>
+      <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider>
             <FontProvider>
@@ -161,6 +132,8 @@ root.render(
                 <Suspense fallback={<SkeletonLoader type="page" />}>
                   <App />
                 </Suspense>
+                {/* ─── FAB lives here – outside Suspense, inside Router ─── */}
+                <FAB />
                 <Toaster
                   position="top-center"
                   toastOptions={{
@@ -179,9 +152,7 @@ root.render(
   </StrictMode>
 );
 
-// ═══════════════════════════════════════════════════════════════
-// PWA SERVICE WORKER (unchanged)
-// ═══════════════════════════════════════════════════════════════
+// ─── Service Worker ──────────────────────────────────────────────────
 const registerServiceWorker = () => {
   if ('serviceWorker' in navigator && import.meta.env.PROD) {
     window.addEventListener('load', () => {
