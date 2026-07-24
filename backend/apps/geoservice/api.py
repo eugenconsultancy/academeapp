@@ -1,16 +1,22 @@
-# C:\Users\GATARA-BJTU\academe\backend\apps\geoservice\api.py
+# backend/apps/geoservice/api.py
 """
-GeoService API Endpoints - Production-grade with validation and rate limiting.
+GeoService API Endpoints - Production‑grade with validation and rate limiting.
 FIXED: UUID routing conflict - /nearby/ endpoint no longer conflicts with UUID pattern.
+PHASE 1 FIXES:
+- Enrollment verification on check‑in (403 for non‑enrolled students)
+- Coordinate range validators using Decimal on input schemas
+- All error responses now use proper HTTP status codes (400/403/404/429)
+- CheckInOut response includes requires_manual_review field
 """
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID
 from django.shortcuts import get_object_or_404
 from django.core.cache import cache
-from ninja import Router, Query, Schema
+from ninja import Router, Query
 from common.jwt_auth import JWTAuth
-from .models import CampusVenue, LocationCheckIn
+from .models import CampusVenue, LocationCheckIn, StudentLocationHistory
 from .services import LocationService, AttendanceLocationService
+from .schema import CheckInSchema, LocationRecordSchema
 from django.utils import timezone
 import logging
 
@@ -22,38 +28,13 @@ location_service = LocationService()
 attendance_service = AttendanceLocationService()
 
 
-# ============================================
-# REQUEST/RESPONSE SCHEMAS (Pydantic validation)
-# ============================================
-
-class CheckInSchema(Schema):
-    """Validation schema for check-in requests."""
-    timetable_entry_id: str
-    latitude: float
-    longitude: float
-    accuracy: float = None
-    device_info: dict = {}
-
-
-class LocationRecordSchema(Schema):
-    """Validation schema for location recording."""
-    latitude: float
-    longitude: float
-    accuracy: float = None
-    event_type: str = 'background'
-    timestamp: str = None
-    metadata: dict = {}
-
-
-# Rate limiting helper (non-blocking)
+# ── Rate limiting helper (non‑blocking) ─────────────────────────────────
 def check_rate_limit(key: str, max_requests: int = 5, window_seconds: int = 60) -> bool:
-    """Non-blocking rate limit check using Redis cache."""
+    """Non‑blocking rate limit check using Redis cache."""
     cache_key = f"rate_limit:{key}"
     current = cache.get(cache_key, 0)
-    
     if current >= max_requests:
         return False
-    
     cache.set(cache_key, current + 1, timeout=window_seconds)
     return True
 
@@ -75,16 +56,14 @@ def list_venues(
     Supports search and filtering.
     """
     venues = CampusVenue.objects.filter(is_active=True)
-    
     if search:
         venues = venues.filter(name__icontains=search)
-    
     if venue_type:
         venues = venues.filter(venue_type=venue_type)
-    
+
     total = venues.count()
     venues = venues[offset:offset + limit]
-    
+
     return {
         "total": total,
         "limit": limit,
@@ -125,7 +104,7 @@ def get_venues_in_bounds(
         longitude__gte=west,
         longitude__lte=east
     )[:limit]
-    
+
     return [{
         "id": str(v.id),
         "name": v.name,
@@ -136,7 +115,7 @@ def get_venues_in_bounds(
     } for v in venues]
 
 
-# IMPORTANT: /nearby/ endpoint MUST come BEFORE /{venue_id}/ to avoid UUID routing conflict
+# IMPORTANT: /nearby/ must come BEFORE /{venue_id}/ to avoid UUID routing conflict
 @router.get("/venues/nearby/", auth=JWTAuth())
 def get_nearby_venues(
     request,
@@ -157,7 +136,6 @@ def get_nearby_venues(
         limit=limit,
         max_distance_meters=max_distance
     )
-    
     return venues
 
 
@@ -167,7 +145,6 @@ def get_venue(request, venue_id: UUID):
     Get details for a specific venue by UUID.
     """
     venue = get_object_or_404(CampusVenue, id=venue_id, is_active=True)
-    
     return {
         "id": str(venue.id),
         "name": venue.name,
@@ -193,33 +170,26 @@ def geocode_address(
 ):
     """
     Convert address to GPS coordinates.
-    
-    PRIORITY (DB-first):
-    1. Redis cache
-    2. GeocodingCache DB
-    3. Exact match in CampusVenue DB
-    4. Trigram similarity in CampusVenue DB
-    5. Nominatim fallback (rate-limited to 5/min)
-    
     Returns 429 if rate limit exceeded for external API.
     """
+    # Validate input
+    if not address or not address.strip():
+        return 400, {"detail": "Address parameter is required."}
+
     # Apply rate limiting for external API calls
     user_id = request.auth.id
     rate_key = f"geocode_user_{user_id}"
-    
     if not check_rate_limit(rate_key, max_requests=5, window_seconds=60):
-        return 429, {"error": "Rate limit exceeded (5 requests per minute). Please try again later."}
-    
+        return 429, {"detail": "Rate limit exceeded (5 requests per minute). Please try again later."}
+
     coords = location_service.geocode_address_db_first(address)
-    
     if coords:
         return {
             "address": address,
             "latitude": coords[0],
             "longitude": coords[1],
         }
-    
-    return {"error": "Could not geocode address", "address": address}
+    return 404, {"detail": "Could not geocode address. The address may be invalid or not found."}
 
 
 @router.get("/reverse-geocode/", auth=JWTAuth())
@@ -228,23 +198,20 @@ def reverse_geocode(
     lat: float = Query(..., description="Latitude"),
     lon: float = Query(..., description="Longitude")
 ):
-    """Convert GPS coordinates to address (rate-limited)."""
+    """Convert GPS coordinates to address (rate‑limited)."""
     user_id = request.auth.id
     rate_key = f"reverse_geocode_user_{user_id}"
-    
     if not check_rate_limit(rate_key, max_requests=5, window_seconds=60):
-        return 429, {"error": "Rate limit exceeded. Please try again later."}
-    
+        return 429, {"detail": "Rate limit exceeded. Please try again later."}
+
     address = location_service.reverse_geocode(lat, lon)
-    
     if address:
         return {
             "address": address,
             "latitude": lat,
             "longitude": lon,
         }
-    
-    return {"error": "Could not reverse geocode", "latitude": lat, "longitude": lon}
+    return 404, {"detail": "Could not reverse geocode the given coordinates."}
 
 
 # ============================================
@@ -262,19 +229,17 @@ def get_directions(
 ):
     """
     Generate directions between two points.
-    Distance is calculated backend-only (source of truth).
+    Distance is calculated backend‑only (source of truth).
     """
     distance = LocationService.calculate_distance(
         origin_lat, origin_lon,
         dest_lat, dest_lon
     )
-    
     maps_url = location_service.get_directions_url(
         origin_lat, origin_lon,
         dest_lat, dest_lon,
         travel_mode
     )
-    
     return {
         "distance_meters": round(distance, 1),
         "distance_display": LocationService.format_distance(distance),
@@ -298,7 +263,7 @@ def get_nearby_classes(
 ):
     """
     Find today's classes near student's location.
-    Distance calculated BACKEND-ONLY (source of truth).
+    Distance calculated BACKEND‑ONLY (source of truth).
     """
     classes = attendance_service.get_nearby_classes(
         request.auth, lat, lon, max_distance
@@ -315,18 +280,16 @@ def get_class_directions(
 ):
     """Get walking directions to a specific class venue."""
     from apps.classes.models import TimetableEntry
-    
+
     entry = get_object_or_404(TimetableEntry, id=entry_id)
     venue_coords = location_service.get_venue_coordinates(entry)
-    
     if not venue_coords:
-        return {"error": "No coordinates available for this venue"}
-    
+        return 404, {"detail": "No coordinates available for this venue."}
+
     venue_lat, venue_lon = venue_coords
     distance = LocationService.calculate_distance(lat, lon, venue_lat, venue_lon)
-    
     maps_url = location_service.get_directions_url(lat, lon, venue_lat, venue_lon)
-    
+
     return {
         "unit_name": entry.unit_name,
         "venue": entry.venue,
@@ -343,50 +306,56 @@ def get_class_directions(
 
 
 # ============================================
-# LOCATION CHECK-IN (BACKEND VERIFICATION)
+# LOCATION CHECK‑IN (BACKEND VERIFICATION)
 # ============================================
 
 @router.post("/check-in/", auth=JWTAuth())
 def location_check_in(request, data: CheckInSchema):
     """
-    Record location check-in for attendance.
-    
-    IMPORTANT: Distance verification happens BACKEND-ONLY.
-    Frontend-provided distances are ignored completely.
+    Record location check‑in for attendance.
+    IMPORTANT: Distance verification happens BACKEND‑ONLY.
+    Frontend‑provided distances are ignored completely.
     Validates GPS accuracy and detects time tampering.
     """
     from apps.classes.models import TimetableEntry
-    
+
     entry = get_object_or_404(TimetableEntry, id=data.timetable_entry_id)
-    
-    # Backend-only verification - IGNORES any frontend distance calculations
+
+    # ---- Enrollment verification (Phase 1.1) ----
+    if not entry.class_group.students.filter(pk=request.auth.pk).exists():
+        return 403, {"detail": "You are not enrolled in this class."}
+
+    # Convert Decimal coordinates to float for the geolocation service
+    lat = float(data.latitude)
+    lon = float(data.longitude)
+
     is_within, distance, check_in = attendance_service.verify_and_record_attendance(
         student=request.auth,
         timetable_entry=entry,
-        student_lat=data.latitude,
-        student_lon=data.longitude,
+        student_lat=lat,
+        student_lon=lon,
         gps_accuracy=data.accuracy,
         device_info=data.device_info,
     )
-    
+
     if check_in is None:
-        return {"error": "Could not verify location - no venue coordinates available"}
-    
-    # Build appropriate message based on verification status
+        return 422, {"detail": "Could not verify location – no venue coordinates available."}
+
+    # Build human‑readable message
     if is_within and check_in.is_verified:
         message = "✓ Attendance verified! You are within the attendance zone."
     elif is_within and not check_in.is_verified:
-        message = f"⚠️ Within range but GPS accuracy ({data.accuracy:.0f}m) is poor. Check-in recorded for manual verification."
+        message = f"⚠️ Within range but GPS accuracy ({data.accuracy:.0f}m) is poor. Check‑in recorded for manual verification."
     else:
         message = f"❌ Too far from venue ({LocationService.format_distance(distance)}). Max allowed: {check_in.attendance_radius_meters}m."
-    
-    return {
+
+    return 200, {
         "verified": check_in.is_verified,
         "distance_meters": round(distance, 1),
         "distance_display": LocationService.format_distance(distance),
         "check_in_id": str(check_in.id),
         "message": message,
-        "requires_manual_review": check_in.is_verified is False and is_within is True,
+        "requires_manual_review": (check_in.is_verified is False and is_within is True),
     }
 
 
@@ -395,11 +364,11 @@ def get_checkin_history(
     request,
     limit: int = Query(20, ge=1, le=100)
 ):
-    """Get the authenticated user's location check-in history."""
+    """Get the authenticated user's location check‑in history."""
     checkins = LocationCheckIn.objects.filter(
         student=request.auth
     ).select_related('timetable_entry')[:limit]
-    
+
     return [{
         "id": str(c.id),
         "unit_name": c.timetable_entry.unit_name,
@@ -414,7 +383,7 @@ def get_checkin_history(
 
 @router.get("/check-in/summary/", auth=JWTAuth())
 def get_checkin_summary(request):
-    """Get today's location check-in summary."""
+    """Get today's location check‑in summary."""
     summary = attendance_service.get_daily_checkin_summary(request.auth)
     return summary
 
@@ -427,29 +396,25 @@ def get_checkin_summary(request):
 def record_location(request, data: LocationRecordSchema):
     """
     Record a location update with throttling.
-    
     Throttling conditions:
     - Minimum 30 seconds between updates for same user
     - Minimum 5 meters movement to record
     - Prevents database flooding from watchPosition
     """
-    from .models import StudentLocationHistory
-    
     student = request.auth
-    new_lat = data.latitude
-    new_lon = data.longitude
-    
-    # Check last location
+    new_lat = float(data.latitude)
+    new_lon = float(data.longitude)
+
     last_location = StudentLocationHistory.objects.filter(
         student=student
     ).order_by('-created_at').first()
-    
+
     if last_location:
         # Time throttle: 30 seconds minimum
         time_diff = (timezone.now() - last_location.created_at).total_seconds()
         if time_diff < 30:
-            return {"status": "throttled", "reason": "Too frequent (minimum 30s between updates)"}
-        
+            return 200, {"status": "throttled", "detail": "Too frequent (minimum 30s between updates)"}
+
         # Distance throttle: 5 meters minimum movement
         distance_moved = LocationService.calculate_distance(
             float(last_location.latitude),
@@ -458,8 +423,8 @@ def record_location(request, data: LocationRecordSchema):
             new_lon
         )
         if distance_moved < 5:
-            return {"status": "throttled", "reason": f"Insufficient movement (only {distance_moved:.1f}m, need 5m)"}
-    
+            return 200, {"status": "throttled", "detail": f"Insufficient movement (only {distance_moved:.1f}m, need 5m)"}
+
     # Create record if throttling conditions passed
     StudentLocationHistory.objects.create(
         student=student,
@@ -469,8 +434,7 @@ def record_location(request, data: LocationRecordSchema):
         event_type=data.event_type,
         metadata=data.metadata or {}
     )
-    
-    return {"status": "recorded"}
+    return 201, {"status": "recorded"}
 
 
 # ============================================
@@ -483,7 +447,6 @@ def get_venue_occupancy(request, venue_id: UUID):
     from apps.classes.models import TimetableEntry
 
     venue = get_object_or_404(CampusVenue, id=venue_id, is_active=True)
-
     now = timezone.localtime()
     current_time = now.time()
 
@@ -521,7 +484,7 @@ def get_venue_schedule(request, venue_id: UUID, date: str = None):
             dt = datetime.strptime(date, '%Y-%m-%d')
             day_of_week = dt.weekday()
         except ValueError:
-            return {"error": "Invalid date format. Use YYYY-MM-DD"}
+            return 400, {"detail": "Invalid date format. Use YYYY-MM-DD."}
     else:
         day_of_week = timezone.localtime().weekday()
 

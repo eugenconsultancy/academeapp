@@ -32,8 +32,8 @@ const TickDelivered = () => (
 );
 const TickRead = () => (
     <svg width="16" height="14" viewBox="0 0 28 16" fill="none" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="1 8 6 13 14 4" stroke="#2c7cdd" />
-        <polyline points="10 8 15 13 28 1" stroke="#226ac2" />
+        <polyline points="1 8 6 13 14 4" stroke="#029115" />
+        <polyline points="10 8 15 13 28 1" stroke="#08ad02" />
     </svg>
 );
 
@@ -225,7 +225,7 @@ const MessageBubble = ({ message, conversationId, currentUserId, onAction, onHei
                 background: 'rgba(0,0,0,0.1)', borderRadius: 8,
                 overflow: 'hidden', marginBottom: 8,
             }}>
-                <div style={{ width: 3, background: isOwn ? 'rgba(27, 238, 238, 0.79)' : 'var(--accent)', flexShrink: 0 }} />
+                <div style={{ width: 3, background: isOwn ? 'rgba(5, 233, 233, 0.79)' : 'var(--accent)', flexShrink: 0 }} />
                 <div style={{ padding: '6px 10px', fontSize: 12, opacity: 0.8, fontStyle: 'italic', lineHeight: 1.4 }}>
                     {message.reply_preview || 'Quoted message'}
                 </div>
@@ -235,7 +235,7 @@ const MessageBubble = ({ message, conversationId, currentUserId, onAction, onHei
 
     /* ── Bubble style ── */
     const bubbleStyle = isOwn ? {
-        background: 'linear-gradient(135deg, var(--bubble-own-from, #027e17) 0%, var(--bubble-own-to, #5b35a7) 100%)',
+        background: 'linear-gradient(135deg, var(--bubble-own-from, #00ad1d) 0%, var(--bubble-own-to, #5b35a7) 100%)',
         color: 'var(--bubble-own-text, #fff)',
         borderRadius: '20px 4px 20px 20px',
         boxShadow: '0 4px 18px rgba(108,99,255,0.30), 0 2px 6px rgba(0,0,0,0.15)',
@@ -300,7 +300,7 @@ const MessageBubble = ({ message, conversationId, currentUserId, onAction, onHei
                 {!isOwn && (
                     <div style={{
                         width: 32, height: 32, borderRadius: 10, flexShrink: 0,
-                        background: senderAvatar ? 'transparent' : 'linear-gradient(135deg, var(--accent, #269b87), var(--accent2, #5d32e0))',
+                        background: senderAvatar ? 'transparent' : 'linear-gradient(135deg, var(--accent, #269b87), var(--accent2, #3002b8))',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         color: '#fff', fontSize: 12, fontWeight: 700,
                         marginRight: 8, alignSelf: 'flex-end', marginBottom: 2,

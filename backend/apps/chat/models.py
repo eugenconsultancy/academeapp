@@ -3,7 +3,7 @@
 Chat models for Academe.
 Key design decisions:
   - UUID primary keys on all models
-  - client_msg_id (UUID) + sender enforces idempotency at DB level
+  - client_msg_id (UUID) + sender enforces idempotency at DB level OSWP BEST PRAC
   - Soft-delete flags: deleted_for_self, deleted_for_everyone
   - Message status: PENDING -> SENT -> DELIVERED -> READ
   - Edit history stored as JSON array on the Message itself

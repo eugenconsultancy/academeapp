@@ -38,8 +38,8 @@ const CSS = `
     --surface2:     #f8f9fd;
     --border:       #e0e4f0;
     --text:         #0f1421;
-    --text2:        #5a647e;
-    --text3:        #9aa3bf;
+    --text2:        #273353;
+    --text3:        #7c72a3;
     --accent:       #6c63ff;
     --accent2:      #9f7aea;
     --accent-soft:  rgba(108,99,255,0.09);
@@ -61,7 +61,7 @@ const CSS = `
     --unread-dot:   #6c63ff;
     --unread-bg:    rgba(108,99,255,0.07);
     --chip-bg:      #eceef7;
-    --chip-text:    #5a647e;
+    --chip-text:    #2d3a5c;
     --input-bg:     #f4f5fb;
     --input-border: #dde0ed;
     --card-bg:      #ffffff;

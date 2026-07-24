@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from '@ta
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { Toaster } from 'react-hot-toast';
 import App from './App.jsx';
-import FAB from './components/layout/FAB'; // ← Import FAB
+import FAB from './components/layout/FAB';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { FontProvider } from './contexts/FontContext';
@@ -132,8 +132,10 @@ root.render(
                 <Suspense fallback={<SkeletonLoader type="page" />}>
                   <App />
                 </Suspense>
-                {/* ─── FAB lives here – outside Suspense, inside Router ─── */}
-                <FAB />
+                {/* ─── FAB wrapped in dedicated container for global CSS control ─── */}
+                <div id="fab-container">
+                  <FAB />
+                </div>
                 <Toaster
                   position="top-center"
                   toastOptions={{

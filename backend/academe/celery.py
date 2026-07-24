@@ -59,6 +59,12 @@ app.conf.beat_schedule = {
         'schedule': crontab(hour=4, minute=15),
     },
 
+    # --- GeoService Privacy Cleanup (GDPR) ---
+    'cleanup-old-location-history': {
+        'task': 'apps.geoservice.tasks.cleanup_old_location_history',
+        'schedule': crontab(hour=3, minute=0),   # daily at 3 AM
+    },
+
     # --- Chat specific ---
     'chat-cleanup-old-attachments': {
         'task': 'apps.chat.tasks.cleanup_old_attachments',

@@ -38,6 +38,10 @@ const TYPE_ICONS = {
     new_message: FiMessageCircle,
     mention: FiAtSign,
     reaction: FiRefreshCw,
+    // ── NEW attendance notification icons ──
+    attendance_verified: FiCheckSquare,      // Green check for success
+    attendance_manual_review: FiAlertCircle,  // Yellow alert for pending
+    attendance_rejected: FiX,                 // Red X for rejection
     system: FiServer,
 };
 
@@ -72,7 +76,6 @@ export default function NotificationsPage() {
     } = useInfiniteQuery({
         queryKey: ['notifications', 'infinite', filter],
         queryFn: async ({ pageParam }) => {
-            // Use trash endpoint for deleted filter
             if (isDeletedFilter) {
                 const params = { page_size: 20 };
                 if (pageParam) params.cursor = pageParam;
@@ -462,8 +465,8 @@ export default function NotificationsPage() {
                             <button
                                 onClick={toggleSelectionMode}
                                 className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 min-h-[44px] ${selectionMode
-                                        ? 'bg-gray-600 text-white'
-                                        : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300'
+                                    ? 'bg-gray-600 text-white'
+                                    : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300'
                                     }`}
                             >
                                 {selectionMode ? <FiX size={16} /> : <FiCheckSquare size={16} />}
@@ -503,6 +506,8 @@ export default function NotificationsPage() {
                             const Icon = TYPE_ICONS[notif.type] || FiBell;
                             const isSelected = selectedIds.includes(notif.id);
                             const plainMessage = stripHtml(notif.message);
+                            // Determine if this is an attendance notification
+                            const isAttendance = notif.type.startsWith('attendance_');
                             return (
                                 <div
                                     key={notif.id}
@@ -520,11 +525,12 @@ export default function NotificationsPage() {
                                             }
                                         }
                                     }}
-                                    className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm border p-3 sm:p-4 md:p-5 flex items-start gap-3 sm:gap-4 transition-all hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 ${!notif.is_read && !notif.is_deleted
-                                            ? 'border-l-4 border-l-indigo-500 dark:border-l-indigo-400'
-                                            : 'border-gray-100 dark:border-gray-700'
-                                        } ${isSelected ? 'ring-2 ring-indigo-400' : ''} ${notif.is_deleted ? 'opacity-70' : ''
-                                        }`}
+                                    className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm border p-3 sm:p-4 md:p-5 flex items-start gap-3 sm:gap-4 transition-all hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 ${isAttendance
+                                            ? 'border-l-4 border-l-amber-500'
+                                            : !notif.is_read && !notif.is_deleted
+                                                ? 'border-l-4 border-l-indigo-500 dark:border-l-indigo-400'
+                                                : 'border-gray-100 dark:border-gray-700'
+                                        } ${isSelected ? 'ring-2 ring-indigo-400' : ''} ${notif.is_deleted ? 'opacity-70' : ''}`}
                                 >
                                     {selectionMode && (
                                         <button

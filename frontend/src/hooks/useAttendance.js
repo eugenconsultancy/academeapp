@@ -1,7 +1,9 @@
+// frontend/src/hooks/useAttendance.js
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { openDB } from 'idb';
-import apiClient from '../api/client';
+import GeoService from '../api/geoService';
 import { useGeolocation } from './useGeolocation';
+import toast from 'react-hot-toast';
 
 const DB_NAME = 'AcademeOfflineDB';
 const DB_VERSION = 2;
@@ -39,6 +41,7 @@ export function useAttendance(entryId, options = {}) {
     const [error, setError] = useState(null);
     const [syncProgress, setSyncProgress] = useState({ total: 0, completed: 0 });
     const [attendanceHistory, setAttendanceHistory] = useState([]);
+    const [requiresManualReview, setRequiresManualReview] = useState(false);   // NEW
 
     const isMountedRef = useRef(true);
     const syncInProgressRef = useRef(false);
@@ -48,70 +51,114 @@ export function useAttendance(entryId, options = {}) {
         error: gpsError,
         getLocation,
         isAccuracyAcceptable,
-        checkVenueProximity,
+        isDataValid,
+        isReadyForCheckIn,
     } = useGeolocation({ enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 });
 
+    // ── Check if already marked today (via GeoService check-in history) ──
     const checkMarkedStatus = useCallback(async () => {
         if (!entryId) return;
         try {
             if (navigator.onLine) {
-                const response = await apiClient.get('/classes/today/');
-                const classData = Array.isArray(response.data)
-                    ? response.data.find(c => c.id === entryId)
-                    : response.data;
-                const marked = classData?.is_marked || false;
-                if (isMountedRef.current) setIsMarked(marked);
+                const history = await GeoService.getCheckInHistory(20);
+                const today = new Date().toISOString().slice(0, 10);
+                const alreadyMarked = history.some(
+                    (record) =>
+                        record.timetable_entry_id === entryId &&
+                        record.created_at?.startsWith(today)
+                );
+                if (isMountedRef.current) setIsMarked(alreadyMarked);
             }
         } catch (err) {
             console.error('Failed to check attendance status:', err);
         }
     }, [entryId]);
 
+    // ── Mark attendance (now via GeoService) ──
     const markAttendance = useCallback(async (remarks = '') => {
         if (!entryId) return;
         if (isMountedRef.current) {
             setLoading(true);
             setError(null);
+            setRequiresManualReview(false);
         }
-        const attemptData = {
-            timetable_entry_id: entryId,
-            attempted_at: new Date().toISOString(),
-            // No status field – backend only records presence
-        };
-        try {
-            if (requireGps || navigator.onLine) {
-                try {
-                    const freshLocation = await getLocation();
-                    const target = freshLocation || location;
-                    if (target) {
-                        attemptData.latitude = target.latitude;
-                        attemptData.longitude = target.longitude;
-                        attemptData.accuracy = target.accuracy;
-                    }
-                } catch (gpsErr) {
-                    if (requireGps) throw new Error(`GPS required: ${gpsErr.message}`);
-                    console.warn('GPS unavailable:', gpsErr.message);
-                }
+
+        // Fail fast if GPS is required but offline
+        if (requireGps && !navigator.onLine) {
+            const msg = 'GPS attendance requires an internet connection.';
+            if (isMountedRef.current) {
+                setError(msg);
+                setLoading(false);
             }
+            if (onError) onError(new Error(msg));
+            return;
+        }
+
+        try {
+            let lat, lon, acc;
+            // Get fresh location
+            try {
+                const pos = await getLocation();
+                const freshLocation = pos || location;
+                if (freshLocation) {
+                    lat = freshLocation.latitude;
+                    lon = freshLocation.longitude;
+                    acc = freshLocation.accuracy;
+                }
+            } catch (gpsErr) {
+                if (requireGps) {
+                    throw new Error(`GPS required: ${gpsErr.message}`);
+                }
+                console.warn('GPS unavailable:', gpsErr.message);
+            }
+
             if (navigator.onLine) {
-                await apiClient.post('/classes/mark-attendance/', attemptData);
+                const response = await GeoService.submitCheckIn({
+                    timetable_entry_id: entryId,
+                    latitude: lat,
+                    longitude: lon,
+                    accuracy: acc,
+                    device_info: {
+                        userAgent: navigator.userAgent,
+                        platform: navigator.platform,
+                    },
+                });
+
                 if (isMountedRef.current) {
                     setIsMarked(true);
                     setIsOffline(false);
+                    setRequiresManualReview(response.requires_manual_review || false);
                 }
-                if (onSuccess) onSuccess({ entryId, remarks });
+                if (onSuccess) onSuccess({ entryId, remarks, requiresManualReview: response.requires_manual_review });
             } else {
-                await saveOffline(attemptData);
+                // Offline – only if GPS not required (we already blocked requireGps earlier)
+                await saveOffline({
+                    timetable_entry_id: entryId,
+                    attempted_at: new Date().toISOString(),
+                    latitude: lat,
+                    longitude: lon,
+                    accuracy: acc,
+                });
             }
         } catch (err) {
             console.error('Failed to mark attendance online, saving offline:', err);
-            await saveOffline(attemptData);
-            if (onError) onError(err);
+            if (navigator.onLine) {
+                // Online error – show detail
+                const detail = err.response?.data?.detail || err.message || 'Failed to verify location';
+                if (isMountedRef.current) setError(detail);
+                if (onError) onError(err);
+            } else {
+                await saveOffline({
+                    timetable_entry_id: entryId,
+                    attempted_at: new Date().toISOString(),
+                });
+            }
         } finally {
             if (isMountedRef.current) setLoading(false);
         }
-    }, [entryId, location, requireGps, getLocation, isAccuracyAcceptable, onSuccess, onError]);
+    }, [entryId, location, requireGps, getLocation, onSuccess, onError]);
 
+    // ── Offline storage (unchanged) ──
     const saveOffline = async (data) => {
         try {
             const db = await getDB();
@@ -119,7 +166,7 @@ export function useAttendance(entryId, options = {}) {
             const savedId = await db.add(STORE_NAME, record);
             await db.add(SYNC_STORE, {
                 type: 'ATTENDANCE_SINGLE',
-                endpoint: '/classes/mark-attendance/',
+                endpoint: '/geo/check-in/',   // offline sync will use the same endpoint
                 method: 'POST',
                 data: { ...record, id: savedId },
                 status: 'pending',
@@ -148,7 +195,7 @@ export function useAttendance(entryId, options = {}) {
             if (isMountedRef.current) setSyncProgress({ total, completed });
             for (const item of pendingItems) {
                 try {
-                    await apiClient.post(item.endpoint, item.data);
+                    await GeoService.submitCheckIn(item.data);
                     await db.delete(SYNC_STORE, item.id);
                     const attRecord = await db.get(STORE_NAME, item.data.id);
                     if (attRecord) {
@@ -188,8 +235,8 @@ export function useAttendance(entryId, options = {}) {
         if (!entryId) return;
         try {
             if (navigator.onLine) {
-                const response = await apiClient.get(`/classes/attendance/${entryId}/`);
-                if (isMountedRef.current) setAttendanceHistory(response.data || []);
+                const history = await GeoService.getCheckInHistory(50);
+                if (isMountedRef.current) setAttendanceHistory(history);
             }
         } catch (err) {
             console.error('Failed to load attendance history:', err);
@@ -216,6 +263,7 @@ export function useAttendance(entryId, options = {}) {
         error,
         syncProgress,
         attendanceHistory,
+        requiresManualReview,       // NEW
         STATUS_OPTIONS: [
             { value: 'PRESENT', label: 'Present', color: 'emerald' },
             { value: 'ABSENT', label: 'Absent', color: 'red' },
@@ -231,7 +279,8 @@ export function useAttendance(entryId, options = {}) {
         gpsError,
         getLocation,
         isAccuracyAcceptable,
-        checkVenueProximity,
+        isDataValid,           // expose accuracy gate
+        isReadyForCheckIn,     // expose readiness for UI
     };
 }
 

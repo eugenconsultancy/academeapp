@@ -28,6 +28,7 @@
 /* ══════════════════════════════════════
    LOCAL FONT: OpenDyslexic (accessibility)
    Not available on Google Fonts — self-hosted
+   Make sure the files are in /public/fonts/
    ══════════════════════════════════════ */
 @font-face {
   font-family: 'OpenDyslexic';

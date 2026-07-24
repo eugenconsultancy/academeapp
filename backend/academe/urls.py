@@ -2,9 +2,11 @@
 
 from django.contrib import admin
 from django.urls import path
-from ninja import NinjaAPI
+from django.views.generic import RedirectView
+from django.http import JsonResponse
 from django.conf import settings
 from django.conf.urls.static import static
+from ninja import NinjaAPI
 
 from apps.accounts.api import router as accounts_router
 from apps.classes.api import router as classes_router
@@ -38,17 +40,17 @@ api.add_router("/governance/", governance_router, tags=["Governance"])
 api.add_router("/notifications/", notifications_router, tags=["Notifications"])
 api.add_router("/chat/", chat_router, tags=["Chat"])
 
-# Health check
-from django.http import JsonResponse
-
+# Health check endpoint
 def health_check(request):
     return JsonResponse({'status': 'ok', 'version': '1.0.0'})
 
 urlpatterns = [
+    # Root URL: redirects to API documentation (or you can redirect to 'admin/')
+    path('', RedirectView.as_view(url='api/docs', permanent=False)),
     path('health/', health_check),
     path('api/health/', health_check),
     # Added to satisfy frontend hardcoded requirement
-    path('api/system/health/', health_check), 
+    path('api/system/health/', health_check),
     path('admin/', admin.site.urls),
     path('api/', api.urls),
 ]

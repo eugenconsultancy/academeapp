@@ -1,14 +1,15 @@
+// frontend/src/services/classService.js
 import { classesApi } from '../api/classesApi';
-import apiClient from '../api/client';   // for nearby classes via /geo
+import GeoService from '../api/geoService';   // ✅ centralized geo calls
 import { offlineStorage } from '../utils/storage';
 
 /**
- * Class Service – business logic layer for class-related operations.
- * Wraps classesApi, adds caching, offline support, and normalised payloads.
+ * Class Service – business logic layer for class‑related operations.
+ * All location‑based queries now go through GeoService for consistency.
  */
 export const classService = {
     // ─────────────────────────────────────────────────────────
-    // 1. TIMETABLE (full student timetable)
+    // 1. TIMETABLE
     // ─────────────────────────────────────────────────────────
     async getTimetable() {
         try {
@@ -23,13 +24,11 @@ export const classService = {
         }
     },
 
-    // Timetable CRUD (for class reps / admins)
     async createTimetableEntry(payload) {
         try {
             const res = await classesApi.createTimetableEntry(payload);
             return res.data ?? res;
         } catch (err) {
-            // Queue offline if needed
             await offlineStorage.addToSyncQueue({
                 type: 'TIMETABLE_CREATE',
                 endpoint: '/classes/timetable/',
@@ -60,11 +59,10 @@ export const classService = {
             await classesApi.deleteTimetableEntry(id);
             return { success: true };
         } catch (err) {
-            throw err; // deletion not queued offline – must be online
+            throw err;
         }
     },
 
-    // Get timetable for a specific class group (used by reps)
     async getClassTimetable(classGroupId) {
         try {
             const res = await classesApi.getClassTimetable(classGroupId);
@@ -95,41 +93,9 @@ export const classService = {
     },
 
     // ─────────────────────────────────────────────────────────
-    // 3. ATTENDANCE
+    // 3. ATTENDANCE (delegates to attendanceService; no direct calls)
     // ─────────────────────────────────────────────────────────
-    /**
-     * Mark attendance for a timetable entry.
-     * Accepts optional location object { latitude, longitude }.
-     */
-    async markAttendance(entryId, location = null) {
-        const attemptedAt = new Date().toISOString();
-        const studentLat = location?.latitude ?? null;
-        const studentLon = location?.longitude ?? null;
-
-        try {
-            const res = await classesApi.markAttendance(entryId, attemptedAt, studentLat, studentLon);
-            return res.data ?? res;
-        } catch (err) {
-            // Save offline
-            await offlineStorage.saveAttendance({
-                timetableEntryId: entryId,
-                studentLat,
-                studentLon,
-                attemptedAt,
-            });
-            return { offline: true, message: 'Attendance saved offline' };
-        }
-    },
-
-    // Get attendance records for a specific timetable entry
-    async getAttendance(entryId) {
-        try {
-            const res = await classesApi.getAttendance(entryId);
-            return res.data ?? res;
-        } catch (err) {
-            throw err;
-        }
-    },
+    // (Removed markAttendance and getAttendance – now handled by attendanceService)
 
     // ─────────────────────────────────────────────────────────
     // 4. WEEKLY SUMMARY
@@ -156,16 +122,15 @@ export const classService = {
     },
 
     // ─────────────────────────────────────────────────────────
-    // 6. NEARBY CLASSES (via GeoService, not classesApi)
+    // 6. NEARBY CLASSES (now uses GeoService exclusively)
     // ─────────────────────────────────────────────────────────
     async getNearbyClasses(lat, lon, maxDistance = 500) {
         try {
-            const res = await apiClient.get('/geo/classes/nearby/', {
-                params: { lat, lon, max_distance: maxDistance },
-            });
-            return res.data;
+            const data = await GeoService.getNearbyClasses(lat, lon, maxDistance);
+            return data;  // already enriched with backend distances
         } catch (err) {
-            throw err;
+            const detail = err.response?.data?.detail || err.message || 'Failed to fetch nearby classes';
+            throw new Error(detail);
         }
     },
 

@@ -41,9 +41,9 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',  # <-- Must be the very first item!
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     
@@ -177,17 +177,16 @@ EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@academe.com')
 
-# ============================================
-# CORS CONFIGURATION - FIXED FOR NGROK
-# ============================================
-
-# Get current Ngrok URL from environment or use defaults
+# Get current Ngrok URL from environment or use the known default
 NGROK_URL = os.getenv('NGROK_URL', 'https://granitic-imbricately-dede.ngrok-free.dev')
 
-# For production, don't allow all origins
-CORS_ALLOW_ALL_ORIGINS = DEBUG
+# IMPORTANT: NEVER set CORS_ALLOW_ALL_ORIGINS = True when CORS_ALLOW_CREDENTIALS = True
+# because the browser will reject the response (CORS spec forbids '*' with credentials).
+CORS_ALLOW_ALL_ORIGINS = False   # Keep this False always
 
-# Critical: These headers must be allowed for both REST and WebSocket
+CORS_ALLOW_CREDENTIALS = True
+
+# Critical headers for both REST and WebSocket
 CORS_ALLOW_HEADERS = [
     "accept",
     "accept-encoding",
@@ -205,7 +204,6 @@ CORS_ALLOW_HEADERS = [
     "x-real-ip",
 ]
 
-# Allowed methods for CORS
 CORS_ALLOW_METHODS = [
     "DELETE",
     "GET",
@@ -215,13 +213,10 @@ CORS_ALLOW_METHODS = [
     "PUT",
 ]
 
-# Allow credentials (cookies, authorization headers)
-CORS_ALLOW_CREDENTIALS = True
-
-# Preflight max age (cache OPTIONS response)
 CORS_PREFLIGHT_MAX_AGE = 86400  # 24 hours
 
-# Allowed origins - include current Ngrok URL dynamically
+# ── Allowed origins ──────────────────────────────────────────
+# Add ALL origins that may send requests (Vite dev servers, Ngrok, etc.)
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:3000",
@@ -231,11 +226,20 @@ CORS_ALLOWED_ORIGINS = [
     "https://granitic-imbricately-dede.ngrok-free.dev",
 ]
 
-# Also allow the Ngrok URL from environment variable if different
+# Dynamically add your current Vite network IP (so phone on same Wi‑Fi works)
+# Option 1: read from environment variable (recommended)
+DEV_CLIENT_ORIGIN = os.getenv("DEV_CLIENT_ORIGIN")
+if DEV_CLIENT_ORIGIN:
+    CORS_ALLOWED_ORIGINS.append(DEV_CLIENT_ORIGIN)
+else:
+    # Option 2: hardcode your current IP as fallback (update if it changes)
+    CORS_ALLOWED_ORIGINS.append("http://192.168.43.52:5173")
+
+# Add the Ngrok URL from env if different from the default
 if NGROK_URL and NGROK_URL not in CORS_ALLOWED_ORIGINS:
     CORS_ALLOWED_ORIGINS.append(NGROK_URL)
 
-# For development, add any localhost variations
+# If DEBUG, allow extra localhost ports (but still no wildcard)
 if DEBUG:
     CORS_ALLOWED_ORIGINS.extend([
         "http://localhost:8000",
@@ -244,7 +248,8 @@ if DEBUG:
         "http://localhost:5175",
     ])
 
-# CSRF Trusted Origins (important for WebSocket)
+# ── CSRF Trusted Origins ─────────────────────────────────────
+# Needed for session authentication & WebSocket upgrade requests
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:3000",
@@ -254,7 +259,13 @@ CSRF_TRUSTED_ORIGINS = [
 if NGROK_URL:
     CSRF_TRUSTED_ORIGINS.append(NGROK_URL)
 
-# Security settings for proxy (Ngrok)
+# Also trust the Vite network IP
+if DEV_CLIENT_ORIGIN:
+    CSRF_TRUSTED_ORIGINS.append(DEV_CLIENT_ORIGIN)
+else:
+    CSRF_TRUSTED_ORIGINS.append("http://192.168.43.52:5173")
+
+# ── Proxy / Ngrok security ───────────────────────────────────
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 USE_X_FORWARDED_HOST = True
 USE_X_FORWARDED_PORT = True

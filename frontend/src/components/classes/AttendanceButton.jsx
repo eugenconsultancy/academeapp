@@ -1,6 +1,7 @@
+// frontend/src/components/classes/AttendanceButton.jsx
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useGeolocation } from '../../hooks/useGeolocation';
-import { classesApi } from '../../api/classesApi';
+import GeoService from '../../api/geoService';            // <-- Use GeoService for check‑in
 import toast from 'react-hot-toast';
 import {
     FiCheckCircle, FiMapPin, FiLoader, FiClock,
@@ -9,9 +10,6 @@ import {
     FiChevronUp,
 } from 'react-icons/fi';
 
-/**
- * Attendance Status Options (UI only – backend does not use a status field)
- */
 const STATUS_OPTIONS = [
     { value: 'PRESENT', label: 'Present', icon: FiCheckCircle, color: 'emerald', shortcut: 'P' },
     { value: 'LATE', label: 'Late', icon: FiClock, color: 'amber', shortcut: 'L' },
@@ -19,19 +17,6 @@ const STATUS_OPTIONS = [
     { value: 'EXCUSED', label: 'Excused', icon: FiAlertTriangle, color: 'slate', shortcut: 'E' },
 ];
 
-/**
- * Location-Aware Attendance Button
- *
- * Features:
- * - GPS location verification with distance display
- * - Fallback to basic attendance when GPS unavailable
- * - Offline support with sync indicator (via service wrapper)
- * - Loading/disabled states with retry capability
- * - Keyboard accessibility with ARIA labels
- *
- * Backend: apps/classes/api.py → mark_attendance
- * Backend schema: AttendanceMarkIn (timetable_entry_id, attempted_at, student_lat, student_lon)
- */
 export default function AttendanceButton({
     entryId,
     unitName = '',
@@ -68,6 +53,7 @@ export default function AttendanceButton({
     const [walkingTime, setWalkingTime] = useState(null);
     const [retryCount, setRetryCount] = useState(0);
     const [gpsAttempted, setGpsAttempted] = useState(false);
+    const [manualReview, setManualReview] = useState(false);   // new state for manual review flag
 
     const menuRef = useRef(null);
     const buttonRef = useRef(null);
@@ -112,7 +98,6 @@ export default function AttendanceButton({
         try {
             await getLocation();
             setGpsAttempted(true);
-
             if (location && venueLocation?.latitude && venueLocation?.longitude) {
                 const proximity = checkVenueProximity(venueLocation);
                 if (proximity) {
@@ -126,9 +111,7 @@ export default function AttendanceButton({
         }
     }, [location, venueLocation, getLocation, checkVenueProximity, estimateWalkTime]);
 
-    // ═════════════════════════════════════════════════════════
-    // Helper – direct GPS promise (avoids React state lag)
-    // ═════════════════════════════════════════════════════════
+    // Direct GPS promise (no state lag)
     const getDeviceCoordinates = () =>
         new Promise((resolve, reject) => {
             if (!navigator.geolocation) {
@@ -149,7 +132,7 @@ export default function AttendanceButton({
         });
 
     // ═════════════════════════════════════════════════════════
-    // ATTENDANCE MARKING
+    // ATTENDANCE MARKING (using GeoService.submitCheckIn)
     // ═════════════════════════════════════════════════════════
 
     const handleMarkAttendance = useCallback(
@@ -160,19 +143,23 @@ export default function AttendanceButton({
             setVerified(null);
             setIsOffline(false);
             setSyncPending(false);
+            setManualReview(false);
+            setRetryCount((prev) => prev);   // keep current retry count
 
             let studentLat = null;
             let studentLon = null;
+            let gpsAccuracy = null;
 
             try {
-                // 1. Try to get GPS coordinates directly (no state lag)
+                // 1. Get GPS coordinates
                 try {
                     const coords = await getDeviceCoordinates();
                     studentLat = coords.lat;
                     studentLon = coords.lon;
+                    gpsAccuracy = coords.accuracy;
                     setGpsAttempted(true);
 
-                    // Update UI distance helpers
+                    // Update distance helpers
                     if (venueLocation?.latitude && venueLocation?.longitude) {
                         const dist = calculateDistance(
                             studentLat, studentLon,
@@ -186,49 +173,78 @@ export default function AttendanceButton({
                     setGpsAttempted(true);
                 }
 
-                // 2. Call the backend API (status is NOT sent – backend only records presence)
-                const attemptedAt = new Date().toISOString();
-                await classesApi.markAttendance(entryId, attemptedAt, studentLat, studentLon);
+                // 2. Submit to backend location check‑in endpoint
+                const checkInResponse = await GeoService.submitCheckIn({
+                    timetable_entry_id: entryId,
+                    latitude: studentLat,
+                    longitude: studentLon,
+                    accuracy: gpsAccuracy,
+                    device_info: {
+                        userAgent: navigator.userAgent,
+                        platform: navigator.platform,
+                    },
+                });
 
-                // 3. Determine verification state for UI
-                const gpsVerified = studentLat != null;
-                setVerified(gpsVerified);
+                // 3. Handle response
+                const {
+                    verified: backendVerified,
+                    distance_meters,
+                    distance_display,
+                    message,
+                    requires_manual_review,
+                } = checkInResponse;
 
-                if (gpsVerified) {
-                    const distText = distanceToVenue
-                        ? ` (${distanceToVenue}m${walkingTime ? `, ${walkingTime}min walk` : ''})`
-                        : '';
-                    toast.success(
-                        `📍 Attendance recorded – location verified${distText}`,
-                        { duration: 4000 }
-                    );
-                } else {
-                    toast.success(
-                        `⚠️ Attendance recorded – without location verification`,
-                        { duration: 4000 }
-                    );
+                setVerified(backendVerified);
+
+                if (requires_manual_review) {
+                    setManualReview(true);
                 }
 
-                // Reset retry count
-                setRetryCount(0);
+                toast.success(
+                    backendVerified
+                        ? `📍 ${message}${distance_display ? ` (${distance_display})` : ''}`
+                        : `⚠️ ${message}`,
+                    { duration: 5000 }
+                );
+
+                // Update distance display
+                if (distance_meters != null) {
+                    setDistanceToVenue(Math.round(distance_meters));
+                    setWalkingTime(estimateWalkTime(distance_meters));
+                }
 
                 // Notify parent
                 if (onMarkComplete) {
                     onMarkComplete({
                         entryId,
-                        status,
-                        verified: gpsVerified,
+                        verified: backendVerified,
                         distanceToVenue,
-                        offline: false,
+                        requiresManualReview: requires_manual_review,
                     });
                 }
+
+                setRetryCount(0);
             } catch (error) {
                 setRetryCount((prev) => prev + 1);
-                const msg =
-                    error.response?.data?.error ||
-                    error.message ||
-                    'Failed to mark attendance';
-                toast.error(msg, { duration: 5000 });
+
+                // ── FIX: Parse HTTP error detail ──────────────────
+                let errorMessage = 'Failed to verify attendance.';
+                if (error.response) {
+                    const detail = error.response.data?.detail;
+                    if (detail) {
+                        errorMessage = detail;
+                    } else if (error.response.status === 403) {
+                        errorMessage = 'You are not enrolled in this class.';
+                    } else if (error.response.status === 422) {
+                        errorMessage = 'No venue coordinates available. Please contact support.';
+                    } else if (error.response.status === 400) {
+                        errorMessage = 'Invalid request. Please check your input.';
+                    }
+                } else if (error.message) {
+                    errorMessage = error.message;
+                }
+
+                toast.error(errorMessage, { duration: 6000 });
             } finally {
                 setLoading(false);
                 setShowStatusMenu(false);
@@ -249,7 +265,6 @@ export default function AttendanceButton({
         (status) => {
             setSelectedStatus(status);
             setShowStatusMenu(false);
-            // Immediately mark attendance with the new status (visual only)
             handleMarkAttendance(status);
         },
         [handleMarkAttendance]
@@ -266,16 +281,11 @@ export default function AttendanceButton({
 
     const getStatusBadgeClass = (status) => {
         switch (status) {
-            case 'PRESENT':
-                return 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800';
-            case 'LATE':
-                return 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800';
-            case 'ABSENT':
-                return 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800';
-            case 'EXCUSED':
-                return 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700';
-            default:
-                return 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400';
+            case 'PRESENT': return 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800';
+            case 'LATE': return 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800';
+            case 'ABSENT': return 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800';
+            case 'EXCUSED': return 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700';
+            default: return 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400';
         }
     };
 
@@ -326,7 +336,7 @@ export default function AttendanceButton({
     }
 
     // ═════════════════════════════════════════════════════════
-    // RENDER: ACTIVE CHECK-IN
+    // RENDER: ACTIVE CHECK‑IN
     // ═════════════════════════════════════════════════════════
 
     return (
@@ -348,7 +358,6 @@ export default function AttendanceButton({
             {/* ── Main Button Group ──────────────────── */}
             <div className="relative" ref={buttonRef}>
                 <div className="flex rounded-xl shadow-md hover:shadow-lg transition-shadow">
-                    {/* Check-in button */}
                     <button
                         onClick={() => handleMarkAttendance(selectedStatus)}
                         disabled={loading}
@@ -361,23 +370,22 @@ export default function AttendanceButton({
                                 : 'bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white'
                             }
                         `}
-                        aria-label={`Mark attendance as ${selectedStatus.toLowerCase()}`}
+                        aria-label="Mark attendance with GPS location"
                         aria-busy={loading}
                     >
                         {loading ? (
                             <>
                                 <FiLoader className="w-4 h-4 animate-spin" />
-                                Marking...
+                                Verifying...
                             </>
                         ) : (
                             <>
-                                <StatusIcon className="w-4 h-4" />
-                                {formatStatus(selectedStatus)}
+                                <FiMapPin className="w-4 h-4" />
+                                Mark with GPS
                             </>
                         )}
                     </button>
 
-                    {/* Status dropdown toggle */}
                     <button
                         onClick={() => setShowStatusMenu(!showStatusMenu)}
                         disabled={loading}
@@ -394,7 +402,7 @@ export default function AttendanceButton({
                     </button>
                 </div>
 
-                {/* ── Status Dropdown Menu ────────────── */}
+                {/* ── Status Dropdown Menu (visual only – status not sent to backend) ── */}
                 {showStatusMenu && (
                     <div
                         ref={menuRef}
@@ -433,13 +441,21 @@ export default function AttendanceButton({
 
             {/* ── Status Indicators ──────────────────── */}
             <div className="flex flex-col items-end gap-0.5">
+                {/* Manual review required */}
+                {manualReview && (
+                    <span className="text-xs text-orange-600 dark:text-orange-400 flex items-center gap-1 font-medium">
+                        <FiAlertTriangle className="w-3 h-3" />
+                        Manual review required – poor GPS accuracy
+                    </span>
+                )}
+
                 {/* Location verified */}
                 {verified === true && (
                     <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                         <FiMapPin className="w-3 h-3" />
                         Location verified
-                        {distanceToVenue && ` • ${distanceToVenue}m`}
-                        {walkingTime && ` • ${walkingTime}min walk`}
+                        {distanceToVenue != null && ` • ${distanceToVenue}m`}
+                        {walkingTime != null && ` • ${walkingTime}min walk`}
                     </span>
                 )}
 
@@ -456,7 +472,7 @@ export default function AttendanceButton({
                 {geoError && !loading && (
                     <span className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
                         <FiAlertTriangle className="w-3 h-3" />
-                        GPS unavailable • basic check-in
+                        GPS unavailable • basic check‑in
                     </span>
                 )}
 

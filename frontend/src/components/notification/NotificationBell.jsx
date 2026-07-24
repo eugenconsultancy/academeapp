@@ -1,4 +1,5 @@
 // frontend/src/components/notification/NotificationBell.jsx
+
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useEffect } from 'react';
@@ -12,8 +13,18 @@ export default function NotificationBell() {
     useEffect(() => {
         const handleWebSocketMessage = (event) => {
             const data = event.detail;
-            // If a new notification arrives, refresh the unread count
-            if (data && (data.type === 'new_notification' || data.type === 'system' || data.id)) {
+
+            // Define the types that should trigger an unread count update
+            const notificationTypes = [
+                'new_notification',
+                'system',
+                'attendance_verified',
+                'attendance_manual_review',
+                'attendance_rejected',
+            ];
+
+            // Invalidate if the data type is in our list or if it's a general notification object (has id)
+            if (data && (notificationTypes.includes(data.type) || data.id)) {
                 queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
             }
         };
@@ -28,7 +39,6 @@ export default function NotificationBell() {
             const res = await apiClient.get('/notifications/unread-count/');
             return res.data.unread_count;
         },
-        // No polling - rely on WebSocket for real-time updates
         staleTime: Infinity,
         refetchOnWindowFocus: true,
     });

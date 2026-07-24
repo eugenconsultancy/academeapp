@@ -9,24 +9,9 @@
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
 
 /* ============================================
-   LOCAL FONT: OpenDyslexic
+   LOCAL FONT: OpenDyslexic is defined in fonts.css
+   Make sure the actual .woff2 files are in /public/fonts/
    ============================================ */
-@font-face {
-  font-family: 'OpenDyslexic';
-  src: url('/fonts/OpenDyslexic-Regular.woff2') format('woff2'),
-       url('/fonts/OpenDyslexic-Regular.woff') format('woff');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'OpenDyslexic';
-  src: url('/fonts/OpenDyslexic-Bold.woff2') format('woff2'),
-       url('/fonts/OpenDyslexic-Bold.woff') format('woff');
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
 
 /* ============================================
    TAILWIND DIRECTIVES
@@ -355,7 +340,6 @@
   .badge-pink     { background: rgba(236,72,153,0.12);  color: #db2777; }
   .badge-violet   { background: rgba(139,92,246,0.12);  color: #7c3aed; }
 
-  /* additional utilities (blog, prose, etc.) */
   .text-gradient { background: var(--grad-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
   .text-gradient-orange { background: var(--grad-orange); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
   .text-gradient-warm { background: var(--grad-warm); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
@@ -402,6 +386,30 @@
 }
 
 /* ══════════════════════════════════════
+   FAB GLOBAL POSITIONING & RESPONSIVENESS
+   ══════════════════════════════════════ */
+#fab-container {
+  position: fixed;
+  z-index: 9999;
+  bottom: calc(env(safe-area-inset-bottom, 1rem) + 80px);
+  right: 1rem;
+  transition: transform 0.3s var(--ease-spring), opacity 0.2s ease;
+}
+
+/* Hide FAB when keyboard is open */
+body.keyboard-open #fab-container {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+/* Mobile sidebar awareness – lower FAB z-index and reduce opacity */
+.mobile-sidebar-open #fab-container {
+  z-index: 40;
+  opacity: 0.5;
+}
+
+/* ══════════════════════════════════════
    MOBILE / KEYBOARD / OVERFLOW FIXES
    ══════════════════════════════════════ */
 body {
@@ -424,7 +432,7 @@ p, h1, h2, h3, h4, h5, h6, span, a, li, .text-truncate {
   overflow-wrap: break-word;
 }
 
-/* ── Hide fixed elements when keyboard opens ── */
+/* Hide fixed elements when keyboard opens */
 body.keyboard-open .bn-nav,
 body.keyboard-open .watermark-overlay,
 body.keyboard-open .fixed-bottom {
@@ -434,8 +442,7 @@ body.keyboard-open .fixed-bottom {
   transition: opacity 0.1s ease-out, visibility 0.1s ease-out;
 }
 
-/* ── YOUR SNIPPET STARTS HERE ── */
-/* FIX: Bottom navigation overlap on mobile */
+/* ── Bottom navigation overlap on mobile ── */
 @media (max-width: 767px) {
   .app-main {
     padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
@@ -446,7 +453,6 @@ body.keyboard-open .fixed-bottom {
 body.keyboard-open .app-main {
   padding-bottom: 0 !important;
 }
-/* ── YOUR SNIPPET ENDS HERE ── */
 
 /* ── Input styles – prevent zoom & ensure readability ── */
 input, input[type="text"], input[type="email"], input[type="password"],

@@ -12,7 +12,7 @@ const accentGradients = {
   pink: 'linear-gradient(135deg, #ec4899 0%, #f472b6 50%, #f9a8d4 100%)',
   cyan: 'linear-gradient(135deg, #06b6d4 0%, #22d3ee 50%, #67e8f9 100%)',
   orange: 'linear-gradient(135deg, #ea580c 0%, #f97316 50%, #fb923c 100%)',
-  true: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a78bfa 100%)',
+  true: 'linear-gradient(135deg, #3d40e6 0%, #784cdd 50%, #8a68f0 100%)',
 };
 
 const padMap = { none: 0, xs: 8, sm: 12, md: 16, lg: 20, xl: 24 };

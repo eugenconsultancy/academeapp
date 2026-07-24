@@ -1,15 +1,15 @@
-import { classesApi } from '../api/classesApi';
+// frontend/src/services/attendanceService.js
 import GeoService from '../api/geoService';
 import { offlineStorage } from '../utils/storage';
-import { isWithinAttendanceWindow, isSchoolDay, formatISODate } from '../utils/time';
+import { isWithinAttendanceWindow, formatISODate } from '../utils/time';
 
 /**
- * Attendance Service - Handles attendance marking with location verification.
- * All features now use the 'classes' backend exclusively.
+ * Attendance Service – location‑verified attendance via GeoService.
+ * All GPS‑based marking now goes through /geo/check‑in/ (backend source of truth).
  */
 export const attendanceService = {
     // ═══════════════════════════════════════════════════════════════
-    // STATUS CONSTANTS (for UI only; backend does not store status)
+    // STATUS CONSTANTS (UI only – backend does not store status)
     // ═══════════════════════════════════════════════════════════════
     STATUS_OPTIONS: [
         { value: 'PRESENT', label: 'Present', color: 'emerald' },
@@ -19,14 +19,20 @@ export const attendanceService = {
     ],
 
     // ═══════════════════════════════════════════════════════════════
-    // SINGLE ATTENDANCE MARKING
+    // SINGLE ATTENDANCE MARKING (via GeoService)
     // ═══════════════════════════════════════════════════════════════
     async markAttendance(entryId, options = {}) {
-        const { requireGps = false } = options;  // no status field sent
+        const { requireGps = false } = options;
+
+        // 1. Fail fast if GPS is mandatory and we are offline
+        if (requireGps && !navigator.onLine) {
+            throw new Error('GPS attendance requires an internet connection.');
+        }
 
         try {
             let latitude = null, longitude = null, accuracy = null;
 
+            // Attempt to get current position
             try {
                 const position = await this.getCurrentPosition({ timeout: 8000 });
                 latitude = position.latitude;
@@ -39,26 +45,48 @@ export const attendanceService = {
                 console.warn('GPS unavailable, marking without location:', gpsError.message);
             }
 
-            const result = await classesApi.markAttendance(
-                entryId,
-                new Date().toISOString(),
+            // 2. Use the geo‑verified check‑in endpoint
+            const response = await GeoService.submitCheckIn({
+                timetable_entry_id: entryId,
                 latitude,
-                longitude
-            );
-            return result;
-        } catch (error) {
-            console.warn('Failed to mark attendance online, saving offline:', error);
-            await this.queueOfflineAttendance(entryId);
+                longitude,
+                accuracy,
+                device_info: {
+                    userAgent: navigator.userAgent,
+                    platform: navigator.platform,
+                },
+            });
+
+            // Pass through all relevant fields
             return {
-                offline: true,
-                message: 'Attendance saved offline - will sync when online',
-                entryId,
+                verified: response.verified,
+                distance_meters: response.distance_meters,
+                distance_display: response.distance_display,
+                check_in_id: response.check_in_id,
+                message: response.message,
+                requires_manual_review: response.requires_manual_review || false,
             };
+        } catch (error) {
+            // If online but request failed (server error, etc.), try offline fallback (only if GPS not required)
+            if (navigator.onLine && !requireGps) {
+                console.warn('Online mark failed, saving offline:', error);
+                await this.queueOfflineAttendance(entryId, latitude, longitude, accuracy);
+                return {
+                    offline: true,
+                    message: 'Attendance saved offline – will sync when online',
+                    entryId,
+                };
+            }
+
+            // Re‑throw for the caller to handle (with detail)
+            const detail =
+                error.response?.data?.detail || error.message || 'Failed to verify attendance.';
+            throw new Error(detail);
         }
     },
 
     // ═══════════════════════════════════════════════════════════════
-    // BULK ATTENDANCE (frontend loops over single marks)
+    // BULK ATTENDANCE (each student marked individually via GeoService)
     // ═══════════════════════════════════════════════════════════════
     async markBulkAttendance(classId, attendanceData, date = null) {
         if (!attendanceData || !attendanceData.length) {
@@ -73,18 +101,16 @@ export const attendanceService = {
 
         const results = [];
         const errors = [];
+
         const promises = attendanceData.map(async (entry) => {
             try {
-                // Each student’s attendance is marked individually.
-                // We assume the caller has the timetableEntryId for each student.
-                // If you need to mark by student_id, you must first obtain the student’s timetable entry.
-                // For now we just pass a dummy timetableEntryId – adapt as needed.
-                // This function should be called with proper entry IDs.
-                const res = await classesApi.markAttendance(entry.timetableEntryId, new Date().toISOString());
+                const res = await this.markAttendance(entry.timetableEntryId, {
+                    requireGps: false,  // bulk marks don't usually require GPS per student
+                });
                 results.push({ ...entry, success: true, ...res });
             } catch (err) {
                 errors.push({ ...entry, error: err.message });
-                // Save offline for failed ones
+                // Queue offline for failed ones
                 await this.queueOfflineAttendance(entry.timetableEntryId);
             }
         });
@@ -104,13 +130,13 @@ export const attendanceService = {
     },
 
     // ═══════════════════════════════════════════════════════════════
-    // QUICK ACTIONS
+    // QUICK ACTIONS (unchanged)
     // ═══════════════════════════════════════════════════════════════
     generateBulkAttendanceData(students, status = 'PRESENT') {
         if (!students || !students.length) return [];
         return students.map(student => ({
             student_id: student.id || student.student_id,
-            timetableEntryId: student.timetableEntryId,  // must be provided by caller
+            timetableEntryId: student.timetableEntryId,
             status,
             remarks: status === 'ABSENT' ? 'Marked absent' : '',
         }));
@@ -126,10 +152,11 @@ export const attendanceService = {
     },
 
     // ═══════════════════════════════════════════════════════════════
-    // ATTENDANCE QUERIES
+    // ATTENDANCE QUERIES (via classesApi – kept for admin/non‑GPS data)
     // ═══════════════════════════════════════════════════════════════
     async getAttendanceRecords(filters = {}) {
         try {
+            const { classesApi } = await import('../api/classesApi');
             const params = {};
             if (filters.class_id) params.class_id = filters.class_id;
             if (filters.student_id) params.student = filters.student_id;
@@ -146,8 +173,8 @@ export const attendanceService = {
 
     async getClassAttendanceSummary(classId, termId) {
         try {
+            const { classesApi } = await import('../api/classesApi');
             const response = await classesApi.getClassAttendanceSummary(classId, termId);
-            // Cache for offline
             await offlineStorage.cacheApiResponse(
                 `/classes/attendance/class-summary/?class_id=${classId}&term_id=${termId}`,
                 response.data,
@@ -155,7 +182,6 @@ export const attendanceService = {
             );
             return response.data;
         } catch (error) {
-            console.error('Failed to get class attendance summary:', error);
             const cached = await offlineStorage.getCachedResponse(
                 `/classes/attendance/class-summary/?class_id=${classId}&term_id=${termId}`
             );
@@ -166,6 +192,7 @@ export const attendanceService = {
 
     async getStudentAttendance(studentId, filters = {}) {
         try {
+            const { classesApi } = await import('../api/classesApi');
             const params = { student: studentId, ...filters };
             const response = await classesApi.getAttendanceRecords(params);
             return response.data;
@@ -177,6 +204,7 @@ export const attendanceService = {
 
     async getWeeklySummary(weekStart = null) {
         try {
+            const { classesApi } = await import('../api/classesApi');
             return await classesApi.getWeeklySummary();
         } catch (error) {
             console.error('Failed to get weekly summary:', error);
@@ -185,32 +213,25 @@ export const attendanceService = {
     },
 
     // ═══════════════════════════════════════════════════════════════
-    // CHECK-IN OPERATIONS (derived from attendance records)
+    // CHECK‑IN OPERATIONS (now via GeoService – location‑aware)
     // ═══════════════════════════════════════════════════════════════
     async getCheckInHistory(limit = 20) {
         try {
-            const response = await classesApi.getCheckInHistory(limit);
-            // Map attendance records to check-in format
-            const records = response.data?.results || response.data || [];
-            return records.map(r => ({
-                id: r.id,
-                unit_name: r.timetable_entry?.unit_name || 'Unknown',
-                date: r.date,
-                marked_at: r.marked_at,
-                sync_method: r.sync_method,
-            }));
+            const history = await GeoService.getCheckInHistory(limit);
+            return history;  // already in correct format
         } catch (error) {
-            console.error('Failed to get check-in history:', error);
+            console.error('Failed to get check‑in history:', error);
             throw error;
         }
     },
 
     async getCheckInSummary() {
         try {
-            const response = await classesApi.getCheckInSummary();
-            return response.data;
+            const summary = await GeoService.getCheckInSummary();
+            // summary now includes rejected_checkins and average_gps_accuracy_meters
+            return summary;
         } catch (error) {
-            console.error('Failed to get check-in summary:', error);
+            console.error('Failed to get check‑in summary:', error);
             throw error;
         }
     },
@@ -226,7 +247,7 @@ export const attendanceService = {
             }
             navigator.geolocation.getCurrentPosition(
                 (position) => {
-                    const result = {
+                    resolve({
                         latitude: position.coords.latitude,
                         longitude: position.coords.longitude,
                         accuracy: position.coords.accuracy,
@@ -235,9 +256,7 @@ export const attendanceService = {
                         heading: position.coords.heading,
                         speed: position.coords.speed,
                         timestamp: position.timestamp,
-                        // timestamp: position.timestamp,
-                    };
-                    resolve(result);
+                    });
                 },
                 (error) => reject(new Error(this.getGeolocationErrorMessage(error))),
                 {
@@ -282,9 +301,9 @@ export const attendanceService = {
     },
 
     // ═══════════════════════════════════════════════════════════════
-    // OFFLINE SUPPORT (using classes endpoint)
+    // OFFLINE SUPPORT (now queues to /geo/check‑in/)
     // ═══════════════════════════════════════════════════════════════
-    async queueOfflineAttendance(entryId) {
+    async queueOfflineAttendance(entryId, latitude = null, longitude = null, accuracy = null) {
         try {
             await offlineStorage.saveAttendance({
                 entryId,
@@ -293,11 +312,19 @@ export const attendanceService = {
             });
             await offlineStorage.addToSyncQueue({
                 type: 'ATTENDANCE_SINGLE',
-                endpoint: '/classes/mark-attendance/',
+                endpoint: '/geo/check-in/',           // ✅ updated endpoint
                 method: 'POST',
                 data: {
                     timetable_entry_id: entryId,
+                    latitude,
+                    longitude,
+                    accuracy,
                     attempted_at: new Date().toISOString(),
+                    device_info: {
+                        userAgent: navigator.userAgent,
+                        platform: navigator.platform,
+                        timestamp: new Date().toISOString(),
+                    },
                 },
             });
         } catch (error) {
@@ -322,7 +349,7 @@ export const attendanceService = {
 
     async syncOfflineAttendance() {
         let synced = 0, failed = 0;
-        // Sync from IndexedDB
+        // Sync from IndexedDB (will use the new endpoint)
         try {
             const dbResult = await offlineStorage.processSyncQueue();
             synced += dbResult.synced || 0;
@@ -330,13 +357,16 @@ export const attendanceService = {
         } catch (error) {
             console.error('IndexedDB sync failed:', error);
         }
-        // Sync from localStorage fallback
+        // Sync from localStorage fallback (also updated endpoint)
         try {
             const queue = JSON.parse(localStorage.getItem('attendance_queue') || '[]');
             const unsynced = queue.filter(item => !item.synced);
             for (const item of unsynced) {
                 try {
-                    await classesApi.markAttendance(item.entryId, item.timestamp);
+                    await GeoService.submitCheckIn({
+                        timetable_entry_id: item.entryId,
+                        // no location available, backend will handle
+                    });
                     item.synced = true;
                     synced++;
                 } catch (err) {
@@ -376,7 +406,7 @@ export const attendanceService = {
         records.forEach(record => {
             const date = record.date || formatISODate(record.marked_at);
             if (!grouped[date]) grouped[date] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
-            grouped[date].present++; // every record is a presence
+            grouped[date].present++;
             grouped[date].total++;
         });
         const dates = Object.keys(grouped).sort();
@@ -409,6 +439,7 @@ export const attendanceService = {
     },
 
     checkAttendanceWindow(startTime, endTime) {
+        const { isWithinAttendanceWindow } = require('../utils/time'); // dynamic import not needed, it's already imported
         const isOpen = isWithinAttendanceWindow(startTime, endTime);
         const remainingMinutes = getRemainingTime(endTime);
         return {

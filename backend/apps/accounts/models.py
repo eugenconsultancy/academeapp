@@ -113,7 +113,7 @@ class User(AbstractBaseUser, PermissionsMixin, BaseModel):
 
 
 # ============================================
-# ROLE LIFECYCLE: StudentRole Model
+# ROLE LIFECYCLE: StudentRole Model we used
 # ============================================
 class StudentRole(BaseModel):
     user = models.ForeignKey(

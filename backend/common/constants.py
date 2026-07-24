@@ -151,7 +151,7 @@ class SplitStatus(Enum):
 
 
 # ============================================
-# SCHOLARSHIP REVIEW STATUS
+# SCHOLARSHIP REVIEW STATUS iupon docs upload for review
 # ============================================
 class ScholarshipReviewStatus(Enum):
     PENDING = "pending"

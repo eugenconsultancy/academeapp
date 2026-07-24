@@ -9,6 +9,9 @@ class Notification(BaseModel):
         ('announcement', 'Announcement'),
         ('announcement_urgent', 'Urgent Announcement'),
         ('attendance_reminder', 'Attendance Reminder'),
+        ('attendance_verified', 'Attendance Verified'),
+        ('attendance_manual_review', 'Attendance Review Required'),
+        ('attendance_rejected', 'Attendance Rejected'),
         ('class_reminder', 'Class Reminder'),
         ('class_cancelled', 'Class Cancelled'),
         ('class_rescheduled', 'Class Rescheduled'),
@@ -34,6 +37,7 @@ class Notification(BaseModel):
 
     SOURCE_TYPES = [
         ('announcement', 'Announcement'),
+        ('attendance', 'Attendance'),
         ('found_item', 'Found Item'),
         ('opportunity', 'Opportunity'),
         ('support', 'Support Ticket'),
@@ -75,7 +79,6 @@ class NotificationPreference(BaseModel):
     user = models.OneToOneField(
         'accounts.User', on_delete=models.CASCADE, related_name='notification_preferences'
     )
-    # Push / in-app toggle per category – True means enabled
     push_announcement = models.BooleanField(default=True)
     push_class = models.BooleanField(default=True)
     push_found_item = models.BooleanField(default=True)
@@ -86,7 +89,6 @@ class NotificationPreference(BaseModel):
     push_chat = models.BooleanField(default=True)
     push_mention = models.BooleanField(default=True)
 
-    # Convenience method to check preference
     def is_enabled(self, notification_type):
         field_map = {
             'announcement': 'push_announcement',
@@ -96,6 +98,9 @@ class NotificationPreference(BaseModel):
             'class_cancelled': 'push_class',
             'class_rescheduled': 'push_class',
             'assignment_graded': 'push_class',
+            'attendance_verified': 'push_class',
+            'attendance_manual_review': 'push_class',
+            'attendance_rejected': 'push_class',
             'found_item': 'push_found_item',
             'item_found': 'push_found_item',
             'claim_update': 'push_found_item',

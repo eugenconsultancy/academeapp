@@ -1,8 +1,8 @@
 // frontend/src/utils/time.js
 /**
  * Time & date utilities powered by date-fns for safety and consistency.
+ * All attendance‑window calculations are now UTC‑safe.
  */
-
 import {
     format,
     formatDistanceToNow,
@@ -69,13 +69,31 @@ export function getSyncedDate() {
 
 // ── Safe Date Parsing ────────────────────────────────────────────────────
 
-/**
- * Converts any input to a valid Date, or null if invalid.
- */
 function toDate(input) {
     if (!input) return null;
     const d = typeof input === 'string' ? parseISO(input) : new Date(input);
     return isValid(d) ? d : null;
+}
+
+// ── NEW: Convert HH:mm class time to UTC Date ──────────────────────────
+/**
+ * Converts a time string (e.g. "09:00") into a UTC Date object for the given day.
+ * Always uses UTC so that comparisons are independent of local timezone.
+ */
+export function classTimeToUTCDate(timeStr, referenceDate = getSyncedDate()) {
+    if (!timeStr || !/^\d{2}:\d{2}$/.test(timeStr)) return null;
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    // Use referenceDate's year/month/day, but force UTC time
+    const d = new Date(Date.UTC(
+        referenceDate.getUTCFullYear(),
+        referenceDate.getUTCMonth(),
+        referenceDate.getUTCDate(),
+        hours,
+        minutes,
+        0,
+        0
+    ));
+    return d;
 }
 
 // ── Formatting ───────────────────────────────────────────────────────────
@@ -86,7 +104,7 @@ export function formatTime(time) {
 }
 
 export function formatTime24(time) {
-    return formatTime(time);   // identical
+    return formatTime(time);
 }
 
 export function formatDate(date) {
@@ -194,7 +212,7 @@ export function getAcademicYear(date = getSyncedDate()) {
 
 export function getCurrentTerm(date = getSyncedDate()) {
     const d = toDate(date) || getSyncedDate();
-    const month = d.getMonth() + 1;
+    const month = d.getMonth() + 1; // local month – acceptable for academic term
     if (month >= 1 && month <= 3) return 1;
     if (month >= 5 && month <= 7) return 2;
     if (month >= 9 && month <= 11) return 3;
@@ -214,7 +232,7 @@ export function isSchoolDay(date = getSyncedDate()) {
     const d = toDate(date) || getSyncedDate();
     const day = d.getDay();
     if (day === 0 || day === 6) return false;
-    const dateStr = format(d, 'MM-dd');   // ensures two-digit month/day
+    const dateStr = format(d, 'MM-dd');
     if (SCHOOL_HOLIDAYS_KE.includes(dateStr)) return false;
     return isSchoolTerm(d);
 }
@@ -262,32 +280,36 @@ export function formatDurationLong(minutes) {
     return parts.join(' ') || '0 minutes';
 }
 
-// ── Attendance Window ───────────────────────────────────────────────────
+// ── Attendance Window (now UTC‑safe) ─────────────────────────────────────
 
+/**
+ * Check if the current UTC time falls within the given class time window.
+ * Both `startTime` and `endTime` are strings like "08:00" (assumed UTC).
+ * A 10‑minute buffer is allowed on each side.
+ */
 export function isWithinAttendanceWindow(startTime, endTime) {
     if (!startTime || !endTime) return false;
     const now = getSyncedDate();
-    const [sh, sm] = startTime.split(':').map(Number);
-    const [eh, em] = endTime.split(':').map(Number);
-
-    const start = new Date(now);
-    start.setHours(sh, sm - 10, 0, 0);
-    const end = new Date(now);
-    end.setHours(eh, em + 10, 0, 0);
-
+    const start = classTimeToUTCDate(startTime, now);
+    const end = classTimeToUTCDate(endTime, now);
+    if (!start || !end) return false;
+    // Add buffer
+    start.setUTCMinutes(start.getUTCMinutes() - 10);
+    end.setUTCMinutes(end.getUTCMinutes() + 10);
     return now >= start && now <= end;
 }
 
 export function getRemainingTime(endTime) {
     if (!endTime) return 0;
     const now = getSyncedDate();
-    const [eh, em] = endTime.split(':').map(Number);
-    const end = new Date(now);
-    end.setHours(eh, em + 10, 0, 0);
+    const end = classTimeToUTCDate(endTime, now);
+    if (!end) return 0;
+    end.setUTCMinutes(end.getUTCMinutes() + 10);
     return Math.max(0, differenceInMinutes(end, now));
 }
 
 // ── Time Slot Generation ────────────────────────────────────────────────
+// (unchanged, but now relies on SyncedDate which may be offset)
 
 export function generateTimeSlots(startTime = '08:00', endTime = '17:00', intervalMinutes = 40) {
     if (!isValidTime(startTime) || !isValidTime(endTime)) return [];

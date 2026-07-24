@@ -1,5 +1,6 @@
 // frontend/src/stores/useUserStore.js
 import { create } from 'zustand';
+import apiClient from '@/api/client';  // ✅ static import – no more mixed import warning
 import {
     storeTokens,
     clearAuthData,
@@ -7,7 +8,7 @@ import {
 } from '@/api/client';
 
 // ─── Constants for localStorage keys (must match client.js) ─────────────────
-const USER_KEY = 'user';   // only used for persisting user profile (non‑auth)
+const USER_KEY = 'user';
 
 const persistUser = (user) => {
     if (user === null || user === undefined) {
@@ -29,7 +30,7 @@ const loadUser = () => {
 const useUserStore = create((set, get) => ({
     // ── State ──────────────────────────────────────────────────────────────────
     user: loadUser(),
-    token: getStoredTokens().access,   // initial token from client.js utilities
+    token: getStoredTokens().access,
 
     // ── Actions ────────────────────────────────────────────────────────────────
     setUser: (user) => {
@@ -38,45 +39,33 @@ const useUserStore = create((set, get) => ({
     },
 
     setToken: (token) => {
-        // Only update the in‑memory state; do NOT touch localStorage.
-        // token storage is handled by client.js (storeTokens / clearAuthData)
         set({ token });
     },
 
     login: async (credentials) => {
-        const { default: apiClient } = await import('@/api/client');
         const res = await apiClient.post('/accounts/login/', credentials);
         const { access, refresh, user } = res.data;
 
-        // Use the single authority for tokens
         storeTokens(access, refresh);
-
-        // Update Zustand state
         set({ token: access, user });
         persistUser(user);
         return user;
     },
 
     refreshToken: async () => {
-        const { default: apiClient } = await import('@/api/client');
         const { refresh } = getStoredTokens();
         if (!refresh) throw new Error('No refresh token available');
 
         const res = await apiClient.post('/accounts/refresh-token/', { refresh });
         const { access, refresh: newRefresh } = res.data;
 
-        // Store new tokens via client.js (will also update localStorage)
         storeTokens(access, newRefresh || refresh);
-
-        // Update in‑memory token
         set({ token: access });
         return access;
     },
 
     logout: () => {
-        // Clear all auth data through the centralized function
         clearAuthData();
-        // Remove user profile from localStorage
         localStorage.removeItem(USER_KEY);
         set({ user: null, token: null });
     },
@@ -91,10 +80,7 @@ const useUserStore = create((set, get) => ({
     },
 }));
 
-// ══════════════════════════════════════════════════════════════════════════════
-// Keep Zustand's token state in sync with client.js token refreshes
-// (e.g., when the Axios interceptor refreshes the token automatically)
-// ══════════════════════════════════════════════════════════════════════════════
+// Keep Zustand token in sync with Axios interceptor refreshes
 if (typeof window !== 'undefined') {
     window.addEventListener('token_refreshed', (event) => {
         const newToken = event.detail?.token;

@@ -1,15 +1,14 @@
-// C:\Users\GATARA-BJTU\academe\frontend\src\pages\ClassesPage.jsx
-
-import { useState, useEffect, useRef } from 'react';
+// frontend/src/pages/ClassesPage.jsx
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { classesApi } from '../api/classesApi';
+import GeoService from '../api/geoService';
 import { useAuth } from '../contexts/AuthContext';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { useAttendance } from '../hooks/useAttendance';
 import Card from '../components/ui/Card';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
-import TimetableManager from '../components/classes/TimetableManager';
 import toast from 'react-hot-toast';
 import apiClient from '../api/client';
 import {
@@ -18,16 +17,24 @@ import {
     FiTarget, FiWifi, FiWifiOff, FiExternalLink, FiBarChart2,
     FiX, FiAlertCircle, FiLoader, FiChevronRight, FiActivity,
     FiEye, FiZap, FiRefreshCw, FiChevronDown, FiChevronUp,
-    FiInfo, FiList, FiPlus,
+    FiInfo, FiList, FiPlus, FiAlertTriangle,
 } from 'react-icons/fi';
 
+// Lazy‑load the heavy TimetableManager component
+const TimetableManager = React.lazy(() => import('../components/classes/TimetableManager'));
+
 /* ───────────────────────────────────────────
-   CARD COMPONENT
+   CARD COMPONENT (unchanged)
 ────────────────────────────────────────── */
 function ClassCard({ classItem, isOnline, location, onViewDetail, onViewAttendance }) {
     const [loading, setLoading] = useState(false);
     const mountedRef = useRef(true);
-    const { isMarked, syncPending, markAttendance } = useAttendance(classItem.id);
+    const {
+        isMarked,
+        syncPending,
+        markAttendance,
+        requiresManualReview,
+    } = useAttendance(classItem.id);
 
     useEffect(() => {
         mountedRef.current = true;
@@ -41,7 +48,8 @@ function ClassCard({ classItem, isOnline, location, onViewDetail, onViewAttendan
             await markAttendance('PRESENT');
             if (mountedRef.current) toast.success('Attendance marked!', { icon: '✅' });
         } catch (err) {
-            if (mountedRef.current) toast.error('Failed to mark attendance', { icon: '❌' });
+            const detail = err.response?.data?.detail || err.message || 'Failed to mark attendance';
+            if (mountedRef.current) toast.error(detail, { icon: '❌' });
         } finally {
             if (mountedRef.current) setLoading(false);
         }
@@ -58,8 +66,9 @@ function ClassCard({ classItem, isOnline, location, onViewDetail, onViewAttendan
         try {
             await markAttendance('PRESENT');
             if (mountedRef.current) toast.success('Location-verified check-in! 📍', { icon: '✅' });
-        } catch {
-            if (mountedRef.current) toast.error('Failed to mark attendance');
+        } catch (err) {
+            const detail = err.response?.data?.detail || err.message || 'Failed to mark attendance';
+            if (mountedRef.current) toast.error(detail, { icon: '❌' });
         } finally {
             if (mountedRef.current) setLoading(false);
         }
@@ -72,110 +81,60 @@ function ClassCard({ classItem, isOnline, location, onViewDetail, onViewAttendan
     const pct = hasProgress ? Math.min(100, (classItem.remaining_time / 30) * 100) : 0;
 
     return (
-        <div
-            className={`cp-class-card ${stateClass}`}
-            onClick={() => onViewDetail(classItem)}
-            style={{ cursor: 'pointer' }}
-        >
+        <div className={`cp-class-card ${stateClass}`} onClick={() => onViewDetail(classItem)} style={{ cursor: 'pointer' }}>
             <div className="cp-card-inner">
-                {/* Time badge */}
                 <div className="cp-time-badge">
-                    <div className="cp-time-start">
-                        {classItem.start_time?.slice(0, 5) || '—'}
-                    </div>
-                    <div className="cp-time-end">
-                        to {classItem.end_time?.slice(0, 5) || '—'}
-                    </div>
+                    <div className="cp-time-start">{classItem.start_time?.slice(0, 5) || '—'}</div>
+                    <div className="cp-time-end">to {classItem.end_time?.slice(0, 5) || '—'}</div>
                 </div>
 
-                {/* Body */}
                 <div className="cp-card-body">
                     <div className="cp-card-top">
                         <h3 className="cp-card-unit">{classItem.unit_name}</h3>
-                        {classItem.lecturer && (
-                            <span className="cp-lecturer-badge">
-                                <FiUser size={11} /> {classItem.lecturer}
-                            </span>
-                        )}
+                        {classItem.lecturer && <span className="cp-lecturer-badge"><FiUser size={11} /> {classItem.lecturer}</span>}
                     </div>
 
                     <div className="cp-card-meta">
-                        <span>
-                            <FiMapPin size={12} />
-                            {classItem.venue || 'Venue TBA'}
-                        </span>
-                        <span>
-                            <FiClock size={12} />
-                            {classItem.start_time?.slice(0, 5)} – {classItem.end_time?.slice(0, 5)}
-                        </span>
+                        <span><FiMapPin size={12} />{classItem.venue || 'Venue TBA'}</span>
+                        <span><FiClock size={12} />{classItem.start_time?.slice(0, 5)} – {classItem.end_time?.slice(0, 5)}</span>
                     </div>
 
                     {hasProgress && (
                         <div className="cp-progress-wrap">
                             <div className="cp-progress-labels">
-                                <span className="cp-progress-label">
-                                    <FiClock size={10} style={{ display: 'inline', marginRight: 3 }} />
-                                    {classItem.remaining_time} min left
-                                </span>
-                                <span className="cp-progress-label" style={{ opacity: 0.6 }}>
-                                    {Math.round(pct)}%
-                                </span>
+                                <span className="cp-progress-label"><FiClock size={10} style={{ display: 'inline', marginRight: 3 }} />{classItem.remaining_time} min left</span>
+                                <span className="cp-progress-label" style={{ opacity: 0.6 }}>{Math.round(pct)}%</span>
                             </div>
-                            <div className="cp-progress-track">
-                                <div className="cp-progress-fill" style={{ width: `${pct}%` }} />
-                            </div>
+                            <div className="cp-progress-track"><div className="cp-progress-fill" style={{ width: `${pct}%` }} /></div>
                         </div>
                     )}
 
                     <div className="cp-card-actions" onClick={(e) => e.stopPropagation()}>
                         {isMarked ? (
-                            <span className="cp-status-badge cp-status-marked">
-                                <FiCheckCircle size={14} /> Attended
-                            </span>
+                            <span className="cp-status-badge cp-status-marked"><FiCheckCircle size={14} /> Attended</span>
                         ) : canMark ? (
-                            <button
-                                className={`cp-checkin-btn${location ? ' with-gps' : ''}`}
-                                onClick={location ? handleMarkWithLocation : handleMark}
-                                disabled={loading}
-                            >
-                                {loading ? (
-                                    <>
-                                        <FiLoader size={13} className="cp-spin" /> Processing…
-                                    </>
-                                ) : location ? (
-                                    <>
-                                        <FiNavigation size={13} /> GPS Check-In
-                                    </>
-                                ) : (
-                                    <>
-                                        <FiCheckCircle size={13} /> Check In
-                                    </>
-                                )}
+                            <button className={`cp-checkin-btn${location ? ' with-gps' : ''}`} onClick={location ? handleMarkWithLocation : handleMark} disabled={loading}>
+                                {loading ? <><FiLoader size={13} className="cp-spin" /> Processing…</> : location ? <><FiNavigation size={13} /> GPS Check-In</> : <><FiCheckCircle size={13} /> Check In</>}
                             </button>
                         ) : (
-                            <span className="cp-status-badge cp-status-closed">
-                                {isPast ? 'Window Closed' : 'Not Yet Open'}
-                            </span>
+                            <span className="cp-status-badge cp-status-closed">{isPast ? 'Window Closed' : 'Not Yet Open'}</span>
                         )}
 
-                        {!isOnline && canMark && (
-                            <span className="cp-offline-note">
-                                <FiWifiOff size={12} /> Offline — will sync
-                            </span>
-                        )}
-                        {syncPending && (
-                            <span className="cp-sync-pill">
-                                <FiLoader size={10} className="cp-spin" /> Syncing
-                            </span>
-                        )}
+                        {!isOnline && canMark && <span className="cp-offline-note"><FiWifiOff size={12} /> Offline — will sync</span>}
+                        {syncPending && <span className="cp-sync-pill"><FiLoader size={10} className="cp-spin" /> Syncing</span>}
                     </div>
 
-                    {/* Attendance detail link */}
+                    {/* Manual review badge */}
+                    {requiresManualReview && (
+                        <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                            <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">
+                                <FiAlertTriangle size={11} /> Pending Verification
+                            </span>
+                        </div>
+                    )}
+
                     <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-                        <button
-                            onClick={() => onViewAttendance(classItem.id)}
-                            className="text-xs text-indigo-500 hover:underline flex items-center gap-1"
-                        >
+                        <button onClick={() => onViewAttendance(classItem.id)} className="text-xs text-indigo-500 hover:underline flex items-center gap-1">
                             <FiList size={11} /> Attendance records
                         </button>
                     </div>
@@ -193,14 +152,13 @@ export default function ClassesPage() {
     const { user } = useAuth();
     const { location, error: geoError, getLocation } = useGeolocation({ autoRequest: false });
 
-    // ── State declarations (all hooks before any conditional return) ──
     const [showManageModal, setShowManageModal] = useState(false);
     const [manualClassId, setManualClassId] = useState('');
     const [classIdToManage, setClassIdToManage] = useState(null);
     const [showNearby, setShowNearby] = useState(false);
     const [nearbyClasses, setNearbyClasses] = useState([]);
     const [nearbyLoading, setNearbyLoading] = useState(false);
-    const [viewTab, setViewTab] = useState('today'); // 'today' | 'week'
+    const [viewTab, setViewTab] = useState('today');
     const [selectedClassDetail, setSelectedClassDetail] = useState(null);
     const [showQuickAdd, setShowQuickAdd] = useState(false);
     const [quickForm, setQuickForm] = useState({
@@ -215,7 +173,6 @@ export default function ClassesPage() {
     const [classGroups, setClassGroups] = useState([]);
     const [selectedClassId, setSelectedClassId] = useState('');
 
-    // ── TODAY'S CLASSES ──
     const {
         data: todayClasses,
         isLoading: todayLoading,
@@ -230,7 +187,6 @@ export default function ClassesPage() {
         refetchInterval: 60000,
     });
 
-    // ── WEEKLY TIMETABLE ──
     const {
         data: fullTimetable,
         isLoading: timetableLoading,
@@ -244,7 +200,6 @@ export default function ClassesPage() {
         enabled: viewTab === 'week',
     });
 
-    // ── WEEKLY SUMMARY ──
     const {
         data: weeklySummary,
         isLoading: weeklyLoading,
@@ -259,7 +214,6 @@ export default function ClassesPage() {
 
     const isClassRep = user?.role === 'class_rep' || user?.role === 'admin';
 
-    // ── ONLINE / OFFLINE STATUS (real‑time reactive) ──
     const [isOnline, setIsOnline] = useState(navigator.onLine);
     useEffect(() => {
         const handleOnline = () => setIsOnline(true);
@@ -272,7 +226,6 @@ export default function ClassesPage() {
         };
     }, []);
 
-    // ── NEARBY CLASSES ──
     const handleFindNearby = async () => {
         if (!location) {
             getLocation();
@@ -281,19 +234,17 @@ export default function ClassesPage() {
         }
         setNearbyLoading(true);
         try {
-            const response = await apiClient.get('/geo/classes/nearby/', {
-                params: { lat: location.latitude, lon: location.longitude, max_distance: 500 },
-            });
-            setNearbyClasses(response.data || []);
+            const data = await GeoService.getNearbyClasses(location.latitude, location.longitude, 500);
+            setNearbyClasses(Array.isArray(data) ? data : data?.data || []);
             setShowNearby(true);
-        } catch {
-            toast.error('Failed to find nearby classes');
+        } catch (err) {
+            const detail = err.response?.data?.detail || err.message || 'Failed to find nearby classes';
+            toast.error(detail);
         } finally {
             setNearbyLoading(false);
         }
     };
 
-    // ── MANAGE TIMETABLE MODAL ──
     const handleOpenModal = async () => {
         setClassIdToManage(null);
         setManualClassId('');
@@ -328,21 +279,17 @@ export default function ClassesPage() {
         setClassIdToManage(manualClassId);
     };
 
-    // ── DIRECTIONS ──
-    const openDirections = (venue, venueLat, venueLon) => {
-        if (!location) {
-            toast('Enable location for directions', { icon: '📍' });
-            return;
+    const openNearbyDirections = async (entryId) => {
+        if (!location) return;
+        try {
+            const result = await GeoService.getClassDirections(entryId, location.latitude, location.longitude);
+            if (result?.maps_url) window.open(result.maps_url, '_blank');
+        } catch (err) {
+            const detail = err.response?.data?.detail || 'Could not load directions';
+            toast.error(detail);
         }
-        if (!venueLat || !venueLon) {
-            toast('Venue coordinates not available', { icon: '🗺️' });
-            return;
-        }
-        const url = `https://www.google.com/maps/dir/?api=1&origin=${location.latitude},${location.longitude}&destination=${venueLat},${venueLon}&travelmode=walking`;
-        window.open(url, '_blank');
     };
 
-    // ── STATISTICS DERIVATION ──
     const attendedCount = todayClasses?.filter(c => c.is_marked)?.length ?? 0;
     const totalClasses = todayClasses?.length ?? 0;
     const remaining = totalClasses - attendedCount;
@@ -355,7 +302,6 @@ export default function ClassesPage() {
         { label: 'Weekly Rate', value: `${weeklyPct}%`, color: '#5922db', icon: <FiTrendingUp size={16} style={{ color: '#8b5cf6' }} /> },
     ];
 
-    // ── Loading / Error states (placed AFTER all hooks) ──
     if (todayLoading || weeklyLoading) {
         return (
             <>
@@ -370,6 +316,7 @@ export default function ClassesPage() {
     }
 
     if (todayError || weeklyError) {
+        const errorMsg = todayError?.message || weeklyError?.message || 'An unexpected error occurred.';
         return (
             <>
                 <style>{STYLES}</style>
@@ -378,9 +325,7 @@ export default function ClassesPage() {
                         <div className="cp-empty" style={{ padding: 64 }}>
                             <FiAlertCircle size={48} style={{ margin: '0 auto 16px', opacity: 0.4, color: '#ef4444' }} />
                             <p style={{ fontWeight: 700, fontSize: '1.1rem', color: '#64748b' }}>Failed to load schedule</p>
-                            <p style={{ fontSize: '0.85rem', marginTop: 8, color: '#94a3b8' }}>
-                                {(todayError?.message || weeklyError?.message) || 'An unexpected error occurred.'}
-                            </p>
+                            <p style={{ fontSize: '0.85rem', marginTop: 8, color: '#94a3b8' }}>{errorMsg}</p>
                             <button onClick={() => refetchToday()} className="cp-btn cp-btn-primary" style={{ marginTop: 20 }}>
                                 <FiRefreshCw size={14} /> Retry
                             </button>
@@ -391,7 +336,6 @@ export default function ClassesPage() {
         );
     }
 
-    // ── Daily Breakdown for Weekly Summary ──
     const dailyBreakdown = weeklySummary?.daily_breakdown || {};
     const breakdownEntries = Object.entries(dailyBreakdown).map(([day, count]) => ({ day, count }));
 
@@ -416,18 +360,17 @@ export default function ClassesPage() {
             refetchToday();
             setShowQuickAdd(false);
         } catch (err) {
-            toast.error(err.response?.data?.error || 'Failed to add class');
+            const detail = err.response?.data?.detail || err.message || 'Failed to add class';
+            toast.error(detail);
         } finally {
             setQuickSaving(false);
         }
     };
 
-    // ── MAIN RENDER ──
     return (
         <>
             <style>{STYLES}</style>
 
-            {/* Ambient background */}
             <div className="cp-bg">
                 <div className="cp-blob cp-blob-1" />
                 <div className="cp-blob cp-blob-2" />
@@ -436,7 +379,7 @@ export default function ClassesPage() {
 
             <div className="cp-wrap">
                 <div className="cp-root">
-                    {/* ── HEADER ── */}
+                    {/* HEADER */}
                     <div className="cp-header">
                         <div className="cp-header-title-block">
                             <div className="cp-page-eyebrow">
@@ -487,7 +430,7 @@ export default function ClassesPage() {
                         </div>
                     </div>
 
-                    {/* Quick Add Form (collapsible) */}
+                    {/* Quick Add Form */}
                     {showQuickAdd && isClassRep && (
                         <form onSubmit={handleQuickAdd} className="bg-white dark:bg-gray-800 rounded-xl p-4 mb-6 border shadow-sm">
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -531,7 +474,7 @@ export default function ClassesPage() {
                         </form>
                     )}
 
-                    {/* ── STAT CARDS ── */}
+                    {/* STAT CARDS */}
                     <div className="cp-stats">
                         {STATS.map(({ label, value, color, icon }) => (
                             <div key={label} className="cp-stat" style={{ '--accent': color }}>
@@ -542,14 +485,22 @@ export default function ClassesPage() {
                         ))}
                     </div>
 
-                    {/* ── NEARBY CLASSES ── */}
+                    {/* NEARBY CLASSES */}
                     {showNearby && nearbyClasses.length > 0 && (
                         <>
-                            <div className="cp-section-head"><FiTarget size={14} style={{ color: '#279fb4' }} /><span style={{ color: '#06b6d4' }}>Nearby Classes</span></div>
+                            <div className="cp-section-head">
+                                <FiTarget size={14} style={{ color: '#279fb4' }} />
+                                <span style={{ color: '#06b6d4' }}>Nearby Classes</span>
+                            </div>
                             <div className="cp-nearby-section">
                                 <div className="cp-nearby-head">
-                                    <div className="cp-nearby-title"><FiNavigation size={15} style={{ color: '#06b6d4' }} />{nearbyClasses.length} class{nearbyClasses.length !== 1 ? 'es' : ''} within 500m</div>
-                                    <button className="cp-btn cp-btn-ghost" style={{ padding: '6px 12px', fontSize: '0.75rem' }} onClick={() => setShowNearby(false)}><FiX size={13} /> Hide</button>
+                                    <div className="cp-nearby-title">
+                                        <FiNavigation size={15} style={{ color: '#06b6d4' }} />
+                                        {nearbyClasses.length} class{nearbyClasses.length !== 1 ? 'es' : ''} within 500m
+                                    </div>
+                                    <button className="cp-btn cp-btn-ghost" style={{ padding: '6px 12px', fontSize: '0.75rem' }} onClick={() => setShowNearby(false)}>
+                                        <FiX size={13} /> Hide
+                                    </button>
                                 </div>
                                 <div className="cp-nearby-list">
                                     {nearbyClasses.map(cls => (
@@ -557,10 +508,17 @@ export default function ClassesPage() {
                                             <div className="cp-nearby-dot" />
                                             <div className="cp-nearby-info">
                                                 <div className="cp-nearby-name">{cls.unit_name}</div>
-                                                <div className="cp-nearby-meta">{cls.venue} · {cls.start_time} – {cls.end_time} · 🚶 {cls.walking_time_minutes} min walk</div>
+                                                <div className="cp-nearby-meta">
+                                                    {cls.venue} · {cls.start_time} – {cls.end_time} · 🚶 {cls.walking_time_minutes} min walk
+                                                </div>
                                             </div>
-                                            <span className="cp-nearby-dist"><FiMapPin size={10} />{cls.distance_display}</span>
-                                            <button className="cp-dir-btn" onClick={() => openDirections(cls.venue, cls.venue_latitude, cls.venue_longitude)}><FiExternalLink size={11} /> Go</button>
+                                            <span className="cp-nearby-dist">
+                                                <FiMapPin size={10} />
+                                                {cls.distance_display}
+                                            </span>
+                                            <button className="cp-dir-btn" onClick={() => openNearbyDirections(cls.entry_id)}>
+                                                <FiExternalLink size={11} /> Go
+                                            </button>
                                         </div>
                                     ))}
                                 </div>
@@ -568,7 +526,7 @@ export default function ClassesPage() {
                         </>
                     )}
 
-                    {/* ── CLASS LIST (Today / Week) ── */}
+                    {/* CLASS LIST (Today / Week) */}
                     <div className="cp-section-head">
                         <FiBookOpen size={14} />
                         {viewTab === 'today' ? 'Schedule' : 'Weekly Timetable'}
@@ -582,7 +540,11 @@ export default function ClassesPage() {
 
                     {viewTab === 'today' ? (
                         !todayClasses?.length ? (
-                            <div className="cp-empty"><span className="cp-empty-emoji">🎉</span><div className="cp-empty-title">No classes today!</div><div className="cp-empty-sub">Enjoy your free time or catch up on assignments.</div></div>
+                            <div className="cp-empty">
+                                <span className="cp-empty-emoji">🎉</span>
+                                <div className="cp-empty-title">No classes today!</div>
+                                <div className="cp-empty-sub">Enjoy your free time or catch up on assignments.</div>
+                            </div>
                         ) : (
                             <div className="cp-class-list">
                                 {todayClasses.map(classItem => (
@@ -598,10 +560,14 @@ export default function ClassesPage() {
                             </div>
                         )
                     ) : (
-                        /* Weekly timetable view */
                         <div>
-                            {timetableLoading ? <SkeletonLoader type="list" count={4} /> : !fullTimetable?.length ? (
-                                <div className="cp-empty"><span className="cp-empty-emoji">📅</span><div className="cp-empty-title">No timetable entries</div></div>
+                            {timetableLoading ? (
+                                <SkeletonLoader type="list" count={4} />
+                            ) : !fullTimetable?.length ? (
+                                <div className="cp-empty">
+                                    <span className="cp-empty-emoji">📅</span>
+                                    <div className="cp-empty-title">No timetable entries</div>
+                                </div>
                             ) : (
                                 ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map((day, idx) => {
                                     const dayEntries = (fullTimetable || []).filter(e => e.day_of_week === idx).sort((a, b) => a.start_time.localeCompare(b.start_time));
@@ -627,25 +593,44 @@ export default function ClassesPage() {
                         </div>
                     )}
 
-                    {/* ── WEEKLY SUMMARY ── */}
+                    {/* WEEKLY SUMMARY */}
                     {weeklySummary && (
                         <>
-                            <div className="cp-section-head"><FiBarChart2 size={14} /> Weekly Summary</div>
+                            <div className="cp-section-head">
+                                <FiBarChart2 size={14} /> Weekly Summary
+                            </div>
                             <div className="cp-weekly">
                                 <div className="cp-weekly-head">
-                                    <div className="cp-weekly-icon"><FiBarChart2 size={20} style={{ color: '#27aa53' }} /></div>
-                                    <div><div className="cp-weekly-title">Attendance Overview</div><div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, marginTop: 2 }}>This week's performance</div></div>
+                                    <div className="cp-weekly-icon">
+                                        <FiBarChart2 size={20} style={{ color: '#27aa53' }} />
+                                    </div>
+                                    <div>
+                                        <div className="cp-weekly-title">Attendance Overview</div>
+                                        <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, marginTop: 2 }}>
+                                            This week's performance
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <div className="cp-weekly-grid">
-                                    <div><div className="cp-weekly-stat-val" style={{ color: '#6366f1' }}>{weeklySummary.total_classes}</div><div className="cp-weekly-stat-label">Total Classes</div></div>
-                                    <div><div className="cp-weekly-stat-val" style={{ color: '#10b981' }}>{weeklySummary.marked_count}</div><div className="cp-weekly-stat-label">Marked Present</div></div>
-                                    <div><div className="cp-weekly-stat-val" style={{ color: '#f59e0b' }}>{weeklySummary.percentage}%</div><div className="cp-weekly-stat-label">Attendance Rate</div></div>
+                                    <div>
+                                        <div className="cp-weekly-stat-val" style={{ color: '#6366f1' }}>{weeklySummary.total_classes}</div>
+                                        <div className="cp-weekly-stat-label">Total Classes</div>
+                                    </div>
+                                    <div>
+                                        <div className="cp-weekly-stat-val" style={{ color: '#10b981' }}>{weeklySummary.marked_count}</div>
+                                        <div className="cp-weekly-stat-label">Marked Present</div>
+                                    </div>
+                                    <div>
+                                        <div className="cp-weekly-stat-val" style={{ color: '#f59e0b' }}>{weeklySummary.percentage}%</div>
+                                        <div className="cp-weekly-stat-label">Attendance Rate</div>
+                                    </div>
                                 </div>
 
-                                <div className="cp-weekly-bar-track"><div className="cp-weekly-bar-fill" style={{ width: `${weeklySummary.percentage}%` }} /></div>
+                                <div className="cp-weekly-bar-track">
+                                    <div className="cp-weekly-bar-fill" style={{ width: `${weeklySummary.percentage}%` }} />
+                                </div>
 
-                                {/* Daily Breakdown */}
                                 {breakdownEntries.length > 0 && (
                                     <div className="mt-4">
                                         <h4 className="text-xs font-bold uppercase text-gray-500 mb-2">Daily Breakdown</h4>
@@ -675,13 +660,15 @@ export default function ClassesPage() {
                 </div>
             </div>
 
-            {/* ── MANAGE TIMETABLE MODAL ── */}
+            {/* MANAGE TIMETABLE MODAL – now lazy-loaded */}
             {showManageModal && (
                 <div className="cp-modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowManageModal(false)}>
                     <div className="cp-modal">
                         <div className="cp-modal-header">
                             <div className="cp-modal-title">Manage Class Timetable</div>
-                            <button className="cp-modal-close" onClick={() => setShowManageModal(false)}><FiX size={18} /></button>
+                            <button className="cp-modal-close" onClick={() => setShowManageModal(false)}>
+                                <FiX size={18} />
+                            </button>
                         </div>
                         <div className="cp-modal-body">
                             {!classIdToManage ? (
@@ -738,36 +725,45 @@ export default function ClassesPage() {
                                             </button>
                                         </>
                                     )}
-                                    <button className="cp-id-cancel" onClick={() => setShowManageModal(false)}>Cancel</button>
+                                    <button className="cp-id-cancel" onClick={() => setShowManageModal(false)}>
+                                        Cancel
+                                    </button>
                                 </div>
                             ) : (
-                                <TimetableManager
-                                    classGroupId={classIdToManage}
-                                    classGroupName={
-                                        classGroups.find(g => g.id === classIdToManage)?.name || 'Selected Class'
-                                    }
-                                    onClose={() => setShowManageModal(false)}
-                                />
+                                <Suspense fallback={<div className="p-6 text-center text-gray-500">Loading timetable manager…</div>}>
+                                    <TimetableManager
+                                        classGroupId={classIdToManage}
+                                        classGroupName={
+                                            classGroups.find(g => g.id === classIdToManage)?.name || 'Selected Class'
+                                        }
+                                        onClose={() => setShowManageModal(false)}
+                                    />
+                                </Suspense>
                             )}
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* ── CLASS DETAIL MODAL ── */}
+            {/* CLASS DETAIL MODAL */}
             {selectedClassDetail && (
                 <div className="cp-modal-overlay" onClick={() => setSelectedClassDetail(null)}>
                     <div className="cp-modal" style={{ maxWidth: 500 }}>
                         <div className="cp-modal-header">
                             <div className="cp-modal-title">{selectedClassDetail.unit_name}</div>
-                            <button className="cp-modal-close" onClick={() => setSelectedClassDetail(null)}><FiX size={18} /></button>
+                            <button className="cp-modal-close" onClick={() => setSelectedClassDetail(null)}>
+                                <FiX size={18} />
+                            </button>
                         </div>
                         <div className="cp-modal-body">
                             <p className="text-sm"><strong>Time:</strong> {selectedClassDetail.start_time?.slice(0, 5)} – {selectedClassDetail.end_time?.slice(0, 5)}</p>
                             <p className="text-sm"><strong>Venue:</strong> {selectedClassDetail.venue}</p>
                             <p className="text-sm"><strong>Lecturer:</strong> {selectedClassDetail.lecturer || 'N/A'}</p>
                             {selectedClassDetail.latitude && selectedClassDetail.longitude && (
-                                <button onClick={() => openDirections(selectedClassDetail.venue, selectedClassDetail.latitude, selectedClassDetail.longitude)} className="mt-2 text-xs bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 px-3 py-1 rounded-lg">
+                                <button
+                                    onClick={() => openNearbyDirections(selectedClassDetail.id)}
+                                    className="mt-2 text-xs bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 px-3 py-1 rounded-lg"
+                                >
                                     <FiExternalLink size={11} className="inline mr-1" /> Directions
                                 </button>
                             )}
@@ -779,11 +775,10 @@ export default function ClassesPage() {
     );
 }
 
-// ── STYLES (injected once) with COMPLETE MOBILE OVERFLOW FIXES ──────────────────────
+// ── STYLES (unchanged) ────────────────────────────────────────────────
 const STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap');
 
-  /* ===== GLOBAL OVERFLOW FIXES ===== */
   html, body, #root, .cp-wrap {
     overflow-x: hidden !important;
     max-width: 100% !important;
@@ -874,7 +869,6 @@ const STYLES = `
   .dark .cp-page-date { color: #94a3b8; }
   .cp-header-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; flex-shrink: 0; }
 
-  /* ===== RESPONSIVE BUTTON FIXES ===== */
   @media (max-width: 480px) {
     .cp-header-actions {
       justify-content: flex-start;
@@ -1346,7 +1340,6 @@ const STYLES = `
   .cp-id-cancel { display:block; width:100%; padding:10px; border:none; background:transparent; font-size:.82rem; color:#94a3b8; cursor:pointer; margin-top:8px; transition:color .15s; }
   .cp-id-cancel:hover { color:#ef4444; }
 
-  /* ===== WEEKLY TIMETABLE OVERFLOW FIX ===== */
   .cp-root > div:last-child .space-y-2 > div {
     overflow-x: auto;
     max-width: 100%;

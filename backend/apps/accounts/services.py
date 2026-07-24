@@ -176,8 +176,8 @@ class AccountService:
             "two_factor_enabled": user.two_factor_enabled,
             "biometric_enabled": user.biometric_enabled,
             "last_login": user.last_login.isoformat() if user.last_login else None,
-            "is_superuser": user.is_superuser,   # <-- ADDED
-            "is_staff": user.is_staff,           # <-- ADDED
+            "is_superuser": user.is_superuser,   # <-- ADDED so admin can be superuser also
+            "is_staff": user.is_staff,           # <-- ADDED ''
         }
 
 

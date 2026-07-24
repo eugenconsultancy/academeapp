@@ -11,14 +11,14 @@ from apps.notifications.services import NotificationService
 
 logger = logging.getLogger(__name__)
 
-# ============================================
+# ==========================================
 # EXISTING TASKS
 # ============================================
 
 @shared_task
 def calculate_badges():
     """Nightly task to recalculate all badges"""
-    # Check all users for login badges BASED ON NO OFLOGINS, LIKES ETC
+    # Check all users for login badges BASED ON NO OFLOGINS, LIKES ETC to award badgess
     for user in User.objects.all():
         for badge_type in [BadgeType.LOGIN_BRONZE, BadgeType.LOGIN_SILVER, BadgeType.LOGIN_GOLD]:
             threshold = BADGE_THRESHOLDS.get(badge_type, 0)
@@ -66,12 +66,12 @@ def expire_roles():
     Daily Celery Beat task (runs at 02:00 UTC).
     A
     Process:
-    1. Queries all active StudentRole records where end_date < now
+    1. makes Queries for  all active StudentRole records where end_date < now
     2. For each expired role:
        a. Creates a detailed AuditLog entry with full state snapshot
        b. Sets is_active = False on the role
        c. Updates the user's base role if no other leadership roles exist
-       d. Sends notification to the officer who assigned the role
+       d. Sends notification to the officer/admin strcitly who assigned the role
     3. Logs summary of expired roles
     
     This ensures leadership positions automatically revert
@@ -132,7 +132,7 @@ def expire_roles():
                     'is_active': False,
                     'revocation_reason': 'Role term ended (automatic expiration)',
                     'revoked_at': now.isoformat(),
-                    'revoked_by': None,  # System
+                    'revoked_by': None,  # its System automated
                 },
                 ip_address='system',
                 user_agent='Celery/expire_roles',
@@ -186,7 +186,7 @@ def expire_roles():
                         f"Your position as {role.get_role_display()} for "
                         f"{role.scope_name} has ended as of "
                         f"{role.end_date.strftime('%B %d, %Y')}. "
-                        f"Thank you for your service!"
+                        f"Thank you for your service at Academe!"
                     ),
                     {
                         'type': 'your_role_expired',

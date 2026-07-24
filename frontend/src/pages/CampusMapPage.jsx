@@ -1,5 +1,5 @@
-// C:\Users\GATARA-BJTU\academe\frontend\src\pages\CampusMapPage.jsx
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+// frontend/src/pages/CampusMapPage.jsx
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useGeolocation } from '../hooks/useGeolocation';
 import GeoService from '../api/geoService';
@@ -9,83 +9,32 @@ import {
     FiMapPin, FiNavigation, FiSearch, FiFilter, FiRefreshCw,
     FiHome, FiChevronRight, FiX, FiExternalLink, FiClock,
     FiTarget, FiArrowUp, FiAlertCircle, FiStar, FiShare2,
-    FiList, FiMap, FiCopy, FiInfo
+    FiList, FiMap, FiCopy, FiInfo, FiWifi, FiWifiOff,
+    FiAlertTriangle
 } from 'react-icons/fi';
-import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from 'react-leaflet';
-import MarkerClusterGroup from 'react-leaflet-cluster';
-import L from 'leaflet';
 
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+// Lazy‑load the entire map view (includes react‑leaflet & Leaflet)
+const CampusMapView = React.lazy(() => import('../components/campus/CampusMapView'));
 
-// Fix Leaflet default icon issue
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-    iconRetinaUrl: markerIcon2x,
-    iconUrl: markerIcon,
-    shadowUrl: markerShadow,
-});
-
-// Custom user location marker
-const userIcon = new L.Icon({
-    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
-    shadowUrl: markerShadow,
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41]
-});
-
-// ─── Haversine distance (client‑side, display only) ─────────────────────────────
-function calculateDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371e3;
-    const φ1 = (lat1 * Math.PI) / 180;
-    const φ2 = (lat2 * Math.PI) / 180;
-    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-        Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-        Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-}
-
-function estimateWalkTime(meters) {
-    return Math.max(1, Math.round(meters / 80));
-}
-
-function formatDistance(meters) {
-    if (!meters && meters !== 0) return null;
-    if (meters < 1000) return `${Math.round(meters)}m`;
-    return `${(meters / 1000).toFixed(1)}km`;
-}
-
-// Component to control map view when location changes
-function ChangeMapView({ center, zoom }) {
-    const map = useMap();
-    useEffect(() => {
-        if (center && center[0] !== 0 && center[1] !== 0) {
-            map.setView(center, zoom);
-        }
-    }, [center, zoom, map]);
-    return null;
-}
-
-// Loading overlay component
-function MapLoadingOverlay({ isVisible }) {
-    if (!isVisible) return null;
-    return (
-        <div className="absolute inset-0 z-[1000] bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm flex flex-col items-center justify-center rounded-xl">
-            <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p className="text-indigo-600 dark:text-indigo-400 font-medium">Getting your location...</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Please enable GPS for accurate venue distances</p>
-        </div>
-    );
+// Signal health helper (remains light)
+function getSignalHealth(accuracy) {
+    if (!accuracy && accuracy !== 0) return { color: 'gray', label: 'Unknown', ready: false };
+    if (accuracy <= 50) return { color: '#10b981', label: 'Ready', ready: true };
+    if (accuracy <= 100) return { color: '#f59e0b', label: 'Limited', ready: false };
+    return { color: '#ef4444', label: 'Poor', ready: false };
 }
 
 export default function CampusMapPage() {
-    const { location, error: geoError, loading: geoLoading, getLocation } = useGeolocation({ autoRequest: true });
+    const {
+        location,
+        error: geoError,
+        loading: geoLoading,
+        getLocation,
+        calculateDistance,
+        estimateWalkTime,
+        isReadyForCheckIn,
+    } = useGeolocation({ autoRequest: true });
+
     const [venues, setVenues] = useState([]);
     const [loading, setLoading] = useState(false);
     const [search, setSearch] = useState('');
@@ -96,7 +45,7 @@ export default function CampusMapPage() {
     const [selectedVenue, setSelectedVenue] = useState(null);
     const [directions, setDirections] = useState(null);
     const [directionLoading, setDirectionLoading] = useState(false);
-    const [viewMode, setViewMode] = useState('list');
+    const [viewMode, setViewMode] = useState('list');       // 'list' or 'map'
     const [favorites, setFavorites] = useState(() => {
         try { return JSON.parse(localStorage.getItem('campus_favorites') || '[]'); }
         catch { return []; }
@@ -107,9 +56,22 @@ export default function CampusMapPage() {
     });
     const [showShareToast, setShowShareToast] = useState(false);
     const [showLoadingOverlay, setShowLoadingOverlay] = useState(true);
-    const [mapReady, setMapReady] = useState(false);
+    const [isOnline, setIsOnline] = useState(navigator.onLine);
+    const [checkInStatusMap, setCheckInStatusMap] = useState({});
 
-    // Hide loading overlay after location is obtained or timeout
+    // Online/offline listener
+    useEffect(() => {
+        const goOnline = () => setIsOnline(true);
+        const goOffline = () => setIsOnline(false);
+        window.addEventListener('online', goOnline);
+        window.addEventListener('offline', goOffline);
+        return () => {
+            window.removeEventListener('online', goOnline);
+            window.removeEventListener('offline', goOffline);
+        };
+    }, []);
+
+    // Hide loading overlay once location is ready or after timeout
     useEffect(() => {
         if (location) {
             const timer = setTimeout(() => setShowLoadingOverlay(false), 500);
@@ -120,24 +82,28 @@ export default function CampusMapPage() {
         }
     }, [location, geoLoading, geoError]);
 
+    // Initial data fetch
     useEffect(() => {
         getLocation();
         fetchAllVenues();
+        fetchCheckInHistory();
     }, []);
 
+    // Re‑fetch check‑in history when location changes
+    useEffect(() => {
+        if (location) fetchCheckInHistory();
+    }, [location]);
+
+    // Scroll to top
     useEffect(() => {
         const handleScroll = () => setShowBackToTop(window.scrollY > 400);
         window.addEventListener('scroll', handleScroll, { passive: true });
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
 
-    useEffect(() => {
-        localStorage.setItem('campus_favorites', JSON.stringify(favorites));
-    }, [favorites]);
-
-    useEffect(() => {
-        sessionStorage.setItem('campus_recent_searches', JSON.stringify(recentSearches));
-    }, [recentSearches]);
+    // Persist favourites & recent searches
+    useEffect(() => { localStorage.setItem('campus_favorites', JSON.stringify(favorites)); }, [favorites]);
+    useEffect(() => { sessionStorage.setItem('campus_recent_searches', JSON.stringify(recentSearches)); }, [recentSearches]);
 
     const fetchAllVenues = async () => {
         setLoading(true); setFetchError(null);
@@ -145,7 +111,8 @@ export default function CampusMapPage() {
             const data = await GeoService.listVenues({ limit: 100 });
             setVenues(Array.isArray(data) ? data : data?.results || []);
         } catch (err) {
-            setFetchError('Failed to load venues. Please try again.');
+            const detail = err.response?.data?.detail || err.message || 'Failed to load venues.';
+            setFetchError(detail);
         } finally { setLoading(false); }
     };
 
@@ -160,12 +127,41 @@ export default function CampusMapPage() {
             setVenues(Array.isArray(data) ? data : data?.results || []);
             setSortBy('distance');
         } catch (err) {
-            setFetchError('Failed to find nearby venues.');
+            const detail = err.response?.data?.detail || err.message || 'Failed to find nearby venues.';
+            setFetchError(detail);
         } finally { setLoading(false); }
     };
 
+    const fetchCheckInHistory = async () => {
+        try {
+            const history = await GeoService.getCheckInHistory(50);
+            const today = new Date().toISOString().slice(0, 10);
+            const todayEntries = history.filter(e => e.created_at?.startsWith(today));
+
+            const statusMap = {};
+            todayEntries.forEach(entry => {
+                let status = 'verified';
+                if (entry.requires_manual_review) status = 'pending';
+                else if (!entry.verified) status = 'rejected';
+                const venueName = entry.venue?.toLowerCase();
+                if (venueName) {
+                    const existing = statusMap[venueName];
+                    const priority = { rejected: 3, pending: 2, verified: 1 };
+                    if (!existing || priority[status] > priority[existing]) {
+                        statusMap[venueName] = status;
+                    }
+                }
+            });
+            setCheckInStatusMap(statusMap);
+        } catch (err) {
+            console.warn('Could not fetch check‑in history for map markers:', err);
+        }
+    };
+
+    // Directions
     const handleGetDirections = async (venue) => {
         if (!location) { toast.error('Enable location for directions'); return; }
+        if (!venue.latitude || !venue.longitude) { toast.error('Venue coordinates missing'); return; }
         setDirectionLoading(true);
         try {
             const result = await GeoService.getDirections(
@@ -175,55 +171,34 @@ export default function CampusMapPage() {
             setDirections({ ...result, venueName: venue.name });
             setSelectedVenue(venue);
         } catch (err) {
-            toast.error('Failed to get directions');
+            const detail = err.response?.data?.detail || 'Failed to get directions';
+            toast.error(detail);
         } finally { setDirectionLoading(false); }
     };
 
-    const openInMaps = (venue) => {
-        if (venue.latitude && venue.longitude) {
-            window.open(`https://www.google.com/maps/search/?api=1&query=${venue.latitude},${venue.longitude}`, '_blank');
-        }
+    const openBackendDirections = (venue) => {
+        if (!location) return;
+        GeoService.getDirections(location.latitude, location.longitude, venue.latitude, venue.longitude)
+            .then(res => {
+                if (res.maps_url) window.open(res.maps_url, '_blank');
+                else toast.error('No directions URL received');
+            })
+            .catch(err => {
+                const detail = err.response?.data?.detail || 'Failed to open directions';
+                toast.error(detail);
+            });
     };
-
-    const openWalkingDirections = (venue) => {
-        if (location && venue.latitude && venue.longitude) {
-            window.open(
-                `https://www.google.com/maps/dir/?api=1&origin=${location.latitude},${location.longitude}&destination=${venue.latitude},${venue.longitude}&travelmode=walking`,
-                '_blank'
-            );
-        } else { openInMaps(venue); }
-    };
-
-    const enrichedVenues = useMemo(() => {
-        if (!venues.length) return [];
-        return venues.map((venue) => {
-            if (!venue.latitude || !venue.longitude || !location) return venue;
-            const distance = calculateDistance(location.latitude, location.longitude, venue.latitude, venue.longitude);
-            return { ...venue, distance_meters: distance, distance_display: formatDistance(distance), walking_time_minutes: estimateWalkTime(distance) };
-        });
-    }, [venues, location]);
-
-    const filteredVenues = useMemo(() => {
-        let list = enrichedVenues.filter((v) => {
-            if (search && !v.name.toLowerCase().includes(search.toLowerCase())) return false;
-            if (venueType && v.venue_type !== venueType) return false;
-            return true;
-        });
-        if (sortBy === 'distance' && location) list = [...list].sort((a, b) => (a.distance_meters || 99999) - (b.distance_meters || 99999));
-        else if (sortBy === 'name') list = [...list].sort((a, b) => a.name.localeCompare(b.name));
-        return list;
-    }, [enrichedVenues, search, venueType, sortBy, location]);
 
     const toggleFavorite = (venueId) => {
-        setFavorites((prev) => prev.includes(venueId) ? prev.filter((id) => id !== venueId) : [...prev, venueId]);
+        setFavorites(prev => prev.includes(venueId) ? prev.filter(id => id !== venueId) : [...prev, venueId]);
     };
     const isFavorite = (venueId) => favorites.includes(venueId);
 
     const handleSearchSubmit = (e) => {
         e?.preventDefault();
         if (search.trim()) {
-            setRecentSearches((prev) => {
-                const filtered = prev.filter((s) => s !== search.trim());
+            setRecentSearches(prev => {
+                const filtered = prev.filter(s => s !== search.trim());
                 return [search.trim(), ...filtered].slice(0, 5);
             });
         }
@@ -242,35 +217,53 @@ export default function CampusMapPage() {
 
     const handleLocateMe = async () => {
         await getLocation();
-        if (location) {
-            toast.success('Location updated');
-        } else if (geoError) {
-            toast.error(`Location error: ${geoError}`);
-        } else {
-            toast.error('Could not get your location. Please check GPS permissions.');
-        }
+        if (location) toast.success('Location updated');
+        else if (geoError) toast.error(`Location error: ${geoError}`);
+        else toast.error('Could not get your location. Please check GPS permissions.');
     };
 
+    // Enrich venues with distances
+    const enrichedVenues = useMemo(() => {
+        if (!venues.length) return [];
+        return venues.map(venue => {
+            if (!venue.latitude || !venue.longitude || !location) return venue;
+            const dist = calculateDistance(location.latitude, location.longitude, venue.latitude, venue.longitude);
+            return {
+                ...venue,
+                distance_meters: dist,
+                distance_display: dist < 1000 ? `${Math.round(dist)}m` : `${(dist / 1000).toFixed(1)}km`,
+                walking_time_minutes: estimateWalkTime(dist)
+            };
+        });
+    }, [venues, location, calculateDistance, estimateWalkTime]);
+
+    const filteredVenues = useMemo(() => {
+        let list = enrichedVenues.filter(v => {
+            if (search && !v.name.toLowerCase().includes(search.toLowerCase())) return false;
+            if (venueType && v.venue_type !== venueType) return false;
+            return true;
+        });
+        if (sortBy === 'distance' && location) list = [...list].sort((a, b) => (a.distance_meters || 99999) - (b.distance_meters || 99999));
+        else if (sortBy === 'name') list = [...list].sort((a, b) => a.name.localeCompare(b.name));
+        return list;
+    }, [enrichedVenues, search, venueType, sortBy, location]);
+
+    // Map props: center & polyline
     const centerMap = location ? [location.latitude, location.longitude] : [0, 0];
     const mapZoom = location ? 16 : 14;
 
-    // Polyline for directions (straight line with disclaimer)
     const polylinePositions = directions && selectedVenue && location ? [
         [location.latitude, location.longitude],
         [selectedVenue.latitude, selectedVenue.longitude]
     ] : [];
 
-    // Create cluster custom icon (optional)
-    const createClusterCustomIcon = (cluster) => {
-        return L.divIcon({
-            html: `<div class="custom-cluster-icon">${cluster.getChildCount()}</div>`,
-            className: 'marker-cluster-custom',
-            iconSize: L.point(40, 40, true),
-        });
-    };
+    const accuracy = location?.accuracy;
+    const signalHealth = getSignalHealth(accuracy);
+    const canInteract = isReadyForCheckIn?.();
 
     return (
         <>
+            {/* ── Styles (unchanged) ── */}
             <style>{`
         .cm-root { font-family: 'Outfit', system-ui, -apple-system, sans-serif; max-width: 1200px; margin: 0 auto; padding: 28px 20px 80px; animation: cmIn .4s cubic-bezier(0.16,1,0.3,1) both; overflow-x: hidden; }
         @keyframes cmIn { from {opacity:0;transform:translateY(16px)} to {opacity:1;transform:translateY(0)} }
@@ -297,6 +290,7 @@ export default function CampusMapPage() {
         .cm-btn-outline { background: transparent; border: 1.5px solid #e2e8f0; color: #64748b; }
         .cm-btn-outline:hover { background: rgba(99,102,241,0.04); border-color: #6366f1; color: #6366f1; }
         .dark .cm-btn-outline { border-color: #334155; color: #94a3b8; }
+        .cm-btn-disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
         .cm-alert { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 12px; margin-bottom: 16px; font-size: 0.82rem; font-weight: 600; }
         .cm-alert-warning { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.15); color: #d97706; }
         .cm-alert-error { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.15); color: #dc2626; }
@@ -339,36 +333,26 @@ export default function CampusMapPage() {
         .cm-back-top { position: fixed; bottom: 24px; right: 24px; width: 44px; height: 44px; border-radius: 50%; background: #6366f1; color: #fff; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 40; box-shadow: 0 4px 16px rgba(99,102,241,0.4); transition: all 0.2s; }
         .cm-toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1e293b; color: white; padding: 10px 20px; border-radius: 12px; font-weight: 600; font-size: 0.85rem; z-index: 100; animation: cmIn .2s ease; }
         .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
-        
-        /* Custom cluster marker style */
-        .marker-cluster-custom {
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            border-radius: 50%;
-            color: white;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 4px 14px rgba(99,102,241,0.4);
-            border: 2px solid rgba(255,255,255,0.8);
-        }
-        
+        .signal-health { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; }
+        .pending-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: rgba(245,158,11,0.15); color: #d97706; }
         @media (max-width: 768px) {
-            .cm-map-wrapper { height: 400px; }
-            .cm-grid { grid-template-columns: 1fr; }
-            .cm-bar { flex-direction: column; }
-            .cm-search-wrap { width: 100%; }
-            .cm-select, .cm-btn { width: 100%; justify-content: center; }
+          .cm-map-wrapper { height: 400px; }
+          .cm-grid { grid-template-columns: 1fr; }
+          .cm-bar { flex-direction: column; }
+          .cm-search-wrap { width: 100%; }
+          .cm-select, .cm-btn { width: 100%; justify-content: center; }
         }
-        `}</style>
+      `}</style>
 
             <div className="cm-root">
+                {/* Breadcrumb */}
                 <nav className="cm-breadcrumb" aria-label="Breadcrumb">
                     <Link to="/"><FiHome size={13} /> Home</Link>
-                    <FiChevronRight size={12} aria-hidden="true" />
+                    <FiChevronRight size={12} />
                     <span>Campus Map</span>
                 </nav>
 
+                {/* Header */}
                 <div className="cm-header">
                     <div>
                         <h1>🗺️ Campus Map</h1>
@@ -378,14 +362,22 @@ export default function CampusMapPage() {
                     </div>
                     <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                         <div className="cm-view-toggle" role="group" aria-label="View mode">
-                            <button className={`cm-view-btn ${viewMode === 'list' ? 'active' : ''}`} onClick={() => setViewMode('list')} aria-pressed={viewMode === 'list'}><FiList size={14} /> List</button>
-                            <button className={`cm-view-btn ${viewMode === 'map' ? 'active' : ''}`} onClick={() => setViewMode('map')} aria-pressed={viewMode === 'map'}><FiMap size={14} /> Map</button>
+                            <button className={`cm-view-btn ${viewMode === 'list' ? 'active' : ''}`} onClick={() => setViewMode('list')}><FiList size={14} /> List</button>
+                            <button className={`cm-view-btn ${viewMode === 'map' ? 'active' : ''}`} onClick={() => setViewMode('map')}><FiMap size={14} /> Map</button>
                         </div>
                         <button onClick={handleLocateMe} disabled={geoLoading} className="cm-btn cm-btn-outline"><FiTarget size={14} /> {geoLoading ? 'Locating...' : 'Locate Me'}</button>
                         <button onClick={fetchAllVenues} className="cm-btn cm-btn-outline"><FiRefreshCw size={14} /> Refresh</button>
                     </div>
                 </div>
 
+                {/* Offline Banner */}
+                {!isOnline && (
+                    <div className="cm-alert cm-alert-warning">
+                        <FiWifiOff size={16} /> You are offline. Venue data may be stale.
+                    </div>
+                )}
+
+                {/* Favorites */}
                 {favorites.length > 0 && viewMode === 'list' && (
                     <div className="cm-fav-section">
                         <div className="cm-fav-title"><FiStar size={14} color="#f59e0b" /> Your favorite venues:</div>
@@ -397,23 +389,56 @@ export default function CampusMapPage() {
                     </div>
                 )}
 
+                {/* Location & Signal Health */}
                 {location && (
                     <div className="cm-location-info">
                         <FiTarget size={14} /> Your location: {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
-                        {location.accuracy && ` (±${Math.round(location.accuracy)}m)`}
+                        <span className="mx-2" style={{ opacity: 0.5 }}>|</span>
+                        <span className="signal-health" style={{ color: signalHealth.color, background: `${signalHealth.color}15` }}>
+                            {signalHealth.ready ? <FiWifi size={12} /> : <FiWifiOff size={12} />}
+                            {signalHealth.label} (±{Math.round(location.accuracy || 0)}m)
+                        </span>
+                        {!canInteract && (
+                            <span className="ml-2 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                                <FiAlertTriangle size={12} />
+                                High accuracy required for actions
+                            </span>
+                        )}
                     </div>
                 )}
-                {geoError && (<div className="cm-alert cm-alert-warning"><FiAlertCircle size={16} /> {geoError}<button onClick={handleLocateMe} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#d97706', cursor: 'pointer', fontWeight: 700 }}>Retry</button></div>)}
-                {fetchError && (<div className="cm-alert cm-alert-error"><FiAlertCircle size={16} /> {fetchError}<button onClick={fetchAllVenues} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontWeight: 700 }}>Retry</button></div>)}
+                {geoError && (
+                    <div className="cm-alert cm-alert-warning">
+                        <FiAlertCircle size={16} /> {geoError}
+                        <button onClick={handleLocateMe} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#d97706', cursor: 'pointer', fontWeight: 700 }}>Retry</button>
+                    </div>
+                )}
+                {fetchError && (
+                    <div className="cm-alert cm-alert-error">
+                        <FiAlertCircle size={16} /> {fetchError}
+                        <button onClick={fetchAllVenues} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontWeight: 700 }}>Retry</button>
+                    </div>
+                )}
 
+                {/* Search Bar */}
                 <form onSubmit={handleSearchSubmit} className="cm-bar">
                     <div className="cm-search-wrap">
                         <FiSearch size={14} className="cm-search-icon" />
-                        <input type="text" placeholder="Search venues..." value={search} onChange={(e) => setSearch(e.target.value)} onFocus={() => recentSearches.length > 0 && setSearch('')} onBlur={() => setTimeout(() => setRecentSearches([]), 200)} className="cm-search" aria-label="Search venues" />
+                        <input
+                            type="text"
+                            placeholder="Search venues..."
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                            onFocus={() => recentSearches.length > 0 && setSearch('')}
+                            onBlur={() => setTimeout(() => setRecentSearches([]), 200)}
+                            className="cm-search"
+                            aria-label="Search venues"
+                        />
                         {recentSearches.length > 0 && search === '' && (
                             <div className="cm-recent-wrap">
                                 {recentSearches.map((s, i) => (
-                                    <div key={i} className="cm-recent-item" onMouseDown={() => { setSearch(s); handleSearchSubmit(); }}><span>{s}</span><FiClock size={12} color="#94a3b8" /></div>
+                                    <div key={i} className="cm-recent-item" onMouseDown={() => { setSearch(s); handleSearchSubmit(); }}>
+                                        <span>{s}</span><FiClock size={12} color="#94a3b8" />
+                                    </div>
                                 ))}
                                 <div className="cm-recent-clear" onMouseDown={clearRecentSearches}>Clear history</div>
                             </div>
@@ -434,88 +459,40 @@ export default function CampusMapPage() {
                         <option value="name">Name A-Z</option>
                         <option value="distance">Nearest First</option>
                     </select>
-                    <button type="button" onClick={location ? fetchNearbyVenues : fetchAllVenues} className="cm-btn cm-btn-green"><FiNavigation size={14} /> {location ? 'Find Nearest' : 'Show All'}</button>
+                    <button
+                        type="button"
+                        onClick={location ? fetchNearbyVenues : fetchAllVenues}
+                        className={`cm-btn cm-btn-green ${!canInteract ? 'cm-btn-disabled' : ''}`}
+                        disabled={!canInteract}
+                        title={!canInteract ? 'Waiting for high-accuracy GPS...' : ''}
+                    >
+                        <FiNavigation size={14} />
+                        {!canInteract ? 'Waiting for GPS accuracy...' : location ? 'Find Nearest' : 'Show All'}
+                    </button>
                 </form>
 
                 <p className="cm-count">Showing {filteredVenues.length} of {venues.length} venues</p>
                 {loading && <SkeletonLoader type="list" count={6} />}
 
+                {/* Map View – now lazy‑loaded */}
                 {!loading && viewMode === 'map' && (
-                    <div className="cm-map-wrapper">
-                        <MapContainer
+                    <Suspense fallback={<div className="cm-map-wrapper flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-4 border-indigo-500 border-t-transparent"></div></div>}>
+                        <CampusMapView
                             center={centerMap}
                             zoom={mapZoom}
-                            className="cm-map-container"
-                            scrollWheelZoom={true}
-                            aria-label="Interactive campus map"
-                        >
-                            <ChangeMapView center={centerMap} zoom={mapZoom} />
-                            <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-
-                            {/* User Location Marker */}
-                            {location && (
-                                <Marker position={[location.latitude, location.longitude]} icon={userIcon}>
-                                    <Popup>You are here</Popup>
-                                </Marker>
-                            )}
-
-                            {/* Directions Polyline with disclaimer */}
-                            {polylinePositions.length === 2 && (
-                                <Polyline
-                                    positions={polylinePositions}
-                                    color="#6366f1"
-                                    weight={3}
-                                    opacity={0.8}
-                                    dashArray="5, 10"
-                                />
-                            )}
-
-                            {/* Venue Markers with Clustering */}
-                            <MarkerClusterGroup
-                                chunkedLoading
-                                maxClusterRadius={50}
-                                disableClusteringAtZoom={18}
-                                spiderfyOnMaxZoom={true}
-                                showCoverageOnHover={false}
-                                iconCreateFunction={createClusterCustomIcon}
-                            >
-                                {filteredVenues.map((venue) => (
-                                    venue.latitude && venue.longitude ? (
-                                        <Marker
-                                            key={venue.id}
-                                            position={[venue.latitude, venue.longitude]}
-                                            eventHandlers={{ click: () => setSelectedVenue(venue) }}
-                                        >
-                                            <Popup>
-                                                <div style={{ minWidth: '160px' }}>
-                                                    <strong>{venue.name}</strong>
-                                                    <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '4px 0' }}>{venue.venue_type} – {venue.building_code || ''}</p>
-                                                    {venue.distance_display && <p style={{ fontSize: '0.8rem', fontWeight: 600, color: '#059669' }}>{venue.distance_display} • {venue.walking_time_minutes} min walk</p>}
-                                                    <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
-                                                        <button className="cm-card-btn cm-card-btn-maps" style={{ flex: 1 }} onClick={() => openInMaps(venue)}>Maps</button>
-                                                        <button className="cm-card-btn cm-card-btn-dir" style={{ flex: 1 }} onClick={() => handleGetDirections(venue)}>Directions</button>
-                                                    </div>
-                                                </div>
-                                            </Popup>
-                                        </Marker>
-                                    ) : null
-                                ))}
-                            </MarkerClusterGroup>
-                        </MapContainer>
-
-                        {/* Loading Overlay */}
-                        <MapLoadingOverlay isVisible={showLoadingOverlay && !location && !geoError} />
-
-                        {/* Polyline Disclaimer Note */}
-                        {polylinePositions.length === 2 && (
-                            <div className="absolute bottom-3 left-3 z-[1000] bg-black/70 text-white text-xs px-3 py-1.5 rounded-full flex items-center gap-2">
-                                <FiInfo size={12} />
-                                Straight-line distance only (not walking path)
-                            </div>
-                        )}
-                    </div>
+                            location={location}
+                            venues={filteredVenues}
+                            polylinePositions={polylinePositions}
+                            onVenueSelect={setSelectedVenue}
+                            openBackendDirections={openBackendDirections}
+                            onGetDirections={handleGetDirections}
+                            checkInStatusMap={checkInStatusMap}
+                            showLoadingOverlay={showLoadingOverlay}
+                        />
+                    </Suspense>
                 )}
 
+                {/* List View */}
                 {!loading && viewMode === 'list' && (
                     <div className="cm-grid">
                         {filteredVenues.map((venue, i) => (
@@ -532,9 +509,14 @@ export default function CampusMapPage() {
                                 {venue.distance_display && (
                                     <div className="cm-card-distance"><FiMapPin size={14} /> {venue.distance_display}{venue.walking_time_minutes && ` • 🚶 ${venue.walking_time_minutes} min`}</div>
                                 )}
+                                {checkInStatusMap[venue.name?.toLowerCase()] === 'pending' && (
+                                    <div className="mt-2">
+                                        <span className="pending-badge"><FiAlertTriangle size={10} /> Manual Review Pending</span>
+                                    </div>
+                                )}
                                 <div className="cm-card-actions">
-                                    <button onClick={() => openInMaps(venue)} className="cm-card-btn cm-card-btn-maps"><FiExternalLink size={11} /> Maps</button>
-                                    <button onClick={() => handleGetDirections(venue)} className="cm-card-btn cm-card-btn-dir"><FiNavigation size={11} /> Directions</button>
+                                    <button onClick={() => openBackendDirections(venue)} className="cm-card-btn cm-card-btn-maps"><FiNavigation size={11} /> Directions</button>
+                                    <button onClick={() => handleGetDirections(venue)} className="cm-card-btn cm-card-btn-dir"><FiExternalLink size={11} /> Details</button>
                                     <button onClick={() => toggleFavorite(venue.id)} className={`cm-card-btn cm-card-btn-fav`} aria-label={isFavorite(venue.id) ? 'Remove from favorites' : 'Add to favorites'}><FiStar size={13} fill={isFavorite(venue.id) ? '#f59e0b' : 'none'} /></button>
                                     <button onClick={() => handleShareVenue(venue)} className="cm-card-btn cm-card-btn-fav" aria-label="Copy venue link"><FiShare2 size={13} /></button>
                                 </div>
@@ -544,25 +526,42 @@ export default function CampusMapPage() {
                 )}
 
                 {!loading && filteredVenues.length === 0 && (
-                    <div className="cm-empty"><span style={{ fontSize: '3rem', display: 'block', marginBottom: 16 }}>🏫</span><p style={{ fontWeight: 700, fontSize: '1.1rem', color: '#64748b' }}>No venues found</p><p style={{ fontSize: '0.85rem', marginTop: 4 }}>{search ? 'Try a different search term.' : 'No venues match the selected filters.'}</p></div>
+                    <div className="cm-empty">
+                        <span style={{ fontSize: '3rem', display: 'block', marginBottom: 16 }}>🏫</span>
+                        <p style={{ fontWeight: 700, fontSize: '1.1rem', color: '#64748b' }}>No venues found</p>
+                        <p style={{ fontSize: '0.85rem', marginTop: 4 }}>{search ? 'Try a different search term.' : 'No venues match the selected filters.'}</p>
+                    </div>
                 )}
             </div>
 
+            {/* Venue Detail Modal */}
             {selectedVenue && !directions && (
                 <div className="cm-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="venue-detail-title">
                     <div className="cm-modal-backdrop" onClick={() => setSelectedVenue(null)} />
                     <div className="cm-modal">
-                        <div className="cm-modal-header"><h2 className="cm-modal-title" id="venue-detail-title">{selectedVenue.name}</h2><button className="cm-modal-close" onClick={() => setSelectedVenue(null)} aria-label="Close venue details"><FiX size={16} /></button></div>
+                        <div className="cm-modal-header">
+                            <h2 className="cm-modal-title" id="venue-detail-title">{selectedVenue.name}</h2>
+                            <button className="cm-modal-close" onClick={() => setSelectedVenue(null)} aria-label="Close venue details"><FiX size={16} /></button>
+                        </div>
                         <div className="cm-modal-body">
                             <p style={{ fontSize: '0.85rem', marginBottom: 8 }}><strong>Type:</strong> {selectedVenue.venue_type?.replace(/_/g, ' ')}</p>
                             {selectedVenue.building_code && <p>🏢 {selectedVenue.building_code}</p>}
                             {selectedVenue.floor && <p>Floor: {selectedVenue.floor}</p>}
                             {selectedVenue.room_number && <p>Room: {selectedVenue.room_number}</p>}
                             {selectedVenue.distance_display && <p className="cm-card-distance" style={{ justifyContent: 'flex-start' }}><FiMapPin size={14} /> {selectedVenue.distance_display} • 🚶 {selectedVenue.walking_time_minutes} min walk</p>}
+                            {checkInStatusMap[selectedVenue.name?.toLowerCase()] === 'pending' && (
+                                <div className="mt-2">
+                                    <span className="pending-badge"><FiAlertTriangle size={10} /> Manual Review Pending</span>
+                                </div>
+                            )}
                             <div style={{ marginTop: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                <button className="cm-btn cm-btn-primary" onClick={() => handleGetDirections(selectedVenue)} disabled={directionLoading}>{directionLoading ? 'Loading...' : <><FiNavigation size={14} /> Get Directions</>}</button>
-                                <button className="cm-btn cm-btn-outline" onClick={() => openInMaps(selectedVenue)}><FiExternalLink size={14} /> Open in Maps</button>
-                                <button className="cm-btn cm-btn-outline" onClick={() => toggleFavorite(selectedVenue.id)} aria-label={isFavorite(selectedVenue.id) ? 'Remove from favorites' : 'Add to favorites'}><FiStar size={14} fill={isFavorite(selectedVenue.id) ? '#f59e0b' : 'none'} /> {isFavorite(selectedVenue.id) ? 'Saved' : 'Save'}</button>
+                                <button className="cm-btn cm-btn-primary" onClick={() => handleGetDirections(selectedVenue)} disabled={directionLoading}>
+                                    {directionLoading ? 'Loading...' : <><FiNavigation size={14} /> Get Directions</>}
+                                </button>
+                                <button className="cm-btn cm-btn-outline" onClick={() => openBackendDirections(selectedVenue)}><FiExternalLink size={14} /> Open in Maps</button>
+                                <button className="cm-btn cm-btn-outline" onClick={() => toggleFavorite(selectedVenue.id)} aria-label={isFavorite(selectedVenue.id) ? 'Remove from favorites' : 'Add to favorites'}>
+                                    <FiStar size={14} fill={isFavorite(selectedVenue.id) ? '#f59e0b' : 'none'} /> {isFavorite(selectedVenue.id) ? 'Saved' : 'Save'}
+                                </button>
                                 <button className="cm-btn cm-btn-outline" onClick={() => handleShareVenue(selectedVenue)}><FiShare2 size={14} /> Copy Link</button>
                             </div>
                         </div>
@@ -570,11 +569,15 @@ export default function CampusMapPage() {
                 </div>
             )}
 
+            {/* Directions Modal */}
             {directions && selectedVenue && (
                 <div className="cm-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="directions-title">
                     <div className="cm-modal-backdrop" onClick={closeDirections} />
                     <div className="cm-modal">
-                        <div className="cm-modal-header"><h2 className="cm-modal-title" id="directions-title">Walking to {directions.venueName || selectedVenue.name}</h2><button className="cm-modal-close" onClick={closeDirections} aria-label="Close directions"><FiX size={16} /></button></div>
+                        <div className="cm-modal-header">
+                            <h2 className="cm-modal-title" id="directions-title">Walking to {directions.venueName || selectedVenue.name}</h2>
+                            <button className="cm-modal-close" onClick={closeDirections} aria-label="Close directions"><FiX size={16} /></button>
+                        </div>
                         <div className="cm-modal-body">
                             <div style={{ textAlign: 'center', padding: '20px 0' }}>
                                 <FiNavigation size={40} style={{ color: '#6366f1', marginBottom: 16 }} />
@@ -590,7 +593,12 @@ export default function CampusMapPage() {
                             </div>
                         </div>
                         <div className="cm-modal-footer">
-                            <button className="cm-btn cm-btn-primary" style={{ flex: 1 }} onClick={() => openWalkingDirections(selectedVenue)}><FiNavigation size={14} /> Open in Google Maps</button>
+                            <button className="cm-btn cm-btn-primary" style={{ flex: 1 }} onClick={() => {
+                                if (directions.maps_url) window.open(directions.maps_url, '_blank');
+                                else toast.error('No directions URL available');
+                            }}>
+                                <FiNavigation size={14} /> Open in Google Maps
+                            </button>
                         </div>
                     </div>
                 </div>

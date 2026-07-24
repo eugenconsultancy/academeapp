@@ -158,3 +158,37 @@ class NotificationService:
                 NotificationService._send_push(notification.user, title, message, data_payload)
 
         return created
+
+    # ─────────────────────────────────────────────────────────────
+    # NEW: attendance-specific notification helper
+    # ─────────────────────────────────────────────────────────────
+    @staticmethod
+    def send_attendance_notification(user, attendance_record, status):
+        """
+        Send a notification for a GPS attendance check‑in result.
+
+        :param user: the student who checked in
+        :param attendance_record: LocationCheckIn instance
+        :param status: one of 'verified', 'manual_review', 'rejected'
+        """
+        # Build human‑readable status label
+        status_display = status.replace('_', ' ').title()
+        title = f"Attendance {status_display}"
+
+        # Use the timetable entry's unit name for context
+        class_name = (
+            attendance_record.timetable_entry.unit_name
+            if attendance_record.timetable_entry
+            else 'your class'
+        )
+        message = f"Your check‑in for {class_name} is {status_display}."
+
+        return NotificationService.create_and_push(
+            user=user,
+            title=title,
+            message=message,
+            notification_type=f"attendance_{status}",
+            source_type='attendance',
+            source_id=attendance_record.id,
+            link="/classes/attendance",   # points to attendance history
+        )

@@ -71,7 +71,7 @@ const ChatListItem = ({ conv, onClick }) => {
                     className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg"
                     style={{
                         backgroundColor:
-                            otherParticipant?.avatar_color || '#6366f1',
+                            otherParticipant?.avatar_color || '#282bcf',
                     }}
                 >
                     {otherParticipant?.avatar_url ? (

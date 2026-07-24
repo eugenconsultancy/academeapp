@@ -1,6 +1,6 @@
 # backend/apps/chat/notifications.py
 """
-Push notification integration using Firebase Cloud Messaging (FCM).
+Push notification integration using Firebase Cloud Mesging (FCM).
 Supports multi-device via DeviceToken model with fallback to User.fcm_token.
 
 Usage:

@@ -1,6 +1,6 @@
 // frontend/src/pages/ChatDetail.jsx
 import React, {
-  useEffect, useRef, useCallback, useState, useMemo,
+  useEffect, useRef, useCallback, useState, useMemo, Suspense,
 } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import useChatStore from '@/stores/useChatStore';
@@ -12,11 +12,13 @@ import { v4 as uuidv4 } from 'uuid';
 import { useTheme } from "@/contexts/ThemeContext";
 import MessageBubble from '@/components/chat/MessageBubble';
 import MessageComposer from '@/components/chat/MessageComposer';
-import ForwardModal from '@/components/chat/ForwardModal';
-import DeleteConfirmation from '@/components/chat/DeleteConfirmation';
-import ChatSearchModal from '@/components/chat/ChatSearchModal';
 import toast from 'react-hot-toast';
 import "../styles/chat-detail.css";
+
+// Lazy‑load heavy modals
+const ForwardModal = React.lazy(() => import('@/components/chat/ForwardModal'));
+const DeleteConfirmation = React.lazy(() => import('@/components/chat/DeleteConfirmation'));
+const ChatSearchModal = React.lazy(() => import('@/components/chat/ChatSearchModal'));
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 const getDateLabel = (dateStr) => {
@@ -37,7 +39,7 @@ const isSameDay = (a, b) => {
     da.getDate() === db.getDate();
 };
 
-// ─── Sub-components ───────────────────────────────────────────────────────
+// ─── Sub-components (unchanged) ──────────────────────────────────────────
 const ReportModal = ({ message, onClose, onSubmit }) => {
   const [reason, setReason] = useState('');
   const [description, setDescription] = useState('');
@@ -667,25 +669,37 @@ const ChatDetail = () => {
     >
       <div className="cd-bg" />
 
-      {/* ── Modals ── */}
-      {showRateLimit && <RateLimitModal rateLimit={rateLimit} onDismiss={() => setShowRateLimit(false)} />}
-      {type === 'delete' && (
-        <DeleteConfirmation
-          message={modalData}
-          isOwn={modalData?.sender_id === currentUserId}
-          onDelete={mode => handleDelete(modalData, mode)}
-          onClose={close}
-        />
-      )}
-      {type === 'forward' && <ForwardModal message={modalData} onClose={close} onForward={handleForward} />}
-      {type === 'report' && <ReportModal message={modalData} onClose={close} onSubmit={handleReport} />}
+      {/* ── Modals (lazy‑loaded with Suspense) ── */}
+      <Suspense fallback={null}>
+        {type === 'delete' && (
+          <DeleteConfirmation
+            message={modalData}
+            isOwn={modalData?.sender_id === currentUserId}
+            onDelete={mode => handleDelete(modalData, mode)}
+            onClose={close}
+          />
+        )}
+      </Suspense>
+
+      <Suspense fallback={null}>
+        {type === 'forward' && (
+          <ForwardModal message={modalData} onClose={close} onForward={handleForward} />
+        )}
+      </Suspense>
+
       {showSearch && (
-        <ChatSearchModal
-          conversationId={conversationId}
-          onClose={() => setShowSearch(false)}
-          onJumpToMessage={handleJumpToMessage}
-        />
+        <Suspense fallback={<div className="p-4 text-center text-gray-500">Loading search…</div>}>
+          <ChatSearchModal
+            conversationId={conversationId}
+            onClose={() => setShowSearch(false)}
+            onJumpToMessage={handleJumpToMessage}
+          />
+        </Suspense>
       )}
+
+      {type === 'report' && <ReportModal message={modalData} onClose={close} onSubmit={handleReport} />}
+      {showRateLimit && <RateLimitModal rateLimit={rateLimit} onDismiss={() => setShowRateLimit(false)} />}
+
       {showBlockConfirm && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6">
@@ -780,7 +794,7 @@ const ChatDetail = () => {
           </div>
         )}
 
-        {/* Scroll-to-bottom FAB — inside messages area only */}
+        {/* Scroll-to-bottom FAB */}
         <button
           className={`cd-fab${showFab ? '' : ' hidden'}`}
           onClick={scrollToBottom}
@@ -811,7 +825,7 @@ const ChatDetail = () => {
         </div>
       )}
 
-      {/* ── Blocked banner — centred between messages and composer ── */}
+      {/* ── Blocked banner ── */}
       {isBlocked && (
         <div className="cd-blocked-banner">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">

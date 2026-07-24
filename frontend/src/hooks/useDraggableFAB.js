@@ -2,12 +2,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 // ── Constants ──────────────────────────────────────────────────────────
-const DEFAULT_POSITION = { x: 20, y: window.innerHeight - 100 };
 const FAB_SIZE = 56;
 const DRAG_THRESHOLD = 5;
 const EDGE_PADDING = 16;
 const ANIMATION_DURATION = 300;
 const SNAP_THRESHOLD = 0.3;
+
+const DEFAULT_POSITION = {
+    x: (typeof window !== 'undefined' ? window.innerWidth : 1024) - FAB_SIZE - EDGE_PADDING,
+    y: (typeof window !== 'undefined' ? window.innerHeight : 768) - FAB_SIZE - EDGE_PADDING,
+};
 
 export function useDraggableFAB(options = {}) {
     const {
@@ -26,17 +30,22 @@ export function useDraggableFAB(options = {}) {
             const saved = localStorage.getItem('fab_position');
             if (saved) {
                 const parsed = JSON.parse(saved);
-                if (parsed.x >= edgePadding && parsed.x <= _getMaxX(edgePadding) &&
-                    parsed.y >= edgePadding && parsed.y <= _getMaxY(edgePadding)) {
+                if (
+                    parsed.x >= edgePadding &&
+                    parsed.x <= _getMaxX(edgePadding) &&
+                    parsed.y >= edgePadding &&
+                    parsed.y <= _getMaxY(edgePadding)
+                ) {
                     return parsed;
                 }
             }
-        } catch { }
+        } catch { /* ignore */ }
         return defaultPosition;
     });
 
     const [isDragging, setIsDragging] = useState(false);
     const [snapEdge, setSnapEdge] = useState(null);
+    const [isExpanded, setIsExpanded] = useState(false);
 
     const positionRef = useRef(position);
     const isDraggingRef = useRef(false);
@@ -45,19 +54,26 @@ export function useDraggableFAB(options = {}) {
     const velocityRef = useRef({ x: 0, y: 0 });
     const animationFrameRef = useRef(null);
     const isMountedRef = useRef(true);
+    // Holds the actual move/end handlers so we can remove them later
+    const moveHandlerRef = useRef(null);
+    const endHandlerRef = useRef(null);
 
+    // Keep refs in sync
     useEffect(() => { positionRef.current = position; }, [position]);
     useEffect(() => { isDraggingRef.current = isDragging; }, [isDragging]);
 
+    // Persist position to localStorage
     useEffect(() => {
-        try { localStorage.setItem('fab_position', JSON.stringify(position)); } catch { }
+        try { localStorage.setItem('fab_position', JSON.stringify(position)); } catch { /* ignore */ }
     }, [position]);
 
+    // Re‑clamp on window resize / orientation change
     useEffect(() => {
         const handleResize = () => {
+            if (!isMountedRef.current) return;
             const maxX = _getMaxX(edgePadding);
             const maxY = _getMaxY(edgePadding);
-            setPosition(prev => ({
+            setPosition((prev) => ({
                 x: Math.max(edgePadding, Math.min(prev.x, maxX)),
                 y: Math.max(edgePadding, Math.min(prev.y, maxY)),
             }));
@@ -95,6 +111,7 @@ export function useDraggableFAB(options = {}) {
             const startTime = performance.now();
 
             const animate = (currentTime) => {
+                if (!isMountedRef.current) return;
                 const elapsed = currentTime - startTime;
                 const progress = Math.min(elapsed / ANIMATION_DURATION, 1);
                 const easeOut = 1 - Math.pow(1 - progress, 3);
@@ -114,108 +131,160 @@ export function useDraggableFAB(options = {}) {
         [edgePadding, preferredEdge]
     );
 
-    // ── Internal drag handlers ──────────────────────────────────────
-    const handleDragMove = useCallback((clientX, clientY) => {
-        if (disabled) return;
-        const deltaX = clientX - dragStartRef.current.x;
-        const deltaY = clientY - dragStartRef.current.y;
-        if (Math.abs(deltaX) > DRAG_THRESHOLD || Math.abs(deltaY) > DRAG_THRESHOLD) {
-            hasMovedRef.current = true;
-            setIsDragging(true);
-        }
-        if (hasMovedRef.current) {
-            const newX = positionRef.current.x + deltaX;
-            const newY = positionRef.current.y + deltaY;
-            const maxX = _getMaxX(edgePadding);
-            const maxY = _getMaxY(edgePadding);
-            setPosition({
-                x: Math.max(edgePadding, Math.min(newX, maxX)),
-                y: Math.max(edgePadding, Math.min(newY, maxY)),
-            });
-        }
-    }, [disabled, edgePadding]);
-
-    const handleDragEndInternal = useCallback((clientX, clientY) => {
-        if (disabled) return;
-        setIsDragging(false);
-        const now = Date.now();
-        const timeDelta = now - dragStartRef.current.time;
-        if (timeDelta > 0) {
-            velocityRef.current = {
-                x: (clientX - dragStartRef.current.x) / timeDelta * 1000,
-                y: (clientY - dragStartRef.current.y) / timeDelta * 1000,
-            };
-        }
-        if (snapToEdge && hasMovedRef.current) {
-            snapToNearestEdge(positionRef.current.x, positionRef.current.y, velocityRef.current.x);
-        }
-        if (onDragEnd) onDragEnd(positionRef.current);
-
-        // ── Only fire onClick if it was a genuine click (no drag) ──
-        if (!hasMovedRef.current && onClick) {
-            onClick();
-        }
-
-        dragStartRef.current = { x: 0, y: 0, time: 0 };
-        hasMovedRef.current = false;
-    }, [disabled, snapToEdge, snapToNearestEdge, onDragEnd, onClick]);
-
-    // ── Global mouse listeners ──────────────────────────────────────
-    useEffect(() => {
-        if (!isDragging) return;
-        const onMouseMove = (e) => {
-            handleDragMove(e.clientX, e.clientY);
-        };
-        const onMouseUp = (e) => {
-            handleDragEndInternal(e.clientX, e.clientY);
-        };
-        window.addEventListener('mousemove', onMouseMove);
-        window.addEventListener('mouseup', onMouseUp);
-        return () => {
-            window.removeEventListener('mousemove', onMouseMove);
-            window.removeEventListener('mouseup', onMouseUp);
-        };
-    }, [isDragging, handleDragMove, handleDragEndInternal]);
-
-    // ── Global touch listeners ──────────────────────────────────────
-    useEffect(() => {
-        if (!isDragging) return;
-        const onTouchMove = (e) => {
-            const touch = e.touches[0];
-            if (touch) {
-                handleDragMove(touch.clientX, touch.clientY);
+    // ── Internal drag logic ───────────────────────────────────────────
+    const handleDragMove = useCallback(
+        (clientX, clientY) => {
+            // Block dragging when keyboard or mobile sidebar is open
+            if (
+                document.body.classList.contains('keyboard-open') ||
+                document.body.classList.contains('mobile-sidebar-open')
+            ) {
+                return;
             }
-        };
-        const onTouchEnd = (e) => {
-            const touch = e.changedTouches[0];
-            handleDragEndInternal(touch.clientX, touch.clientY);
-        };
-        window.addEventListener('touchmove', onTouchMove, { passive: true });
-        window.addEventListener('touchend', onTouchEnd);
+            if (disabled) return;
+
+            const deltaX = clientX - dragStartRef.current.x;
+            const deltaY = clientY - dragStartRef.current.y;
+
+            if (Math.abs(deltaX) > DRAG_THRESHOLD || Math.abs(deltaY) > DRAG_THRESHOLD) {
+                hasMovedRef.current = true;
+                setIsDragging(true);
+            }
+
+            if (hasMovedRef.current) {
+                const newX = positionRef.current.x + deltaX;
+                const newY = positionRef.current.y + deltaY;
+                const maxX = _getMaxX(edgePadding);
+                const maxY = _getMaxY(edgePadding);
+                setPosition({
+                    x: Math.max(edgePadding, Math.min(newX, maxX)),
+                    y: Math.max(edgePadding, Math.min(newY, maxY)),
+                });
+            }
+        },
+        [disabled, edgePadding]
+    );
+
+    const handleDragEndInternal = useCallback(
+        (clientX, clientY) => {
+            if (disabled) return;
+            setIsDragging(false);
+
+            const now = Date.now();
+            const timeDelta = now - dragStartRef.current.time;
+            if (timeDelta > 0) {
+                velocityRef.current = {
+                    x: ((clientX - dragStartRef.current.x) / timeDelta) * 1000,
+                    y: ((clientY - dragStartRef.current.y) / timeDelta) * 1000,
+                };
+            }
+
+            if (snapToEdge && hasMovedRef.current) {
+                snapToNearestEdge(
+                    positionRef.current.x,
+                    positionRef.current.y,
+                    velocityRef.current.x
+                );
+            }
+
+            if (onDragEnd) onDragEnd(positionRef.current);
+
+            // Only fire onClick if no drag occurred (i.e. a simple tap)
+            if (!hasMovedRef.current && onClick) {
+                onClick();
+            }
+
+            dragStartRef.current = { x: 0, y: 0, time: 0 };
+            hasMovedRef.current = false;
+        },
+        [disabled, snapToEdge, snapToNearestEdge, onDragEnd, onClick]
+    );
+
+    // ── Pointer‑down handlers (attach move/end listeners immediately) ─
+    const handleDragStart = useCallback(
+        (e) => {
+            if (disabled) return;
+            e.preventDefault();
+            const clientX = e.clientX;
+            const clientY = e.clientY;
+            dragStartRef.current = { x: clientX, y: clientY, time: Date.now() };
+            hasMovedRef.current = false;
+            if (onDragStart) onDragStart(positionRef.current);
+
+            // Remove any previously registered listeners (shouldn't exist, but safe)
+            removeListeners();
+
+            const onMouseMove = (e) => handleDragMove(e.clientX, e.clientY);
+            const onMouseUp = (e) => {
+                handleDragEndInternal(e.clientX, e.clientY);
+                removeListeners();
+            };
+
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+            moveHandlerRef.current = onMouseMove;
+            endHandlerRef.current = onMouseUp;
+        },
+        [disabled, onDragStart, handleDragMove, handleDragEndInternal]
+    );
+
+    const handleTouchStart = useCallback(
+        (e) => {
+            if (disabled) return;
+            const touch = e.touches[0];
+            if (!touch) return;
+            e.preventDefault();
+            dragStartRef.current = {
+                x: touch.clientX,
+                y: touch.clientY,
+                time: Date.now(),
+            };
+            hasMovedRef.current = false;
+            if (onDragStart) onDragStart(positionRef.current);
+
+            removeListeners();
+
+            const onTouchMove = (e) => {
+                const touch = e.touches[0];
+                if (touch) handleDragMove(touch.clientX, touch.clientY);
+            };
+            const onTouchEnd = (e) => {
+                const touch = e.changedTouches[0];
+                handleDragEndInternal(touch.clientX, touch.clientY);
+                removeListeners();
+            };
+
+            window.addEventListener('touchmove', onTouchMove, { passive: true });
+            window.addEventListener('touchend', onTouchEnd);
+            moveHandlerRef.current = onTouchMove;
+            endHandlerRef.current = onTouchEnd;
+        },
+        [disabled, onDragStart, handleDragMove, handleDragEndInternal]
+    );
+
+    // Helper to remove any active listeners
+    const removeListeners = useCallback(() => {
+        if (moveHandlerRef.current) {
+            window.removeEventListener('mousemove', moveHandlerRef.current);
+            window.removeEventListener('touchmove', moveHandlerRef.current);
+            moveHandlerRef.current = null;
+        }
+        if (endHandlerRef.current) {
+            window.removeEventListener('mouseup', endHandlerRef.current);
+            window.removeEventListener('touchend', endHandlerRef.current);
+            endHandlerRef.current = null;
+        }
+    }, []);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        isMountedRef.current = true;
         return () => {
-            window.removeEventListener('touchmove', onTouchMove);
-            window.removeEventListener('touchend', onTouchEnd);
+            isMountedRef.current = false;
+            removeListeners();
+            if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         };
-    }, [isDragging, handleDragMove, handleDragEndInternal]);
-
-    // ── Public handlers ──────────────────────────────────────────────
-    const handleDragStart = useCallback((e) => {
-        if (disabled) return;
-        const clientX = e.clientX;
-        const clientY = e.clientY;
-        dragStartRef.current = { x: clientX, y: clientY, time: Date.now() };
-        hasMovedRef.current = false;
-        if (onDragStart) onDragStart(positionRef.current);
-    }, [disabled, onDragStart]);
-
-    const handleTouchStart = useCallback((e) => {
-        if (disabled) return;
-        const touch = e.touches[0];
-        if (!touch) return;
-        dragStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-        hasMovedRef.current = false;
-        if (onDragStart) onDragStart(positionRef.current);
-    }, [disabled, onDragStart]);
+    }, [removeListeners]);
 
     // ── Keyboard navigation ──────────────────────────────────────────
     const handleKeyDown = useCallback(
@@ -226,19 +295,19 @@ export function useDraggableFAB(options = {}) {
             switch (e.key) {
                 case 'ArrowLeft':
                     e.preventDefault();
-                    setPosition(p => ({ ...p, x: Math.max(edgePadding, p.x - STEP) }));
+                    setPosition((p) => ({ ...p, x: Math.max(edgePadding, p.x - STEP) }));
                     break;
                 case 'ArrowRight':
                     e.preventDefault();
-                    setPosition(p => ({ ...p, x: Math.min(maxX, p.x + STEP) }));
+                    setPosition((p) => ({ ...p, x: Math.min(maxX, p.x + STEP) }));
                     break;
                 case 'ArrowUp':
                     e.preventDefault();
-                    setPosition(p => ({ ...p, y: Math.max(edgePadding, p.y - STEP) }));
+                    setPosition((p) => ({ ...p, y: Math.max(edgePadding, p.y - STEP) }));
                     break;
                 case 'ArrowDown':
                     e.preventDefault();
-                    setPosition(p => ({ ...p, y: Math.min(maxY, p.y + STEP) }));
+                    setPosition((p) => ({ ...p, y: Math.min(maxY, p.y + STEP) }));
                     break;
                 case 'Enter':
                 case ' ':
@@ -257,22 +326,14 @@ export function useDraggableFAB(options = {}) {
         setSnapEdge(null);
     }, [defaultPosition]);
 
-    const toggleExpanded = useCallback(() => setIsExpanded(prev => !prev), []);
+    const toggleExpanded = useCallback(() => setIsExpanded((prev) => !prev), []);
     const getPosition = useCallback(() => ({ ...positionRef.current }), []);
 
-    // ── Cleanup ──────────────────────────────────────────────────────
-    useEffect(() => {
-        isMountedRef.current = true;
-        return () => {
-            isMountedRef.current = false;
-            if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-        };
-    }, []);
-
+    // ── Returned API ──────────────────────────────────────────────────
     return {
         position,
         isDragging,
-        isExpanded: false, // kept for API compatibility
+        isExpanded,
         snapEdge,
         handleDragStart,
         handleTouchStart,
@@ -289,7 +350,9 @@ export function useDraggableFAB(options = {}) {
             height: `${FAB_SIZE}px`,
             zIndex: 1000,
             cursor: disabled ? 'default' : isDragging ? 'grabbing' : 'grab',
-            transition: isDragging ? 'none' : `left ${ANIMATION_DURATION}ms ease-out, top ${ANIMATION_DURATION}ms ease-out`,
+            transition: isDragging
+                ? 'none'
+                : `left ${ANIMATION_DURATION}ms ease-out, top ${ANIMATION_DURATION}ms ease-out`,
             touchAction: 'none',
             userSelect: 'none',
         },

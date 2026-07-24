@@ -377,7 +377,7 @@ const MessageComposer = ({ onSend, onTyping, disabled, rateLimit, replyingTo, co
                 }
                 .mc-icon-btn:hover:not(:disabled) {
                     background: var(--chat-accent-soft, rgba(108,99,255,0.09));
-                    color: var(--chat-accent, #6c63ff);
+                    color: var(--chat-accent, #0b00d6);
                 }
                 .mc-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
                 .mc-icon-btn.mc-recording { color: #ef4444; }
@@ -407,7 +407,7 @@ const MessageComposer = ({ onSend, onTyping, disabled, rateLimit, replyingTo, co
                     box-sizing: border-box;
                 }
                 .mc-input:focus {
-                    border-color: var(--chat-accent, #6c63ff);
+                    border-color: var(--chat-accent, #107bdf);
                     box-shadow: 0 0 0 3px var(--chat-accent-soft, rgba(108,99,255,0.09));
                 }
                 .mc-input::placeholder { color: var(--chat-text3, #9aa3bf); }
@@ -423,7 +423,7 @@ const MessageComposer = ({ onSend, onTyping, disabled, rateLimit, replyingTo, co
                     width: 40px;
                     height: 40px;
                     border-radius: 50%;
-                    background: linear-gradient(135deg, var(--chat-accent, #6c63ff), var(--chat-accent2, #9f7aea));
+                    background: linear-gradient(135deg, var(--chat-accent, #035dc5), var(--chat-accent2, #9f7aea));
                     color: #fff;
                     border: none;
                     cursor: pointer;

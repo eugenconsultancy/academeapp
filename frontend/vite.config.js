@@ -103,6 +103,7 @@ export default defineConfig(({ command, mode }) => {
         },
       }),
 
+      // ⬇️ Targets are now ONLY inside the legacy plugin
       legacy({
         targets: ['defaults', 'not IE 11', 'android >= 80'],
       }),
@@ -175,11 +176,9 @@ export default defineConfig(({ command, mode }) => {
           target: 'http://localhost:8000',
           changeOrigin: true,
           secure: false,
-          // ✅ Force Vite to keep the original path intact (including trailing slash)
           rewrite: (path) => path,
           configure: (proxy, options) => {
             proxy.on('proxyReq', (proxyReq, req, res) => {
-              // Debug: log the exact path being sent to Django
               console.log(`[Vite Proxy] ${req.method} ${req.url} → ${proxyReq.path}`);
             });
           },
@@ -196,11 +195,12 @@ export default defineConfig(({ command, mode }) => {
       outDir: 'dist',
       assetsDir: 'assets',
       emptyOutDir: true,
-      sourcemap: isDevelopment ? 'inline' : 'hidden',
+      // ✅ No more huge source maps in production
+      sourcemap: isDevelopment ? 'inline' : false,
       chunkSizeWarningLimit: 600,
       cssCodeSplit: false,
       minify: isProduction ? 'terser' : false,
-      target: 'es2015',
+      // ⬇️ target removed – the legacy plugin handles browser targets
       terserOptions: isProduction
         ? {
           compress: {
@@ -216,13 +216,18 @@ export default defineConfig(({ command, mode }) => {
       cssMinify: isProduction,
       rollupOptions: {
         output: {
+          // ⬇️ Extended manual chunks to split the giant vendor bundle
           manualChunks: (id) => {
             if (id.includes('node_modules')) {
-              if (id.includes('three') || id.includes('@react-three/fiber') || id.includes('@react-three/drei')) {
-                return 'vendor-three';
+              // React core
+              if (id.includes('react-dom') || id.includes('react/') || id.includes('scheduler')) {
+                return 'vendor-react';
               }
-              if (id.includes('react-icons')) {
-                return 'vendor-icons';
+              if (id.includes('react-router') || id.includes('@remix-run/router')) {
+                return 'vendor-router';
+              }
+              if (id.includes('axios')) {
+                return 'vendor-axios';
               }
               if (id.includes('@tanstack/react-query')) {
                 return 'vendor-query';
@@ -230,7 +235,29 @@ export default defineConfig(({ command, mode }) => {
               if (id.includes('date-fns')) {
                 return 'vendor-date';
               }
-              return 'vendor';
+              if (id.includes('react-icons')) {
+                return 'vendor-icons';
+              }
+              if (id.includes('three') || id.includes('@react-three')) {
+                return 'vendor-three';
+              }
+              if (id.includes('leaflet') || id.includes('react-leaflet')) {
+                return 'vendor-map';
+              }
+              if (id.includes('chart.js') || id.includes('react-chartjs-2')) {
+                return 'vendor-charts';
+              }
+              if (id.includes('monaco-editor') || id.includes('@monaco-editor')) {
+                return 'vendor-editor';
+              }
+              if (id.includes('socket.io')) {
+                return 'vendor-socket';
+              }
+              if (id.includes('pdf') || id.includes('react-pdf')) {
+                return 'vendor-pdf';
+              }
+              // Remaining small libraries
+              return 'vendor-utils';
             }
           },
           assetFileNames: (assetInfo) => {

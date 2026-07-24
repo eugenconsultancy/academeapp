@@ -1,5 +1,6 @@
 // frontend/src/utils/storage.js
 import { openDB } from 'idb';
+import apiClient from '../api/client'; // ✅ static import – no dynamic import conflict
 
 const DB_NAME = 'AcademeOfflineDB';
 const DB_VERSION = 3;
@@ -61,7 +62,41 @@ export async function getDB() {
     });
 }
 
+// ── Location caching constants ──────────────────────────────────────────
+const LOCATION_CACHE_KEY = 'last_known_location';
+const LOCATION_MAX_AGE_MS = 60_000;
+
 export const offlineStorage = {
+    saveLastKnownLocation(locationData) {
+        try {
+            const data = { ...locationData, cachedAt: new Date().toISOString() };
+            localStorage.setItem(LOCATION_CACHE_KEY, JSON.stringify(data));
+        } catch (e) {
+            console.warn('Failed to cache last known location', e);
+        }
+    },
+
+    getLastKnownLocation(maxAgeMs = LOCATION_MAX_AGE_MS) {
+        try {
+            const raw = localStorage.getItem(LOCATION_CACHE_KEY);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            const age = Date.now() - new Date(parsed.cachedAt).getTime();
+            if (age > maxAgeMs) {
+                localStorage.removeItem(LOCATION_CACHE_KEY);
+                return null;
+            }
+            return parsed;
+        } catch (e) {
+            console.warn('Failed to retrieve last known location', e);
+            return null;
+        }
+    },
+
+    clearLastKnownLocation() {
+        localStorage.removeItem(LOCATION_CACHE_KEY);
+    },
+
     async saveAttendance(data) {
         try {
             const db = await getDB();
@@ -239,27 +274,15 @@ export const offlineStorage = {
         }
     },
 
-    // ─────────────────────────────────────────────────────────────
-    // FIX: processSyncQueue no longer manually checks for token.
-    // The API client (with its refresh interceptor) handles auth.
-    // If the interceptor detects a missing/invalid token and the
-    // refresh fails, it will redirect to /login, which naturally
-    // stops further sync processing.
-    // ─────────────────────────────────────────────────────────────
     async processSyncQueue(apiInstance = null) {
         if (_syncLock) {
             console.warn('⚠️ Sync already in progress, skipping duplicate call');
             return { synced: 0, failed: 0, skipped: true };
         }
-
         if (!_isOnline) {
             console.log('📡 Still offline, skipping sync');
             return { synced: 0, failed: 0 };
         }
-
-        // Removed the manual check for access_token – the request will go through
-        // the client interceptors, which will refresh the token if possible.
-        // If the user is truly logged out, the interceptor will redirect to /login.
 
         _syncLock = true;
         console.log('🔒 Sync lock acquired');
@@ -275,29 +298,14 @@ export const offlineStorage = {
             let synced = 0;
             let failed = 0;
 
+            // Use the passed instance or the statically imported default client
+            const client = apiInstance || apiClient;
+
             for (const item of pending) {
                 try {
-                    let client = apiInstance;
-                    if (!client) {
-                        try {
-                            const apiModule = await import('../api/client');
-                            client = apiModule.default;
-                        } catch (importError) {
-                            console.error('Failed to import API client:', importError);
-                            await this.updateSyncItem(item.id, {
-                                attempts: item.attempts + 1,
-                                status: 'pending',
-                                lastError: 'API client unavailable',
-                            });
-                            failed++;
-                            continue;
-                        }
-                    }
-
-                    // Mark this request as a sync background request
                     const config = {
                         headers: {},
-                        _syncRequest: true,   // flag for interceptor
+                        _syncRequest: true,
                     };
 
                     let response;
