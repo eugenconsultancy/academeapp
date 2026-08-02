@@ -218,6 +218,7 @@ CORS_PREFLIGHT_MAX_AGE = 86400  # 24 hours
 # ── Allowed origins ──────────────────────────────────────────
 # Add ALL origins that may send requests (Vite dev servers, Ngrok, etc.)
 CORS_ALLOWED_ORIGINS = [
+    "http://localhost",
     "http://localhost:5173",
     "http://localhost:3000",
     "http://127.0.0.1:5173",

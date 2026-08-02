@@ -45,12 +45,6 @@ const useWebSocket = (conversationId) => {
     const currentTokenRef = useRef(null);
     const initialConnectTimer = useRef(null);
 
-    const storeRef = useRef(useChatStore.getState());
-
-    useEffect(() => {
-        storeRef.current = useChatStore.getState();
-    });
-
     useEffect(() => {
         currentTokenRef.current = localStorage.getItem('access_token');
     });
@@ -98,7 +92,7 @@ const useWebSocket = (conversationId) => {
     }, []);
 
     const getLastMessageTimestamp = useCallback(() => {
-        const state = storeRef.current;
+        const state = useChatStore.getState();
         const messages = state.messagesByConversation[conversationId] || [];
         if (messages.length > 0) {
             return messages[messages.length - 1].created_at;
@@ -107,7 +101,7 @@ const useWebSocket = (conversationId) => {
     }, [conversationId]);
 
     const handleServerEvent = useCallback((data) => {
-        const state = storeRef.current;
+        const state = useChatStore.getState();
         const { type } = data;
         switch (type) {
             case 'message.new': {
@@ -168,7 +162,13 @@ const useWebSocket = (conversationId) => {
                 }
                 break;
             }
-            case 'typing':
+            case 'typing': {
+                // Only apply to the current conversation
+                if (data.conversation_id === conversationId) {
+                    state.setTyping(data.user_id, data.typing);
+                }
+                break;
+            }
             case 'pong':
                 break;
             default:
@@ -186,18 +186,21 @@ const useWebSocket = (conversationId) => {
             return;
         }
 
-        // URL‑encode the token to avoid issues with special characters
-        const encodedToken = encodeURIComponent(token);
+        // Build URL using the URL constructor so the token is encoded exactly once.
         const wsBase = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
-        const wsUrl = `${wsBase}/ws/chat/${conversationId}/?token=${encodedToken}`;
+        const url = new URL(`${wsBase}/ws/chat/${conversationId}/`);
+        url.searchParams.set('token', token);   // encodes exactly once
+        const wsUrl = url.toString();
 
-        console.log(`🔌 Connecting WebSocket: ${wsUrl.replace(encodedToken, '***HIDDEN***')}`);
+        // For logging only: compute the encoded token so we can hide it in the log output
+        const encodedTokenForLog = encodeURIComponent(token);
+        console.log(`🔌 Connecting WebSocket: ${wsUrl.replace(encodedTokenForLog, '***HIDDEN***')}`);
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
         ws.onopen = () => {
             console.log('✅ WebSocket connected');
-            storeRef.current.setOnline(true);
+            useChatStore.getState().setOnline(true);
             reconnectAttempt.current = 0;
             startHeartbeat();
             const lastTimestamp = getLastMessageTimestamp();
@@ -220,7 +223,7 @@ const useWebSocket = (conversationId) => {
 
         ws.onclose = (event) => {
             console.log(`❌ WebSocket closed: code=${event.code}, reason=${event.reason || 'no reason'}`);
-            storeRef.current.setOnline(false);
+            useChatStore.getState().setOnline(false);
             clearTimers();
 
             if (AUTH_FAILURE_CODES.has(event.code)) {

@@ -163,7 +163,7 @@ const chatApi = {
             });
         } catch (error) {
             handleApiError(error, 'editMessage');
-            return null;
+            return { data: null };
         }
     },
 

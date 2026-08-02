@@ -14,6 +14,7 @@ Uses Django Ninja with:
 - WebSocket broadcast integration via Django Channels
 """
 
+import json
 import uuid
 from datetime import datetime, timedelta
 from typing import Optional, List
@@ -25,7 +26,7 @@ from django.db.models import F, Q, Count
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
-from ninja import Router, Query
+from ninja import Router, Query, Schema
 from ninja.errors import HttpError
 from ninja.security import HttpBearer
 from asgiref.sync import async_to_sync
@@ -54,6 +55,12 @@ from .services import PresenceService
 
 router = Router(tags=["chat"])
 User = get_user_model()
+
+
+# ─── Paginated response schema for conversations ──────────────────────────────
+class PaginatedConversations(Schema):
+    items: List[ConversationOut]
+    next_cursor: Optional[str] = None
 
 
 # ─── Authentication ───────────────────────────────────────────────────────────
@@ -215,7 +222,7 @@ def _build_other_participant(conv, current_user) -> Optional[ParticipantInfo]:
 
 # ─── Conversation Endpoints ───────────────────────────────────────────────────
 
-@router.get("/conversations", response=List[ConversationOut], auth=auth)
+@router.get("/conversations", response=PaginatedConversations, auth=auth)
 def list_conversations(
     request,
     filter: str = Query("all"),
@@ -245,7 +252,7 @@ def list_conversations(
                 conversation__participants__id__in=blocked_ids
             ).distinct()
         else:
-            return []
+            return PaginatedConversations(items=[])
     else:
         participations = participations.filter(is_archived=False)
 
@@ -258,22 +265,24 @@ def list_conversations(
         except (ValueError, TypeError):
             pass
 
+    # Fetch one extra to determine if there is a next page
     participations = participations.order_by(
         '-conversation__last_message_at'
-    )[:limit]
+    )[:limit + 1]
 
-    result = []
-    for p in participations:
+    items = []
+    next_cursor = None
+
+    for p in participations[:limit]:
         conv = p.conversation
         participant_ids = list(
             conv.participants.values_list('id', flat=True)
         )
         other_info = _build_other_participant(conv, user)
-        # Determine if current user has blocked the other participant (1-on-1 only)
         is_blocked = False
         if other_info and not conv.is_group:
             is_blocked = user_blocks(user.id, other_info.id)
-        result.append(ConversationOut(
+        items.append(ConversationOut(
             id=conv.id,
             participants=participant_ids,
             is_group=conv.is_group,
@@ -290,7 +299,12 @@ def list_conversations(
             is_archived=p.is_archived,
             draft=p.draft,
         ))
-    return result
+
+    if len(participations) > limit:
+        # Next cursor is the last_message_at of the last item in the fetched slice
+        next_cursor = participations[limit - 1].conversation.last_message_at.isoformat()
+
+    return PaginatedConversations(items=items, next_cursor=next_cursor)
 
 
 @router.post("/conversations", response=ConversationOut, auth=auth)
@@ -502,7 +516,7 @@ def send_message(request, conversation_id: uuid.UUID, payload: MessageIn):
     )
 
     message_out = MessageOut.from_message(msg)
-    _broadcast_to_conversation(conversation_id, {"type": "chat_message", "message": message_out.model_dump()})
+    _broadcast_to_conversation(conversation_id, {"type": "chat_message", "message": message_out.model_dump(mode='json')})
 
     # Send push notifications to offline participants using PresenceService
     for participant in conv.participants.exclude(id=user.id):
@@ -627,7 +641,7 @@ def forward_message(request, message_id: uuid.UUID, payload: ForwardMessageIn):
         conv.last_message_at = new_msg.created_at
         conv.last_message_sender = user
         conv.save(update_fields=['last_message_content', 'last_message_at', 'last_message_sender'])
-        _broadcast_to_conversation(cid, {"type": "chat_message", "message": MessageOut.from_message(new_msg).model_dump()})
+        _broadcast_to_conversation(cid, {"type": "chat_message", "message": MessageOut.from_message(new_msg).model_dump(mode='json')})
 
     if not forwarded_msgs:
         raise HttpError(400, "No valid target conversations to forward to.")
@@ -685,7 +699,7 @@ def bulk_send_messages(request, conversation_id: uuid.UUID, payload: BulkSendIn)
         ConversationParticipant.objects.filter(conversation=conv).exclude(user=user).update(unread_count=F('unread_count') + len(results))
 
     for msg_out in results:
-        _broadcast_to_conversation(conversation_id, {"type": "chat_message", "message": msg_out.model_dump()})
+        _broadcast_to_conversation(conversation_id, {"type": "chat_message", "message": msg_out.model_dump(mode='json')})
 
     # Compute final rate‑limit state after all increments
     _, final_count, limit, reset_at = check_daily_limit(user.id)

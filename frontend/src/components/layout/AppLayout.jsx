@@ -38,10 +38,9 @@ export default function AppLayout({ children }) {
     <div
       style={{
         position: 'relative',
-        minHeight: 'calc(var(--visual-vh, 1vh) * 100)',
-        overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
+        height: '100%',
       }}
     >
       <OfflineIndicator position="top" />
@@ -57,12 +56,7 @@ export default function AppLayout({ children }) {
       <main
         id="main-content"
         className="app-main"
-        style={{
-          position: 'relative',
-          zIndex: 1,
-          flex: 1,
-          paddingTop: 'var(--navbar-height)',
-        }}
+        style={{ position: 'relative', zIndex: 1, flex: 1 }}
       >
         {children}
       </main>

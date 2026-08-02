@@ -45,15 +45,23 @@ const sortConversations = (convs) =>
 
 const mergeMessages = (existing, incoming) => {
     const map = new Map();
+    const clientIdToRealId = new Map();
+
+    // Build real-id index from incoming first
+    for (const msg of incoming) {
+        if (msg.client_msg_id && !String(msg.id).startsWith('temp-')) {
+            clientIdToRealId.set(String(msg.client_msg_id), String(msg.id));
+        }
+    }
+
     for (const msg of existing) {
-        const key = msg.client_msg_id || msg.id;
-        if (key) map.set(key, msg);
+        const realId = clientIdToRealId.get(String(msg.client_msg_id));
+        const key = realId || String(msg.client_msg_id || msg.id);
+        map.set(key, msg);
     }
     for (const msg of incoming) {
-        const key = msg.client_msg_id || msg.id;
-        if (key) {
-            map.set(key, msg);
-        }
+        const key = String(msg.client_msg_id || msg.id);
+        map.set(key, msg);   // incoming always wins
     }
     return Array.from(map.values()).sort(
         (a, b) => new Date(a.created_at) - new Date(b.created_at)
@@ -209,9 +217,8 @@ const useChatStore = create((set, get) => ({
                         : m
                 );
             } else {
-                newMsgs = msgs.filter(
-                    (m) => !(m.id === messageId && m.deleted_for_self)
-                );
+                // mode === 'self': remove the message from the local array entirely
+                newMsgs = msgs.filter((m) => m.id !== messageId);
             }
             return {
                 messagesByConversation: {

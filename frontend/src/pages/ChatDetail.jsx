@@ -405,17 +405,14 @@ const ChatDetail = () => {
       reply_to_id: replyingTo?.id ?? undefined
     };
     if (attachments.length > 0) {
-      payload.attachments = attachments.map(a => ({
-        file_url: a.file_url,
-        file_name: a.file_name,
-        file_size: a.file_size,
-        file_mime_type: a.file_mime_type,
-        msg_type: a.type || 'FILE',
-        ...(a.type === 'VOICE' && duration != null ? { duration } : {})
-      }));
-      payload.file_url = attachments[0].file_url;
-      payload.msg_type = attachments[0].type || 'IMAGE';
-      if (attachments[0].type === 'VOICE' && duration != null) payload.duration = duration;
+      const att = attachments[0];
+      // Only these top-level keys — NO 'attachments' array
+      payload.file_url = att.file_url || '';
+      payload.file_name = att.file_name || '';
+      payload.file_size = att.file_size ?? null;
+      payload.file_mime_type = att.file_mime_type || '';
+      payload.msg_type = att.type || 'FILE';
+      if (att.type === 'VOICE' && duration != null) payload.duration = duration;
     }
 
     const sendViaRest = async () => {
@@ -433,6 +430,11 @@ const ChatDetail = () => {
         if (!err.response || err.response?.status >= 500) {
           addToOfflineQueue({ ...tempMessage, payload, conversation_id: conversationId });
         } else {
+          // Mark the temp bubble as failed so the user sees a retry UI
+          storeActionsRef.current.upsertMessage(conversationId, {
+            ...tempMessage,
+            status: 'failed',
+          });
           toast.error('Failed to send message');
         }
       }

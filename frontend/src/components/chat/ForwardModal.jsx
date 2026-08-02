@@ -49,13 +49,13 @@ const ForwardModal = ({ message, onClose, onForward }) => {
         onClose();
     };
 
-    // Derive a display name from participants and presence
+    // Derive a display name from other_participant, then participants and presence
     const getDisplayName = (conv) => {
         if (conv.is_group) return conv.group_name || 'Group';
+        if (conv.other_participant?.full_name) return conv.other_participant.full_name;
         const otherId = conv.participants?.find((id) => id !== currentUser?.id);
         if (!otherId) return 'Unknown';
-        const presenceData = presence[otherId];
-        return presenceData?.username || `User ${String(otherId).slice(0, 8)}`;
+        return presence[otherId]?.username || `User ${String(otherId).slice(0, 8)}`;
     };
 
     return (

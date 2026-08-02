@@ -19,6 +19,8 @@ import uuid
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVector
 
 
 # ─── Constants ────────────────────────────────────────────────────────────────
@@ -280,6 +282,10 @@ class Message(models.Model):
             models.Index(fields=['conversation', '-created_at']),
             models.Index(fields=['conversation', 'status']),
             # Full-text search (GIN index created via migration)
+            GinIndex(
+                SearchVector('content', config='english'),
+                name='chat_message_content_gin_idx',
+            ),
             models.Index(fields=['sender', 'created_at']),
             models.Index(fields=['deleted_for_everyone', 'created_at']),
         ]

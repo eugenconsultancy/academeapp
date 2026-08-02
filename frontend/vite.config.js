@@ -195,14 +195,13 @@ export default defineConfig(({ command, mode }) => {
       outDir: 'dist',
       assetsDir: 'assets',
       emptyOutDir: true,
-      // ✅ No more huge source maps in production
       sourcemap: isDevelopment ? 'inline' : false,
       chunkSizeWarningLimit: 600,
       cssCodeSplit: false,
       minify: isProduction ? 'terser' : false,
-      // ⬇️ target removed – the legacy plugin handles browser targets
       terserOptions: isProduction
         ? {
+          keep_fnames: true,   // 🔧 preserve function names so React.memo doesn't break
           compress: {
             drop_console: true,
             drop_debugger: true,
@@ -216,50 +215,11 @@ export default defineConfig(({ command, mode }) => {
       cssMinify: isProduction,
       rollupOptions: {
         output: {
-          // ⬇️ Extended manual chunks to split the giant vendor bundle
-          manualChunks: (id) => {
-            if (id.includes('node_modules')) {
-              // React core
-              if (id.includes('react-dom') || id.includes('react/') || id.includes('scheduler')) {
-                return 'vendor-react';
-              }
-              if (id.includes('react-router') || id.includes('@remix-run/router')) {
-                return 'vendor-router';
-              }
-              if (id.includes('axios')) {
-                return 'vendor-axios';
-              }
-              if (id.includes('@tanstack/react-query')) {
-                return 'vendor-query';
-              }
-              if (id.includes('date-fns')) {
-                return 'vendor-date';
-              }
-              if (id.includes('react-icons')) {
-                return 'vendor-icons';
-              }
-              if (id.includes('three') || id.includes('@react-three')) {
-                return 'vendor-three';
-              }
-              if (id.includes('leaflet') || id.includes('react-leaflet')) {
-                return 'vendor-map';
-              }
-              if (id.includes('chart.js') || id.includes('react-chartjs-2')) {
-                return 'vendor-charts';
-              }
-              if (id.includes('monaco-editor') || id.includes('@monaco-editor')) {
-                return 'vendor-editor';
-              }
-              if (id.includes('socket.io')) {
-                return 'vendor-socket';
-              }
-              if (id.includes('pdf') || id.includes('react-pdf')) {
-                return 'vendor-pdf';
-              }
-              // Remaining small libraries
-              return 'vendor-utils';
-            }
-          },
+          // 🔧 Disabled manual chunking to prevent React loading-order issues
+          // (React.memo was failing because a chunk using it loaded before React itself).
+          // Remove the following line to re-enable splitting later with careful ordering.
+          manualChunks: undefined,
+
           assetFileNames: (assetInfo) => {
             const name = assetInfo.name || '';
             if (/\.(png|jpe?g|gif|svg|webp|avif)$/i.test(name)) {

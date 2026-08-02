@@ -481,13 +481,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         await database_sync_to_async(msg.edit)(new_content)
-
+        # msg is now stale — refresh from DB
+        msg = await database_sync_to_async(
+            lambda: Message.objects.get(id=message_id)
+        )()
         await self.channel_layer.group_send(
             self.room_group_name,
             {
                 'type': 'message_edited',
                 'message_id': message_id,
-                'content': new_content,
+                'content': msg.content,
                 'edited_at': msg.edited_at.isoformat(),
             }
         )
@@ -594,6 +597,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             {
                 'type': 'typing_event',
                 'user_id': str(self.user.id),
+                'conversation_id': str(self.conversation_id),  # add conversation scope
                 'typing': typing,
             }
         )
@@ -640,6 +644,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps({
             'type': 'typing',
             'user_id': event['user_id'],
+            'conversation_id': event.get('conversation_id', ''),  # forward conversation id
             'typing': event['typing'],
         }, cls=DjangoJSONEncoder))
 

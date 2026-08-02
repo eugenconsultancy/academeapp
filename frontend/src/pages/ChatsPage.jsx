@@ -655,7 +655,7 @@ const ChatsPage = () => {
     setError(null);
     try {
       const res = await chatApi.getConversations(filter, cursor);
-      const items = res.data?.results ?? res.data ?? [];
+      const items = res.data?.items ?? res.data?.results ?? (Array.isArray(res.data) ? res.data : []);
       const next = res.data?.next_cursor ?? null;
       if (cursor && !isRefresh) setConversations(prev => [...prev, ...items]);
       else setConversations(items);

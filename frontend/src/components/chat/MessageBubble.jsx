@@ -38,6 +38,7 @@ const TickRead = () => (
 );
 
 const StatusTick = ({ status }) => {
+    if (status === 'failed') return <span style={{ color: 'red', fontSize: 11 }}>!</span>;
     if (status === 'pending') return <span style={{ opacity: 0.45, fontSize: 11 }}>●</span>;
     if (status === 'sent') return <TickSent />;
     if (status === 'delivered') return <TickDelivered />;
