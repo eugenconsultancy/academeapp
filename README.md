@@ -16,324 +16,6 @@ zustand	Lightweight state management
 tailwindcss	Utility-first CSS framework
 vite	Build tool and dev server
 
-
-
-
-
-
-C:\Users\GATARA-BJTU\academe\frontend\src\pages\HomePage.jsx;;for the below homepage, the content for the cards is overflowing and the general file lack intuitve and appealing user interface, with mdoern designs, appealing UI, and orgernization, i want you to make it as appealing as possible and resposnive to all devices: import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
-import { announcementsApi } from '../api/announcementsApi';
-import { opportunitiesApi } from '../api/opportunitiesApi';
-import { classesApi } from '../api/classesApi';
-import { blogApi } from '../api/blogApi';
-import Card from '../components/ui/Card';
-import SkeletonLoader from '../components/shared/SkeletonLoader';
-import { useAuth } from '../contexts/AuthContext';
-import {
-    FiArrowRight, FiPackage, FiBell, FiBriefcase,
-    FiBook, FiClock, FiMapPin, FiUser, FiZap,
-    FiTrendingUp, FiCheckCircle, FiAlertCircle,
-    FiBookOpen, FiHeart, FiEye
-} from 'react-icons/fi';
-
-function StatCard({ label, value, icon: Icon, color, bg }) {
-    return (
-        <div className="hp-stat-card" style={{ '--c': color, '--bg': bg }}>
-            <div className="hp-stat-icon">
-                <Icon size={18} style={{ color }} />
-            </div>
-            <div>
-                <p className="hp-stat-value">{value}</p>
-                <p className="hp-stat-label">{label}</p>
-            </div>
-        </div>
-    );
-}
-
-function ClassRow({ c }) {
-    return (
-        <div className="hp-class-row">
-            <div className="hp-class-time-col">
-                <span className="hp-class-time">{c.start_time}</span>
-                <div className="hp-class-time-dot" />
-            </div>
-            <div className="hp-class-body">
-                <p className="hp-class-name" title={c.unit_name}>{c.unit_name}</p>
-                <div className="hp-class-meta">
-                    <span><FiClock size={10} /> {c.start_time}–{c.end_time}</span>
-                    {c.venue && <span><FiMapPin size={10} /> {c.venue}</span>}
-                    {c.lecturer && <span><FiUser size={10} /> {c.lecturer}</span>}
-                </div>
-            </div>
-            <div className="hp-class-status">
-                {c.is_marked
-                    ? <span className="hp-pill hp-pill-green"><FiCheckCircle size={10} /> Done</span>
-                    : c.can_mark
-                        ? <span className="hp-pill hp-pill-amber">Mark</span>
-                        : <span className="hp-pill hp-pill-gray">Soon</span>
-                }
-            </div>
-        </div>
-    );
-}
-
-function AnnouncementRow({ a }) {
-    return (
-        <div className="hp-list-row">
-            <div className={`hp-list-dot${a.is_urgent ? ' urgent' : ''}`} />
-            <div className="hp-list-body">
-                {a.is_urgent && (
-                    <span className="hp-pill hp-pill-red"><FiAlertCircle size={9} /> Urgent</span>
-                )}
-                <p className="hp-list-title" title={a.title}>{a.title}</p>
-                <p className="hp-list-preview">{a.content?.substring(0, 80)}</p>
-            </div>
-        </div>
-    );
-}
-
-function BlogRow({ post }) {
-    return (
-        <div className="hp-list-row">
-            <div className="hp-list-dot" style={{ background: '#ec4899', boxShadow: '0 0 6px rgba(236,72,153,.5)' }} />
-            <div className="hp-list-body">
-                <p className="hp-list-title" title={post.title}>{post.title}</p>
-                <div className="hp-list-meta">
-                    <span><FiClock size={10} /> {post.reading_time}m</span>
-                    <span><FiHeart size={10} /> {post.likes_count || 0}</span>
-                    <span><FiEye size={10} /> {post.view_count || 0}</span>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-export default function HomePage() {
-    const { user } = useAuth();
-
-    const { data: announcements, isLoading: loadingAnnouncements } = useQuery({
-        queryKey: ['recent-announcements'],
-        queryFn: async () => { const r = await announcementsApi.list({ limit: 3 }); return Array.isArray(r) ? r : r.data || []; },
-    });
-    const { data: opportunities, isLoading: loadingOpportunities } = useQuery({
-        queryKey: ['recent-opportunities'],
-        queryFn: async () => { const r = await opportunitiesApi.list({ limit: 3 }); return Array.isArray(r) ? r : r.data || []; },
-    });
-    const { data: todayClasses, isLoading: loadingClasses } = useQuery({
-        queryKey: ['today-classes'],
-        queryFn: async () => { const r = await classesApi.getTodayClasses(); return Array.isArray(r) ? r : r.data || []; },
-    });
-    const { data: blogPosts, isLoading: loadingBlog } = useQuery({
-        queryKey: ['featured-blog'],
-        queryFn: async () => { const r = await blogApi.getFeatured(); return Array.isArray(r) ? r : r.data || []; },
-    });
-
-    const firstName = user?.full_name?.split(' ')[0] ?? 'Student';
-    const hour = new Date().getHours();
-    const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-
-    const quickLinks = [
-        { to: '/found-items', label: 'Found Items', color: '#3b82f6', emoji: '📦' },
-        { to: '/blog', label: 'Student Blog', color: '#ec4899', emoji: '📝' },
-        { to: '/announcements', label: 'Announcements', color: '#8b5cf6', emoji: '📢' },
-        { to: '/opportunities', label: 'Opportunities', color: '#10b981', emoji: '💼' },
-        { to: '/classes', label: 'My Classes', color: '#f59e0b', emoji: '📚' },
-    ];
-
-    return (
-        <>
-            <style>{`
-                .hp-root { max-width: 1100px; margin: 0 auto; padding: 24px 16px 60px; animation: hpFade .5s ease; }
-                @keyframes hpFade { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-
-                /* Hero */
-                .hp-hero {
-                    border-radius: 20px; padding: 32px 28px; margin-bottom: 24px;
-                    background: linear-gradient(135deg, #6366f1, #8b5cf6, #06b6d4);
-                    color: white; position: relative; overflow: hidden;
-                }
-                .hp-hero h1 { font-size: clamp(1.5rem, 4vw, 2rem); font-weight: 800; margin: 4px 0; }
-                .hp-hero p { font-size: 0.85rem; opacity: 0.8; }
-                .hp-hero-date {
-                    position: absolute; top: 20px; right: 20px;
-                    background: rgba(255,255,255,0.15); backdrop-filter: blur(8px);
-                    padding: 6px 14px; border-radius: 99px; font-size: 0.75rem;
-                }
-                @media (max-width: 500px) { .hp-hero-date { display: none; } }
-
-                /* Stats */
-                .hp-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 24px; }
-                .hp-stat-card {
-                    display: flex; align-items: center; gap: 10px; padding: 14px;
-                    background: rgba(255,255,255,0.7); backdrop-filter: blur(16px);
-                    border: 1px solid rgba(0,0,0,0.05); border-radius: 14px;
-                }
-                .dark .hp-stat-card { background: rgba(17,17,34,0.7); border-color: rgba(255,255,255,0.05); }
-                .hp-stat-icon { width: 36px; height: 36px; border-radius: 10px; background: var(--bg); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-                .hp-stat-value { font-size: 1.2rem; font-weight: 700; color: #111; line-height: 1; }
-                .dark .hp-stat-value { color: #f9fafb; }
-                .hp-stat-label { font-size: 0.65rem; color: #9ca3af; text-transform: uppercase; letter-spacing: .04em; }
-
-                /* Grid */
-                .hp-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
-                @media (max-width: 900px) { .hp-grid-3 { grid-template-columns: 1fr 1fr; } }
-                @media (max-width: 600px) { .hp-grid-3 { grid-template-columns: 1fr; } }
-
-                /* Card header */
-                .hp-card-hd { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-                .hp-card-ttl { font-size: 0.9rem; font-weight: 700; color: #111; display: flex; align-items: center; gap: 6px; }
-                .dark .hp-card-ttl { color: #f9fafb; }
-                .hp-card-dot { width: 7px; height: 7px; border-radius: 50%; }
-                .hp-card-link { font-size: 0.7rem; font-weight: 600; color: #6366f1; text-decoration: none; padding: 3px 8px; border-radius: 6px; background: rgba(99,102,241,0.07); display: flex; align-items: center; gap: 3px; }
-
-                /* List rows */
-                .hp-list-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; text-decoration: none; color: inherit; }
-                .hp-list-row + .hp-list-row { border-top: 1px solid rgba(0,0,0,0.04); }
-                .dark .hp-list-row + .hp-list-row { border-color: rgba(255,255,255,0.03); }
-                .hp-list-dot { width: 6px; height: 6px; border-radius: 50%; background: #6366f1; flex-shrink: 0; margin-top: 6px; }
-                .hp-list-dot.urgent { background: #ef4444; box-shadow: 0 0 4px rgba(239,68,68,.5); }
-                .hp-list-body { flex: 1; min-width: 0; }
-                .hp-list-title { font-size: 0.8rem; font-weight: 600; color: #1f2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px; }
-                .dark .hp-list-title { color: #f3f4f6; }
-                .hp-list-preview { font-size: 0.7rem; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-                .hp-list-meta { display: flex; gap: 8px; font-size: 0.68rem; color: #9ca3af; margin-top: 2px; }
-                .hp-list-meta span { display: flex; align-items: center; gap: 2px; }
-
-                /* Class row */
-                .hp-class-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
-                .hp-class-row + .hp-class-row { border-top: 1px solid rgba(0,0,0,0.04); }
-                .dark .hp-class-row + .hp-class-row { border-color: rgba(255,255,255,0.03); }
-                .hp-class-time { font-size: 0.65rem; font-weight: 700; color: #6366f1; width: 36px; text-align: center; }
-                .hp-class-body { flex: 1; min-width: 0; }
-                .hp-class-name { font-size: 0.8rem; font-weight: 600; color: #1f2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-                .dark .hp-class-name { color: #f3f4f6; }
-                .hp-class-meta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 0.65rem; color: #9ca3af; margin-top: 1px; }
-                .hp-class-meta span { display: flex; align-items: center; gap: 2px; }
-
-                /* Pills */
-                .hp-pill { display: inline-flex; align-items: center; gap: 3px; font-size: 0.62rem; font-weight: 600; padding: 2px 7px; border-radius: 99px; white-space: nowrap; }
-                .hp-pill-green { background: rgba(16,185,129,0.12); color: #059669; }
-                .hp-pill-amber { background: rgba(245,158,11,0.12); color: #d97706; }
-                .hp-pill-gray { background: rgba(107,114,128,0.08); color: #6b7280; }
-                .hp-pill-red { background: rgba(239,68,68,0.1); color: #dc2626; }
-
-                /* Empty state */
-                .hp-empty { padding: 24px; text-align: center; color: #9ca3af; font-size: 0.8rem; }
-                .hp-empty span { font-size: 1.5rem; display: block; margin-bottom: 6px; }
-
-                /* Quick links */
-                .hp-quick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
-                @media (max-width: 900px) { .hp-quick { grid-template-columns: repeat(3, 1fr); } }
-                @media (max-width: 500px) { .hp-quick { grid-template-columns: repeat(2, 1fr); } }
-                .hp-quick-card {
-                    border-radius: 16px; padding: 18px 14px; text-decoration: none;
-                    transition: transform .2s, box-shadow .2s; display: flex; flex-direction: column;
-                }
-                .hp-quick-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
-                .hp-quick-emoji { font-size: 1.5rem; margin-bottom: 8px; }
-                .hp-quick-label { font-size: 0.73rem; font-weight: 700; color: #fff; }
-
-                .hp-sec-label { font-size: 0.68rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #9ca3af; margin-bottom: 12px; }
-            `}</style>
-
-            <div className="hp-root">
-                {/* Hero */}
-                <div className="hp-hero">
-                    <p><FiZap size={12} className="inline" /> {greeting},</p>
-                    <h1>{firstName}!</h1>
-                    <p>{user?.class_name}{user?.institution ? ` · ${user.institution}` : ''}</p>
-                    <div className="hp-hero-date">
-                        <FiTrendingUp size={11} className="inline mr-1" />
-                        {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-                    </div>
-                </div>
-
-                {/* Stats */}
-                <div className="hp-stats">
-                    <StatCard label="Classes" value={todayClasses?.length ?? '–'} icon={FiBook} color="#6366f1" bg="rgba(99,102,241,0.12)" />
-                    <StatCard label="Blog" value={blogPosts?.length ?? '–'} icon={FiBookOpen} color="#ec4899" bg="rgba(236,72,153,0.12)" />
-                    <StatCard label="Notices" value={announcements?.length ?? '–'} icon={FiBell} color="#f59e0b" bg="rgba(245,158,11,0.12)" />
-                    <StatCard label="Opps" value={opportunities?.length ?? '–'} icon={FiBriefcase} color="#10b981" bg="rgba(16,185,129,0.12)" />
-                    <StatCard label="Marked" value={todayClasses?.filter(c => c.is_marked).length ?? '0'} icon={FiCheckCircle} color="#06b6d4" bg="rgba(6,182,212,0.12)" />
-                </div>
-
-                {/* 3 Cards */}
-                <div className="hp-grid-3">
-                    {/* Classes */}
-                    <Card padding="sm">
-                        <div className="hp-card-hd">
-                            <p className="hp-card-ttl"><span className="hp-card-dot" style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }} /> Today's Classes</p>
-                            <Link to="/classes" className="hp-card-link">All <FiArrowRight size={10} /></Link>
-                        </div>
-                        {loadingClasses ? <SkeletonLoader type="list" count={3} /> :
-                         todayClasses?.length ? todayClasses.slice(0, 3).map(c => <ClassRow key={c.id} c={c} />) :
-                         <div className="hp-empty"><span>🎉</span>No classes today!</div>}
-                    </Card>
-
-                    {/* Blog */}
-                    <Card padding="sm">
-                        <div className="hp-card-hd">
-                            <p className="hp-card-ttl"><span className="hp-card-dot" style={{ background: 'linear-gradient(135deg,#ec4899,#f472b6)' }} /> Student Blog</p>
-                            <Link to="/blog" className="hp-card-link" style={{ color: '#ec4899', background: 'rgba(236,72,153,0.07)' }}>All <FiArrowRight size={10} /></Link>
-                        </div>
-                        {loadingBlog ? <SkeletonLoader type="list" count={3} /> :
-                         blogPosts?.length ? blogPosts.slice(0, 3).map(post => (
-                            <Link key={post.id} to={`/blog/${post.slug}`} className="hp-list-row"><BlogRow post={post} /></Link>
-                         )) : <div className="hp-empty"><span>📝</span>No blog posts yet</div>}
-                    </Card>
-
-                    {/* Announcements */}
-                    <Card padding="sm">
-                        <div className="hp-card-hd">
-                            <p className="hp-card-ttl"><span className="hp-card-dot" style={{ background: 'linear-gradient(135deg,#8b5cf6,#a78bfa)' }} /> Announcements</p>
-                            <Link to="/announcements" className="hp-card-link">All <FiArrowRight size={10} /></Link>
-                        </div>
-                        {loadingAnnouncements ? <SkeletonLoader type="list" count={3} /> :
-                         announcements?.length ? announcements.slice(0, 3).map(a => <AnnouncementRow key={a.id} a={a} />) :
-                         <div className="hp-empty"><span>📭</span>No announcements</div>}
-                    </Card>
-                </div>
-
-                {/* Quick Access */}
-                <p className="hp-sec-label">Quick Access</p>
-                <div className="hp-quick">
-                    {quickLinks.map(({ to, label, color, emoji }) => (
-                        <Link key={to} to={to} className="hp-quick-card"
-                            style={{ background: `linear-gradient(135deg, ${color}ee, ${color}bb)`, boxShadow: `0 4px 16px ${color}33` }}>
-                            <span className="hp-quick-emoji">{emoji}</span>
-                            <span className="hp-quick-label">{label}</span>
-                        </Link>
-                    ))}
-                </div>
-            </div>
-        </>
-    );
-}
-
-
-
-
-
-
-also the fonts for the application appear blurred, making the visual appearance of text be non appealing.
-s
-
-
-also the admin user interface has some sections with hover being black masking the content visibiluty completly.
-
-what does running with agentic mean in vs code for the above project?
-
-
-
-PROFILE EDIT PAGE is missing LACKS CHECK IF IT SHOULD EXIST
-MAIN.JSX ENSURE IT INCLUDES ALL FEATURES
-the homepage has some titles that are so thick affectig the descendig letters making them appear dwarfing. 
-
-
-
-
-
 ONCE DATA IS POPULATED — Test Credentials & Feature Testing Guide
 Login Credentials
 #	Phone	Role	Name
@@ -410,19 +92,6 @@ Academe is your all-in-one campus companion. Log in with just your phone number 
 
 
 create a terminal command compatible to git bash to create a filein my project root with the content files and their content full complete from below folders: C:\Users\GATARA-BJTU\academe\frontend\src ,C:\Users\GATARA-BJTU\academe\frontend\eslint.config.js.,,C:\Users\GATARA-BJTU\academe\frontend\index.html,,C:\Users\GATARA-BJTU\academe\frontend\package-lock.json,,C:\Users\GATARA-BJTU\academe\frontend\package.json,C:\Users\GATARA-BJTU\academe\frontend\postcss.config.js,,C:\Users\GATARA-BJTU\academe\frontend\tailwind.config.js,,C:\Users\GATARA-BJTU\academe\frontend\vite.config.js. the command should ensure te above folders and their files content are full and complete and pastes them in a file named(project dump frontend and it should be full complete with content)
-
-
-from the abve i want you to idetify the root cause of the issues where specific pages like blogpage etc are not styled, poorly styled, 
-
-safelist: [
-  { pattern: /./ }, // nuclear option for dev
-],
-
-
-
-
-
-
 
 
 
@@ -911,71 +580,6 @@ Below are common Android Studio / Gradle commands you can run to diagnose and fi
 
 These commands will help you troubleshoot most common issues during development and testing. Use them from the **Android Studio Terminal** (or your system terminal from the `android/` directory) whenever you hit a problem.
 
-
-
-
-
-
-
-
-
-
-
-
-
-AttributeError at /admin/accounts/user/
-'User' object has no attribute 'face_embedding'
-Request Method:	GET
-Request URL:	http://localhost:8000/admin/accounts/user/
-Django Version:	4.2
-Exception Type:	AttributeError
-Exception Value:	
-'User' object has no attribute 'face_embedding'
-Exception Location:	C:\Users\GATARA-BJTU\academe\backend\apps\accounts\admin.py, line 31, in has_biometric
-Raised during:	django.contrib.admin.options.changelist_view
-Python Executable:	C:\Users\GATARA-BJTU\academe\backend\venv\Scripts\python.exe
-Python Version:	3.11.9
-Python Path:	
-['C:\\Users\\GATARA-BJTU\\academe\\backend',
- 'C:\\Users\\GATARA-BJTU\\academe\\backend',
- 'C:\\Program Files\\Python311\\python311.zip',
- 'C:\\Program Files\\Python311\\DLLs',
- 'C:\\Program Files\\Python311\\Lib',
- 'C:\\Program Files\\Python311',
- 'C:\\Users\\GATARA-BJTU\\academe\\backend\\venv',
- 'C:\\Users\\GATARA-BJTU\\academe\\backend\\venv\\Lib\\site-packages']
-Server time:	Tue, 26 May 2026 23:21:55 +0300
-Error during template rendering
-In template C:\Users\GATARA-BJTU\academe\backend\venv\Lib\site-packages\jazzmin\templates\admin\change_list.html, error at line 87
-
-'User' object has no attribute 'face_embedding'
-77	                                        </div>
-78	                                        <div class="col-12 col-sm-4">
-79	                                            {% block object-tools %}
-80	                                                {% block object-tools-items %}
-81	                                                    {% change_list_object_tools %}
-82	                                                {% endblock %}
-83	                                            {% endblock %}
-84	                                        </div>
-85	                                    </div>
-86	                                    <hr/>
-87	                                    {% result_list cl %}
-88	                                    {% if action_form and actions_on_bottom and cl.show_admin_actions %}
-89	                                        <div class="row">
-90	                                            <div class="col-12">
-91	                                                {% admin_actions %}
-92	                                            </div>
-93	                                        </div>
-94	                                    {% endif %}
-95	                                {% endblock %}
-96	                            </div>
-97	                        </div>
-
-
-
-
-
-
 ADMIN TT ENTRIES HAVE NO SAVE BUTTON . PLEASE MODIFY THAT. ALSO CAMUS VENUES FOR ADMIN NO BUTTON FOR SAVE
  SO STICTLY CONCISDER THE BELOW:
 
@@ -1006,8 +610,6 @@ Found Items
 Campus Map
 Nearby
 
-
-
 FOR ANNOUCMENT THE TEXT IS FAINT GRAY MAKING IT APPEAR LIKE THE BACKEGROUND THUSLY AFEFCTING THE USER INTERFACE EXPERINCE.
 
 
@@ -1017,12 +619,6 @@ The application encountered an unexpected processing error. Try resetting the pa
 Error: Objects are not valid as a React child (found: object with keys {id, full_name}). If you meant to render a collection of children, use an array instead.
 
 ALSO THE ADMIN DAHSBOARD INTUIVE AND APPEALING COLORS NEEDED AND STYLINGS
-
-
-
-
-
-
 
 
 so the announcment page is not fucntional for some features like delete , update etc (crud)
@@ -1038,16 +634,6 @@ should not accept letters, symbols, or any special characters for number fields 
 
 
 also grant the admin, via the admin panel the ability to deactvate a user account.
-
-
-
-
-
-
-
-
-
-
 
 
 Platform Statistics
@@ -1066,43 +652,6 @@ this feature is not accurate and fucntional as it reads 0 yet there ate differen
 also Content Reports
 Review and moderate reported content.
 
-All
-Pending
-Resolved.... AND ALSO THE AUDOT LOGS : THOE 2 RISE FROM GOVERNANCE DASHBOARD
-unt/ HTTP/1.1" 200 12
-[30/May/2026 00:29:20] "OPTIONS /accounts/2fa/status/ HTTP/1.1" 200 0
-[30/May/2026 00:29:20] "OPTIONS /accounts/2fa/status/ HTTP/1.1" 200 0
-Not Found: /accounts/2fa/status/
-[30/May/2026 00:29:20] "GET /accounts/2fa/status/ HTTP/1.1" 404 27704
-Not Found: /accounts/2fa/status/
-[30/May/2026 00:29:20] "GET /accounts/2fa/status/ HTTP/1.1" 404 27704
-[30/May/2026 00:29:23] "OPTIONS /accounts/2fa/setup/ HTTP/1.1" 200 0
-Not Found: /accounts/2fa/setup/
-[30/May/2026 00:29:23] "GET /accounts/2fa/setup/ HTTP/1.1" 404 27701
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 first the fcuntionality on support , strcuture a way which when a user submits the ticket
 he can be able to access the feedback provided fromthe amin side. 
 
@@ -1116,37 +665,6 @@ from the admin dhasboard he should be able to see user name, insitution, phone n
 annaoucment request i should also include the admin as an option aprt from student leader and class rep
 
 upon admin approving the user request, it should automatically post iteslf apon approval. 
-
-user ability To ceate post should be limited to admin only and editor, others should even have a view of the create view.rolebased.
-
-
-resolve; SyntaxError: The requested module '/node_modules/@react-three/fiber/node_modules/react-reconciler/constants.js?v=402c4976' does not provide an export named 'ConcurrentRoot'
-
-
-on signup, the entry for adm should use a specific format for autheticity. 
-
-
-2026-06-05 23:06:40,108 ERROR    Internal Server Error: /chat/presigned-url
-
-
-
-
-
-also implement actual for the below accurately in chat consumers backend: 
-
-
-    async def rate_limit_check(self):
-        # Placeholder for real rate limiting (not implemented)
-        pass
-
-
-
-
-daphne academe.asgi:application --port 8000 --bind 0.0.0.0
-
-
-
-
 commands to run when internet gets back:
 # Remove node_modules and the lock file
 rm -rf node_modules package-lock.json
