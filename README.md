@@ -721,3 +721,72 @@ To test the app directly on your phone via USB with hot‑reload, you need to:
 But for now, fixing the Gradle build is the priority. Let me know once you run the commands above and what happens.
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+No virtual environment exists yet — you need to create one first. You're in the right folder (`manage.py` is here).
+
+## Create the venv, activate it, install deps
+
+```bash
+python -m venv venv
+source venv/Scripts/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+After activation, your prompt will show `(venv)` at the start, like:
+```
+(venv) GATARA-BJTU@JD-Work MINGW64 ~/academeapp/backend (main)
+```
+
+## Then start the Django server
+
+```bash
+python manage.py runserver 0.0.0.0:8000
+```
+
+---
+
+## Full one-liner (first-time setup)
+
+```bash
+cd ~/academeapp/backend && python -m venv venv && source venv/Scripts/activate && pip install --upgrade pip && pip install -r requirements.txt && python manage.py runserver 0.0.0.0:8000
+```
+
+## One-liner for subsequent runs
+
+Once the venv is created and deps installed, you only need:
+
+```bash
+cd ~/academeapp/backend && source venv/Scripts/activate && python manage.py runserver 0.0.0.0:8000
+```
+
+---
+
+## Notes
+
+- **`python` vs `py` vs `python3`** — if `python -m venv venv` errors, try `py -m venv venv`. On Git Bash with a standard Windows Python install, `python` should work.
+- **Do not commit the venv** — the repo's `.gitignore` should already exclude `venv/`. If not, leave it alone for now.
+- **If `pip install -r requirements.txt` fails**, paste the error. Common causes: missing build tools for a package (e.g. `psycopg2` needs Postgres headers) — in that case you might need `pip install psycopg2-binary` or install dependencies via the `Dockerfile` / `docker-compose.yml` that's in the repo.
+- **Migrations** — if the DB isn't set up yet, run:
+  ```bash
+  python manage.py migrate
+  ```
+  before `runserver`.
+- **The repo also has `docker-compose.yml`** — if setting up locally is painful (DB, env vars, etc.), running `docker compose up` from `~/academeapp` might be easier. Let me know if you want to go that route instead.
+
+Paste the output if any step fails and I'll help debug.

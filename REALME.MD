@@ -678,4 +678,161 @@ CHAPTERS:
 
  users have ability to signup for new accounts to access specififci features like blog commenting, sharing, and liking post. also users with acciunts to have the ability to 
 
- 
+ Here's the full set — use **three separate Git Bash windows**.
+
+---
+
+## Terminal 1 — Backend (Django)
+
+```bash
+cd ~/academeapp/backend
+source venv/Scripts/activate
+python manage.py migrate
+python manage.py runserver 0.0.0.0:8000
+```
+
+**One-liner:**
+```bash
+cd ~/academeapp/backend && source venv/Scripts/activate && python manage.py migrate && python manage.py runserver 0.0.0.0:8000
+```
+
+> Backend will be at `http://localhost:8000`
+
+---
+
+## Terminal 2 — Frontend (Vite dev server)
+
+```bash
+cd ~/academeapp/frontend
+npm install
+npm run dev
+```
+
+**One-liner:**
+```bash
+cd ~/academeapp/frontend && npm install && npm run dev
+```
+
+> Frontend will be at `http://localhost:5173`
+
+---
+
+## Terminal 3 — ngrok (expose frontend to the internet)
+
+Open a **third** Git Bash window:
+
+```bash
+ngrok http 5173
+```
+
+ngrok will print something like:
+
+```
+Forwarding   https://abcd-1234.ngrok-free.app -> http://localhost:5173
+```
+
+Copy that `https://...ngrok-free.app` URL — use it to access the frontend from your phone / any device.
+
+---
+
+## Optional — expose the backend too (if the frontend needs to reach it externally)
+
+If your frontend calls the backend on a public URL, open a **fourth** window and run:
+
+```bash
+ngrok http 8000
+```
+
+Then set the backend URL your frontend uses (usually via an `.env` file in `frontend/`, e.g. `VITE_API_URL=https://your-backend.ngrok-free.app`), and restart the frontend dev server.
+
+---
+
+## Summary table
+
+| Terminal | Purpose          | Command                                                              | URL                       |
+|----------|------------------|----------------------------------------------------------------------|---------------------------|
+| 1        | Django backend   | `cd ~/academeapp/backend && source venv/Scripts/activate && python manage.py runserver 0.0.0.0:8000` | http://localhost:8000     |
+| 2        | Vite frontend    | `cd ~/academeapp/frontend && npm run dev`                            | http://localhost:5173     |
+| 3        | ngrok (frontend) | `ngrok http 5173`                                                    | https://xxxx.ngrok-free.app |
+| 4 (opt.) | ngrok (backend)  | `ngrok http 8000`                                                    | https://yyyy.ngrok-free.app |
+
+---
+
+## Quick checks / troubleshooting
+
+```bash
+# Where am I?
+pwd
+
+# What's running on these ports?
+netstat -ano | findstr :8000
+netstat -ano | findstr :5173
+
+# Kill a stuck process by PID
+taskkill //PID <pid> //F
+```
+
+**Reminders:**
+- Keep each server in its **own window** — closing the window stops the process.
+- `Ctrl + C` stops a running server in that window.
+- After the first `npm install`, you can skip it on later runs — just `npm run dev`.
+- If you edit `requirements.txt` again, re-run `pip install -r requirements.txt` inside the activated venv.
+- To leave the venv: `deactivate`.
+
+---
+
+## Bonus — production build + Android (Capacitor)
+
+If you want to build web assets and open Android Studio instead of the dev server:
+
+```bash
+cd ~/academeapp/frontend && npm run build && npx cap sync android && npx cap open android
+```
+
+You're set. 🚀
+
+
+**ngrok doesn't care about the directory.** It's a standalone binary that forwards a port — where you run it from is irrelevant.
+
+You can run `ngrok http 5173` from `~`, `~/academeapp`, `~/academeapp/frontend`, or anywhere else — it behaves identically.
+
+### But for tidiness, run it from the repo root
+
+```bash
+cd ~/academeapp
+ngrok http 5173
+```
+
+That way it's easy to find your terminal later, and it sits alongside the project.
+
+### What actually matters is the **port number**
+
+```bash
+ngrok http 5173     # exposes the frontend (Vite dev server)
+ngrok http 8000     # exposes the backend (Django)
+```
+
+The port must match a **currently running** server:
+
+| Server              | Must be running in | Port | ngrok command         |
+|---------------------|--------------------|------|------------------------|
+| Django backend      | Terminal 1         | 8000 | `ngrok http 8000`      |
+| Vite frontend       | Terminal 2         | 5173 | `ngrok http 5173`      |
+
+### Rule of thumb
+
+- **One ngrok tunnel = one port.**
+- To expose both frontend and backend simultaneously, you need **two ngrok processes** (two terminals), each forwarding a different port. *(Free ngrok accounts allow only one tunnel at a time unless you upgrade — so pick whichever you need to test.)*
+
+### If you only need the frontend
+Most likely case: just the frontend needs to be reachable externally (so a phone can open the app). Backend stays on localhost and the frontend proxies to it.
+
+```bash
+# Terminal 3
+cd ~/academeapp
+ngrok http 5173
+```
+
+Done. Copy the `https://...ngrok-free.app` URL it prints.
+
+Alison Finlayson
