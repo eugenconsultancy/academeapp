@@ -1,0 +1,26 @@
+name: TruffleHog Secret Scan
+
+on:
+  push:
+    branches: [ "**" ] # Scans all pushed branches
+  pull_request:
+    branches: [ "**" ]
+  schedule:
+    - cron: '0 0 * * 1' # Runs weekly on Mondays at midnight
+
+jobs:
+  trufflehog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Important: fetches full commit history for deep scanning
+
+      - name: Run TruffleHog
+        uses: trufflehog/trufflehog@main
+        with:
+          path: ./
+          base: ""
+          head: ""
+          extra_args: --only-verified # Optional: filters out unverified keys to reduce noise
