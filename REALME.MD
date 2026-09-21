@@ -828,7 +828,7 @@ The port must match a **currently running** server:
 Most likely case: just the frontend needs to be reachable externally (so a phone can open the app). Backend stays on localhost and the frontend proxies to it.
 
 ```bash
-# Terminal 3
+# Terminal 3a
 cd ~/academeapp
 ngrok http 5173
 ```

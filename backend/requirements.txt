@@ -3,6 +3,8 @@ django-ninja==1.1.0
 django-ninja-jwt==5.1.0
 djangorestframework==3.14.0
 celery==5.3.0
+channels==4.1.0
+channels-redis==4.2.0
 redis==4.6.0
 psycopg2-binary==2.9.6
 pillow==10.0.0
@@ -29,8 +31,10 @@ coverage==7.3.0
 factory-boy==3.3.0
 faker==19.6.0
 ipython==8.15.0
+daphne==4.1.2
 
 geopy==2.4.1
 bleach==6.0.0
 pyotp 
 qrcode[pil]==7.0.0
+django-jazzmin
